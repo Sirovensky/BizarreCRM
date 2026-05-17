@@ -1276,24 +1276,16 @@ router.patch('/payments/:paymentId/reverse', async (req: Request<{ paymentId: st
   // from the totalPaid we read), then commit both writes atomically.
   const invoiceRow = await adb.get<any>('SELECT id, total FROM invoices WHERE id = ?', payment.invoice_id);
   if (invoiceRow) {
-    const currentPaid = await adb.get<{ t: number }>(
-      "SELECT SUM(CASE WHEN amount IS NOT NULL AND amount >= 0 AND COALESCE(notes,'') NOT LIKE '%[VOIDED]%' THEN amount ELSE 0 END) AS t FROM payments WHERE invoice_id = ?",
-      payment.invoice_id,
-    );
-    // currentPaid still counts THIS payment (the [VOIDED] marker hasn't
-    // committed yet). Subtract the row's own amount to project the post-
-    // reverse state.
-    const totalPaid = roundCents((currentPaid?.t || 0) - Number(payment.amount || 0));
-    const invoiceTotal = Number(invoiceRow.total ?? 0);
-    const rawAmountDue = roundCents(invoiceTotal - totalPaid);
-    const displayAmountDue = Math.max(0, rawAmountDue);
-    const newStatus = rawAmountDue <= 0 ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
-    // BUGHUNT-2026-05-17: guard the invoice UPDATE WHERE status NOT IN
-    // ('void','refunded') so a reverse on a payment whose parent invoice
-    // was just voided doesn't silently un-void the invoice by writing
-    // 'unpaid'/'partial' over the void state. The payment void marker
-    // still lands so the operator's audit trail records their intent;
-    // the invoice stays void (correct, since void already zeroed it).
+    // BUGHUNT-2026-05-17: recompute amount_paid from the live payments
+    // table INSIDE the UPDATE rather than from a pre-tx SUM. The [VOIDED]
+    // marker on this payment row has already landed (statement 1 of the
+    // tx), so the subquery's CASE filter excludes it. Any concurrent
+    // payment that committed between request entry and this UPDATE is
+    // also included, so we don't lose another writer's contribution.
+    // amount_due / status derive from the same fresh subquery. The
+    // void/refunded guard preserves the prior behaviour (a reverse
+    // on a voided invoice records the audit-marker but doesn't
+    // un-void the invoice).
     await adb.transaction([
       {
         sql: "UPDATE payments SET notes = COALESCE(notes || ' ', '') || '[VOIDED] ' || ? WHERE id = ? AND COALESCE(notes,'') NOT LIKE '%[VOIDED]%'",
@@ -1302,8 +1294,25 @@ router.patch('/payments/:paymentId/reverse', async (req: Request<{ paymentId: st
         expectChangesError: 'Payment was already voided by a concurrent request',
       },
       {
-        sql: "UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ? AND status NOT IN ('void', 'refunded')",
-        params: [totalPaid, displayAmountDue, newStatus, payment.invoice_id],
+        sql: `UPDATE invoices SET
+                amount_paid = COALESCE(
+                  (SELECT ROUND(SUM(CASE WHEN amount IS NOT NULL AND amount >= 0 AND COALESCE(notes,'') NOT LIKE '%[VOIDED]%' THEN amount ELSE 0 END) * 100) / 100
+                   FROM payments WHERE invoice_id = invoices.id),
+                  0
+                ),
+                amount_due = MAX(0, ROUND((COALESCE(total, 0) - COALESCE(
+                  (SELECT SUM(CASE WHEN amount IS NOT NULL AND amount >= 0 AND COALESCE(notes,'') NOT LIKE '%[VOIDED]%' THEN amount ELSE 0 END)
+                   FROM payments WHERE invoice_id = invoices.id),
+                  0
+                )) * 100) / 100),
+                status = CASE
+                  WHEN COALESCE((SELECT SUM(CASE WHEN amount IS NOT NULL AND amount >= 0 AND COALESCE(notes,'') NOT LIKE '%[VOIDED]%' THEN amount ELSE 0 END) FROM payments WHERE invoice_id = invoices.id), 0) >= COALESCE(total, 0) THEN 'paid'
+                  WHEN COALESCE((SELECT SUM(CASE WHEN amount IS NOT NULL AND amount >= 0 AND COALESCE(notes,'') NOT LIKE '%[VOIDED]%' THEN amount ELSE 0 END) FROM payments WHERE invoice_id = invoices.id), 0) > 0 THEN 'partial'
+                  ELSE 'unpaid'
+                END,
+                updated_at = datetime('now')
+              WHERE id = ? AND status NOT IN ('void', 'refunded')`,
+        params: [payment.invoice_id],
       },
     ]);
   } else {
