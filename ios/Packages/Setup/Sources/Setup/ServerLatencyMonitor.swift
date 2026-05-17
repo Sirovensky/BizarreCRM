@@ -87,14 +87,21 @@ public final class ServerLatencyMonitor {
     public func start() {
         guard !isRunning else { return }
         isRunning = true
+        // BUGHUNT-2026-05-17: re-resolve `self` each iteration rather than
+        // hoisting a strong unwrap above the loop. Previously the closure
+        // captured weak self, then promoted it to strong with `guard let
+        // self else { return }` BEFORE the while loop — turning the Task
+        // into a permanent strong reference to ServerLatencyMonitor. The
+        // monitor never deinit-ed when its owning view torn down, leaking
+        // a 30-second timer per Diagnostics screen open + close.
+        let intervalNanos = UInt64(self.interval * 1_000_000_000)
         task = Task { [weak self] in
-            guard let self else { return }
-            // Probe immediately, then on interval.
-            await self.probe()
+            await self?.probe()
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: UInt64(self.interval * 1_000_000_000))
-                guard !Task.isCancelled else { break }
-                await self.probe()
+                try? await Task.sleep(nanoseconds: intervalNanos)
+                if Task.isCancelled { break }
+                guard let strongSelf = self else { break }
+                await strongSelf.probe()
             }
         }
     }
