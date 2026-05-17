@@ -354,11 +354,23 @@ router.post('/bulk-action', requirePermission('inventory.bulk_action'), asyncHan
     if (!item) continue;
 
     if (action === 'delete') {
-      await adb.run("UPDATE inventory_items SET is_active = 0, updated_at = datetime('now') WHERE id = ?", id);
-      affected++;
+      // BUGHUNT-2026-05-17: AND is_active = 1 + use result.changes so a
+      // concurrent deactivate (which already passed the SELECT precheck)
+      // can't be double-counted, and inactive rows don't inflate the
+      // audit's affected count.
+      const r = await adb.run(
+        "UPDATE inventory_items SET is_active = 0, updated_at = datetime('now') WHERE id = ? AND is_active = 1",
+        id,
+      );
+      affected += r.changes;
     } else if (action === 'update_category' && value) {
-      await adb.run("UPDATE inventory_items SET category = ?, updated_at = datetime('now') WHERE id = ?", value, id);
-      affected++;
+      // BUGHUNT-2026-05-17: AND is_active = 1 + use result.changes (same
+      // reasoning as the delete branch above).
+      const r = await adb.run(
+        "UPDATE inventory_items SET category = ?, updated_at = datetime('now') WHERE id = ? AND is_active = 1",
+        value, id,
+      );
+      affected += r.changes;
     } else if (action === 'update_price' && value !== undefined) {
       const pct = parseFloat(value);
       // @audit-fixed: reject Infinity / out-of-range markups so bulk-action
@@ -372,7 +384,11 @@ router.post('/bulk-action', requirePermission('inventory.bulk_action'), asyncHan
       // with the snapshot from BEFORE this writer's percentage adjustment.
       // The CAS-style WHERE clause also blocks the write when the row was
       // deactivated between the SELECT above and this UPDATE.
-      await adb.run(
+      //
+      // BUGHUNT-2026-05-17: use result.changes — the price-positivity guard
+      // (newPrice >= 0) and AND is_active = 1 can both filter the row out,
+      // and incrementing affected blindly overstates the audit count.
+      const r = await adb.run(
         `UPDATE inventory_items
             SET retail_price = ROUND(COALESCE(retail_price, 0) * (1 + ? / 100.0) * 100) / 100.0,
                 updated_at = datetime('now')
@@ -380,11 +396,16 @@ router.post('/bulk-action', requirePermission('inventory.bulk_action'), asyncHan
             AND COALESCE(retail_price, 0) * (1 + ? / 100.0) >= 0`,
         pct, id, pct,
       );
-      affected++;
+      affected += r.changes;
     } else if (action === 'update_item_type' && value) {
       if (!['product', 'part', 'service'].includes(value)) continue;
-      await adb.run("UPDATE inventory_items SET item_type = ?, updated_at = datetime('now') WHERE id = ?", value, id);
-      affected++;
+      // BUGHUNT-2026-05-17: AND is_active = 1 + use result.changes (same
+      // reasoning as the delete branch above).
+      const r = await adb.run(
+        "UPDATE inventory_items SET item_type = ?, updated_at = datetime('now') WHERE id = ? AND is_active = 1",
+        value, id,
+      );
+      affected += r.changes;
     }
   }
 
