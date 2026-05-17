@@ -36,6 +36,7 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.screens.invoices.components.InvoiceCatalogLineItemPicker
 import com.bizarreelectronics.crm.util.formatAsMoney
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -363,8 +364,8 @@ class InvoiceCreateViewModel @Inject constructor(
 
         _state.value = _state.value.copy(loading = true, error = null)
         viewModelScope.launch {
-            runCatching {
-                invoiceApi.createInvoice(
+            try {
+                val resp = invoiceApi.createInvoice(
                     CreateInvoiceRequest(
                         customerId = customerId,
                         lineItems = lineItemDtos,
@@ -372,28 +373,35 @@ class InvoiceCreateViewModel @Inject constructor(
                         dueDate = s.dueDate.ifBlank { null },
                     ),
                 )
-            }
-                .onSuccess { resp ->
-                    if (resp.success && resp.data != null) {
-                        // Draft successfully created — discard the autosave.
-                        runCatching { draftStore.discard(DraftStore.DraftType.INVOICE) }
-                        _state.value = _state.value.copy(
-                            loading = false,
-                            created = resp.data.invoice.id,
-                        )
-                    } else {
-                        _state.value = _state.value.copy(
-                            loading = false,
-                            error = resp.message ?: "Failed to create invoice",
-                        )
-                    }
-                }
-                .onFailure { ex ->
+                if (resp.success && resp.data != null) {
+                    // Draft successfully created — discard the autosave.
+                    runCatching { draftStore.discard(DraftStore.DraftType.INVOICE) }
                     _state.value = _state.value.copy(
                         loading = false,
-                        error = ex.message ?: "Network error — please try again",
+                        created = resp.data.invoice.id,
+                    )
+                } else {
+                    _state.value = _state.value.copy(
+                        loading = false,
+                        error = resp.message ?: "Failed to create invoice",
                     )
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: runCatching caught CancellationException
+                // and painted "Network error — please try again" on the
+                // snackbar — tempting the user to retry an invoice create
+                // that may have ALREADY been received by the server (no
+                // idempotency key on this endpoint), producing a duplicate
+                // invoice for the customer. Re-throw cancel so loading stays
+                // true and the explicit cancel/back gestures don't paint a
+                // misleading error.
+                throw e
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    loading = false,
+                    error = e.message ?: "Network error — please try again",
+                )
+            }
         }
     }
 }
