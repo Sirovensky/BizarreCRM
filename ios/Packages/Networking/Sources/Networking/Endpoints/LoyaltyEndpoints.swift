@@ -132,7 +132,12 @@ public extension APIClient {
 
         let (analytics, subscription) = try await (analyticsTask, subscriptionTask)
 
-        let lifetimeSpendCents = Int((analytics.lifetimeValue ?? 0.0) * 100.0)
+        // BUGHUNT-2026-05-17: .rounded() so the cent count used for tier
+        // auto-derivation doesn't truncate. A customer with lifetimeValue
+        // == 1000.0 was previously mapped to 99999 cents, landing one
+        // cent below the silver threshold — the auto-tier returned bronze
+        // when silver was correct.
+        let lifetimeSpendCents = Int(((analytics.lifetimeValue ?? 0.0) * 100.0).rounded())
         // Derive tier: prefer the active subscription tier name, fall back
         // to auto-computing from lifetime spend thresholds.
         let tierName: String

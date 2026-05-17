@@ -44,7 +44,13 @@ public struct RevenuePoint: Codable, Sendable, Identifiable {
         if let period = try? c.decode(String.self, forKey: .period) {
             self.date = period
             let dollars = (try? c.decode(Double.self, forKey: .revenue)) ?? 0.0
-            self.amountCents = Int64(dollars * 100.0)
+            // BUGHUNT-2026-05-17: .rounded() on server-returned daily revenue.
+            // Mirrors the Android ReportsScreen fix — `Int64(9.99 * 100)`
+            // truncates to 998 in IEEE-754, so every revenue chart point on
+            // iOS displayed one cent below the actual daily total. Reports
+            // is a high-traffic surface; any visible cent drift erodes
+            // operator trust.
+            self.amountCents = Int64((dollars * 100.0).rounded())
             self.saleCount = (try? c.decode(Int.self, forKey: .invoices)) ?? 0
             self.id = Int64(period.hashValue & 0x7FFF_FFFF_FFFF_FFFF)
         } else {
