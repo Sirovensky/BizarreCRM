@@ -293,7 +293,11 @@ class CheckInViewModel @Inject constructor(
                         priceDollars = first.laborPrice
                     }
                     if (priceDollars > 0.0) {
-                        totalCents += (priceDollars * 100).toLong()
+                        // BUGHUNT-2026-05-17: Math.round on price-per-device.
+                        // `(9.99 * 100).toLong()` truncates to 998 in IEEE-754,
+                        // so a multi-device check-in subtotal accumulated
+                        // one cent short per device row.
+                        totalCents += Math.round(priceDollars * 100)
                         matched = true
                     } else if (
                         manualDefaultCandidate == null &&

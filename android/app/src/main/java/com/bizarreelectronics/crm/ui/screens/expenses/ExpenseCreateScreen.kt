@@ -369,7 +369,9 @@ class ExpenseCreateViewModel @Inject constructor(
             _state.value = current.copy(error = "Rate per mile must be greater than 0")
             return
         }
-        val rateCents = (rateDollars * 100).toInt().coerceIn(1, 50_000)
+        // BUGHUNT-2026-05-17: Math.round on user-typed rate. `(9.99 * 100).toInt()`
+        // truncates to 998 — mileage / per-diem rate stored a cent short.
+        val rateCents = Math.round(rateDollars * 100).toInt().coerceIn(1, 50_000)
         viewModelScope.launch {
             _state.value = _state.value.copy(isSubmitting = true, error = null)
             try {
@@ -413,7 +415,9 @@ class ExpenseCreateViewModel @Inject constructor(
             _state.value = current.copy(error = "Rate per day must be greater than 0")
             return
         }
-        val rateCents = (rateDollars * 100).toInt().coerceIn(1, 50_000)
+        // BUGHUNT-2026-05-17: Math.round on user-typed rate. `(9.99 * 100).toInt()`
+        // truncates to 998 — mileage / per-diem rate stored a cent short.
+        val rateCents = Math.round(rateDollars * 100).toInt().coerceIn(1, 50_000)
         viewModelScope.launch {
             _state.value = _state.value.copy(isSubmitting = true, error = null)
             try {
