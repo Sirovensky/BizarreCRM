@@ -1383,10 +1383,18 @@ router.post(
       throw new AppError('You cannot reject your own estimate. Ask another team member or an admin.', 403);
     }
 
-    await adb.run(
-      "UPDATE estimates SET status = 'rejected', updated_at = datetime('now') WHERE id = ?",
+    // BUGHUNT-2026-05-17: guard the UPDATE WHERE status NOT IN
+    // ('approved','converted','rejected'). Without this, a racing
+    // /approve (which DOES guard, see line ~1523) could land first
+    // and the reject would silently overwrite the approval — losing
+    // the customer's signature record and confusing the convert flow.
+    const rejectResult = await adb.run(
+      "UPDATE estimates SET status = 'rejected', updated_at = datetime('now') WHERE id = ? AND status NOT IN ('approved','converted','rejected')",
       id,
     );
+    if (rejectResult.changes === 0) {
+      throw new AppError('Estimate status changed; refresh and retry', 409);
+    }
 
     audit(req.db, 'estimate_rejected', req.user!.id, req.ip || 'unknown', { estimate_id: id });
     logger.info('estimate rejected', { estimate_id: id });
