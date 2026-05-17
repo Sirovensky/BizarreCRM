@@ -114,10 +114,39 @@ extension NotificationsAppDelegate: UIApplicationDelegate {
         // Wrap userInfo in an @unchecked-Sendable box to satisfy Swift 6 data-race
         // check. The dictionary is read-only after the system hands it to us.
         let box = UncheckedUserInfo(userInfo: userInfo)
+        // BUGHUNT-2026-05-17: race the handler against a 25s timeout so we
+        // ALWAYS call completionHandler within the 30s iOS budget. Previously
+        // a hung syncNow() / refresh trigger meant we missed the deadline,
+        // which iOS punishes by throttling future silent pushes for the app —
+        // sometimes silently disabling them for hours. Box the call so only
+        // the first call to completionHandler takes effect (calling it twice
+        // is undefined behaviour and Apple's docs warn against it).
+        let once = CompletionOnce(completionHandler)
         Task {
             await handler.handle(userInfo: box.userInfo)
-            completionHandler(.newData)
+            once.call(.newData)
         }
+        Task {
+            try? await Task.sleep(nanoseconds: 25_000_000_000) // 25s safety net
+            once.call(.newData)
+        }
+    }
+}
+
+/// One-shot wrapper around `(UIBackgroundFetchResult) -> Void` so a timeout
+/// race can fire either branch without invoking the system handler twice.
+private final class CompletionOnce: @unchecked Sendable {
+    private let lock = NSLock()
+    private var handler: ((UIBackgroundFetchResult) -> Void)?
+    init(_ handler: @escaping (UIBackgroundFetchResult) -> Void) {
+        self.handler = handler
+    }
+    func call(_ result: UIBackgroundFetchResult) {
+        lock.lock()
+        let h = handler
+        handler = nil
+        lock.unlock()
+        h?(result)
     }
 }
 
