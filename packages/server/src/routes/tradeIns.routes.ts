@@ -379,12 +379,19 @@ router.delete('/:id', asyncHandler(async (req, res) => {
     throw new AppError('Cannot delete an accepted trade-in. Decline it first.', 400);
   }
 
-  await adb.run(
+  // BUGHUNT-2026-05-17: include `AND status != 'accepted'` so a racing
+  // /accept (which writes accepted + may already have credited the
+  // customer) can't be silently soft-deleted by a delete request that
+  // passed the SELECT precheck a few ms earlier. changes === 0 → 409.
+  const delRes = await adb.run(
     `UPDATE trade_ins
         SET is_deleted = 1, deleted_at = datetime('now'), deleted_by_user_id = ?
-      WHERE id = ? AND is_deleted = 0`,
+      WHERE id = ? AND is_deleted = 0 AND status != 'accepted'`,
     req.user!.id, tradeInId,
   );
+  if (delRes.changes === 0) {
+    throw new AppError('Trade-in status changed; refresh and retry', 409);
+  }
   audit(req.db, 'trade_in_soft_deleted', req.user!.id, req.ip || 'unknown', {
     trade_in_id: tradeInId,
     status: existing.status,
