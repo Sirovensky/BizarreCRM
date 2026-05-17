@@ -63,6 +63,21 @@ final class BenchTimerState {
         phase = .idle
     }
 
+    /// Invalidate the underlying Timer without resetting elapsed/phase.
+    /// Call from view `onDisappear` so the Timer stops firing when the
+    /// HUD leaves the screen.
+    ///
+    /// BUGHUNT-2026-05-17: previously the Timer was only invalidated by
+    /// `pause()` and `reset()`. If the user started the bench timer and
+    /// navigated away from the ticket without explicitly pausing, the
+    /// Timer kept firing every 0.5 s on the RunLoop for the rest of the
+    /// app process — each tick allocated a Task that immediately no-op'd
+    /// (via [weak self]) but the wake-ups were pure waste.
+    func stopTicking() {
+        timer?.invalidate()
+        timer = nil
+    }
+
     // MARK: Private
 
     private func tick() {
@@ -123,6 +138,9 @@ struct BenchTimerView: View {
         .brandGlass(.regular, in: RoundedRectangle(cornerRadius: 16))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Bench timer")
+        // BUGHUNT-2026-05-17: stop the Timer when the HUD leaves the screen so
+        // it doesn't keep firing on the RunLoop for the rest of the process.
+        .onDisappear { timer.stopTicking() }
     }
 
     // MARK: - Sub-views
