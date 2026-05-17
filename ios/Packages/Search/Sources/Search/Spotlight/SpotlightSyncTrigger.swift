@@ -84,6 +84,17 @@ public final class SpotlightSyncTrigger {
         self.customerProvider = customerProvider
         self.inventoryProvider = inventoryProvider
 
+        // BUGHUNT-2026-05-17: tear down any previous observer first. The
+        // doc says "Call once at app startup" but the addObserver call would
+        // happily register a SECOND observer when the function ran twice
+        // (e.g. test setUp paths, tenant switch reinit). Each syncComplete
+        // notification then fired the handler N times, triggering N
+        // overlapping Spotlight rebuilds.
+        if let existing = observer {
+            NotificationCenter.default.removeObserver(existing)
+            observer = nil
+        }
+
         observer = NotificationCenter.default.addObserver(
             forName: .syncComplete,
             object: nil,
