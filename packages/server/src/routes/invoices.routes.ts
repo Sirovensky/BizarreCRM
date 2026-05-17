@@ -1309,6 +1309,15 @@ router.post('/:id/void', requirePermission('invoices.void'), async (req, res) =>
     'SELECT inventory_item_id, quantity FROM invoice_line_items WHERE invoice_id = ? AND inventory_item_id IS NOT NULL',
     req.params.id,
   );
+  // BUGHUNT-2026-05-17: bundle every per-item stock restoration UPDATE
+  // and its stock_movements INSERT into a single adb.transaction so a
+  // crash between them can't leave inflated stock with no audit row
+  // (or a stock_movements ledger entry for stock that was never
+  // actually restored). The voided-payments note flip rides along in
+  // the same tx so the audit story is "all or nothing" across the
+  // post-void side effects. The void status flip itself is already
+  // committed above — this tx only bundles the cleanup.
+  const restoreTx: TxQuery[] = [];
   for (const li of lineItems) {
     const itemExists = await adb.get<{ id: number }>(
       'SELECT id FROM inventory_items WHERE id = ?',
@@ -1318,18 +1327,27 @@ router.post('/:id/void', requirePermission('invoices.void'), async (req, res) =>
       logger.warn('void: stock movement skipped — inventory_item not found', { id: li.inventory_item_id });
       continue;
     }
-    await adb.run(
-      "UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime('now') WHERE id = ?",
-      li.quantity, li.inventory_item_id,
-    );
-    await adb.run(`
-      INSERT INTO stock_movements (inventory_item_id, quantity, type, reason, reference_type, reference_id, user_id)
-      VALUES (?, ?, 'adjustment', 'Invoice voided — stock restored', 'invoice', ?, ?)
-    `, li.inventory_item_id, li.quantity, req.params.id, req.user!.id);
+    restoreTx.push({
+      sql: "UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime('now') WHERE id = ?",
+      params: [li.quantity, li.inventory_item_id],
+    });
+    restoreTx.push({
+      sql: `INSERT INTO stock_movements (inventory_item_id, quantity, type, reason, reference_type, reference_id, user_id)
+            VALUES (?, ?, 'adjustment', 'Invoice voided — stock restored', 'invoice', ?, ?)`,
+      params: [li.inventory_item_id, li.quantity, req.params.id, req.user!.id],
+    });
   }
-
-  // Mark payments as voided (keep records for audit trail)
-  await adb.run("UPDATE payments SET notes = COALESCE(notes || ' ', '') || '[VOIDED]' WHERE invoice_id = ?", req.params.id);
+  // Mark payments as voided (keep records for audit trail). Append into
+  // the same tx so the payment-notes flip is atomic with the stock
+  // restoration — partial state was previously possible if the process
+  // crashed between the per-item loop and this statement.
+  restoreTx.push({
+    sql: "UPDATE payments SET notes = COALESCE(notes || ' ', '') || '[VOIDED]' WHERE invoice_id = ?",
+    params: [req.params.id],
+  });
+  if (restoreTx.length > 0) {
+    await adb.transaction(restoreTx);
+  }
 
   // Reverse commissions for the voided invoice (full reversal, fraction=1).
   // Best-effort: payroll-lock throws AppError which we propagate; other errors
