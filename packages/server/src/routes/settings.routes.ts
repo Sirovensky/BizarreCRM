@@ -1991,15 +1991,37 @@ router.put('/users/:id', adminOnly, async (req, res) => {
     ? ', home_location_id = ?'
     : '';
   const homeLocParam = validatedHomeLocationId !== undefined ? [validatedHomeLocationId] : [];
-  await adb.run(`
+
+  // BUGHUNT-2026-05-17: when the change demotes or deactivates an admin,
+  // add an atomic "at least 2 OTHER active admins remain" guard to the
+  // UPDATE WHERE so two concurrent admin-mutations against two different
+  // admins can't both pass the SELECT precheck above and both drop the
+  // count below the invariant. The pre-check protects the friendly
+  // error path; the guarded UPDATE is the actual race-safety.
+  const adminGuardSql = (isDemotingAdmin || isDeactivatingAdmin)
+    ? ` AND (SELECT COUNT(*) FROM users WHERE role = 'admin' AND is_active = 1 AND id != ?) >= 2`
+    : '';
+  const adminGuardParam = (isDemotingAdmin || isDeactivatingAdmin)
+    ? [req.params.id]
+    : [];
+
+  const updateResult = await adb.run(`
     UPDATE users SET
       email = COALESCE(?, email), first_name = COALESCE(?, first_name),
       last_name = COALESCE(?, last_name), role = COALESCE(?, role),
       pin = COALESCE(?, pin), is_active = COALESCE(?, is_active),
       password_hash = COALESCE(?, password_hash)${homeLocSql},
       updated_at = datetime('now')
-    WHERE id = ?
-  `, email ?? null, first_name ?? null, last_name ?? null, role ?? null, pinHash, is_active ?? null, hash, ...homeLocParam, req.params.id);
+    WHERE id = ?${adminGuardSql}
+  `, email ?? null, first_name ?? null, last_name ?? null, role ?? null, pinHash, is_active ?? null, hash, ...homeLocParam, req.params.id, ...adminGuardParam);
+
+  if (updateResult.changes === 0 && (isDemotingAdmin || isDeactivatingAdmin)) {
+    throw new AppError(
+      'Another admin was just demoted or deactivated — at least 2 active admins must remain.',
+      409,
+      'ERR_USER_LAST_ADMIN',
+    );
+  }
 
   // SEC-L13: If password was changed, invalidate all sessions except the current admin's
   if (password) {
