@@ -35,15 +35,38 @@ public final class TokenStore {
     }
 
     public func save(access: String, refresh: String) {
+        // BUGHUNT-2026-05-17: previously the two Keychain writes happened
+        // sequentially with no rollback — if the access-token write succeeded
+        // but the refresh-token write threw, the Keychain held a NEW access
+        // token paired with an OLD or missing refresh, while the in-memory
+        // cache held neither (because the do-block aborted before updating
+        // _access/_refresh). The next read then loaded the mismatched pair
+        // from Keychain and the app silently authenticated against a server
+        // expecting the refresh pair to match. Roll back the access-token
+        // write if the refresh-token write fails so the pair stays atomic.
         do {
             try KeychainStore.shared.set(access, for: .accessToken)
-            try KeychainStore.shared.set(refresh, for: .refreshToken)
-            _access = access
-            _refresh = refresh
-            didLoad = true
         } catch {
-            AppLog.auth.error("Failed to persist tokens: \(error.localizedDescription)")
+            AppLog.auth.error("Failed to persist access token: \(error.localizedDescription)")
+            return
         }
+        do {
+            try KeychainStore.shared.set(refresh, for: .refreshToken)
+        } catch {
+            AppLog.auth.error("Failed to persist refresh token, rolling back access: \(error.localizedDescription)")
+            // Best-effort rollback. If this throws too, the inconsistency is
+            // already there — but the in-memory state stays nil so the next
+            // read picks up the Keychain state and the auth refresh path
+            // will detect the mismatch via a 401 response.
+            try? KeychainStore.shared.remove(.accessToken)
+            _access = nil
+            _refresh = nil
+            didLoad = true
+            return
+        }
+        _access = access
+        _refresh = refresh
+        didLoad = true
     }
 
     public func clear() {
