@@ -64,17 +64,22 @@ class PinPreferences @Inject constructor(
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
     )
 
+    // BUGHUNT-2026-05-17: security-sensitive prefs use commit() so the
+    // brute-force counter and lockout window survive force-quit. apply()
+    // schedules an async disk write; an attacker who force-quits the app
+    // between a bad PIN attempt and the disk flush would otherwise see the
+    // counter / lockout reset on next launch.
     var isPinSet: Boolean
         get() = prefs.getBoolean(KEY_IS_PIN_SET, false)
-        set(value) = prefs.edit().putBoolean(KEY_IS_PIN_SET, value).apply()
+        set(value) { prefs.edit().putBoolean(KEY_IS_PIN_SET, value).commit() }
 
     var failedAttempts: Int
         get() = prefs.getInt(KEY_FAILED_ATTEMPTS, 0)
-        set(value) = prefs.edit().putInt(KEY_FAILED_ATTEMPTS, value).apply()
+        set(value) { prefs.edit().putInt(KEY_FAILED_ATTEMPTS, value).commit() }
 
     var lockoutUntilMillis: Long
         get() = prefs.getLong(KEY_LOCKOUT_UNTIL, 0L)
-        set(value) = prefs.edit().putLong(KEY_LOCKOUT_UNTIL, value).apply()
+        set(value) { prefs.edit().putLong(KEY_LOCKOUT_UNTIL, value).commit() }
 
     var lastUnlockAtMillis: Long
         get() = prefs.getLong(KEY_LAST_UNLOCK, 0L)
@@ -124,7 +129,10 @@ class PinPreferences @Inject constructor(
      */
     var hardLockout: Boolean
         get() = prefs.getBoolean(KEY_HARD_LOCKOUT, false)
-        set(value) = prefs.edit().putBoolean(KEY_HARD_LOCKOUT, value).apply()
+        // BUGHUNT-2026-05-17: commit() — hard lockout MUST survive force-quit.
+        // Force-quitting the app right after the Nth bad PIN otherwise lets
+        // the attacker bypass the hard-lockout state on next launch.
+        set(value) { prefs.edit().putBoolean(KEY_HARD_LOCKOUT, value).commit() }
 
     fun isInLockout(now: Long = System.currentTimeMillis()): Boolean =
         lockoutUntilMillis > now
