@@ -245,6 +245,12 @@ router.patch('/services/:id', asyncHandler(async (req, res) => {
   const fields: string[] = [];
   const params: unknown[] = [];
 
+  // BUGHUNT-2026-05-17: pre-check for dupe name is TOCTOU — two concurrent
+  // renames to the same target both pass the SELECT, then the second UPDATE
+  // hits the UNIQUE(name) index (migration 133) and surfaces a generic 500.
+  // The pre-check stays for a friendlier error on the common no-race path;
+  // the UNIQUE-violation catch around the UPDATE below translates the race
+  // case to the same 409.
   if (name !== undefined) {
     const v = validateRequiredString(name, 'name', MAX_NAME_LEN);
     const dupe = await adb.get<{ id: number }>(
@@ -290,10 +296,18 @@ router.patch('/services/:id', asyncHandler(async (req, res) => {
   fields.push("updated_at = datetime('now')");
   params.push(id);
 
-  await adb.run(
-    `UPDATE booking_services SET ${fields.join(', ')} WHERE id = ?`,
-    ...params,
-  );
+  try {
+    await adb.run(
+      `UPDATE booking_services SET ${fields.join(', ')} WHERE id = ?`,
+      ...params,
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/UNIQUE constraint.*booking_services.*name/i.test(msg)) {
+      throw new AppError('A service with that name already exists', 409);
+    }
+    throw err;
+  }
 
   const updated = await adb.get('SELECT * FROM booking_services WHERE id = ?', id);
 
