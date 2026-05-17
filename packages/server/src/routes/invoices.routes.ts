@@ -1206,27 +1206,48 @@ router.patch('/payments/:paymentId/reverse', async (req: Request<{ paymentId: st
     throw new AppError('reason is required to reverse a payment', 400);
   }
 
-  await adb.run(
-    "UPDATE payments SET notes = COALESCE(notes || ' ', '') || '[VOIDED] ' || ? WHERE id = ?",
-    reasonRaw, paymentId,
-  );
-  // Recompute invoice state from the remaining positive (non-VOIDED)
-  // payment rows. We use the same positive-payment-total helper the
-  // recordInvoicePayment path uses, then re-derive amount_due + status.
+  // BUGHUNT-2026-05-17: atomicity — the payment notes UPDATE and the
+  // invoice recompute UPDATE were two separate adb.run() calls. A crash
+  // between them left the payment row marked `[VOIDED]` while invoices.
+  // amount_paid / amount_due / status still reflected the reversed amount —
+  // the customer saw a balance owed that was already reversed, and the
+  // bookkeeping doesn't reconcile. Pre-compute the new invoice totals
+  // OUTSIDE the tx (the SELECT excludes the row we're about to void since
+  // the marker hasn't landed yet, so we must subtract this row's amount
+  // from the totalPaid we read), then commit both writes atomically.
   const invoiceRow = await adb.get<any>('SELECT id, total FROM invoices WHERE id = ?', payment.invoice_id);
   if (invoiceRow) {
-    const remainingPaid = await adb.get<{ t: number }>(
+    const currentPaid = await adb.get<{ t: number }>(
       "SELECT SUM(CASE WHEN amount IS NOT NULL AND amount >= 0 AND COALESCE(notes,'') NOT LIKE '%[VOIDED]%' THEN amount ELSE 0 END) AS t FROM payments WHERE invoice_id = ?",
       payment.invoice_id,
     );
-    const totalPaid = roundCents(remainingPaid?.t || 0);
+    // currentPaid still counts THIS payment (the [VOIDED] marker hasn't
+    // committed yet). Subtract the row's own amount to project the post-
+    // reverse state.
+    const totalPaid = roundCents((currentPaid?.t || 0) - Number(payment.amount || 0));
     const invoiceTotal = Number(invoiceRow.total ?? 0);
     const rawAmountDue = roundCents(invoiceTotal - totalPaid);
     const displayAmountDue = Math.max(0, rawAmountDue);
     const newStatus = rawAmountDue <= 0 ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
+    await adb.transaction([
+      {
+        sql: "UPDATE payments SET notes = COALESCE(notes || ' ', '') || '[VOIDED] ' || ? WHERE id = ? AND COALESCE(notes,'') NOT LIKE '%[VOIDED]%'",
+        params: [reasonRaw, paymentId],
+        expectChanges: true,
+        expectChangesError: 'Payment was already voided by a concurrent request',
+      },
+      {
+        sql: "UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?",
+        params: [totalPaid, displayAmountDue, newStatus, payment.invoice_id],
+      },
+    ]);
+  } else {
+    // Invoice missing — still mark the payment voided so the audit reflects
+    // the operator's intent; the orphan-payment case shouldn't be reachable
+    // given the FK, but failing closed here is safer than leaving it open.
     await adb.run(
-      "UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?",
-      totalPaid, displayAmountDue, newStatus, payment.invoice_id,
+      "UPDATE payments SET notes = COALESCE(notes || ' ', '') || '[VOIDED] ' || ? WHERE id = ? AND COALESCE(notes,'') NOT LIKE '%[VOIDED]%'",
+      reasonRaw, paymentId,
     );
   }
 
