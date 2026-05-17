@@ -16,6 +16,7 @@ import com.bizarreelectronics.crm.data.remote.dto.UpdateExpenseRequest
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.bizarreelectronics.crm.util.toCentsOrZero
 import com.google.gson.Gson
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -60,6 +61,8 @@ class ExpenseRepository @Inject constructor(
                 val response = expenseApi.getExpenses(mapOf("search" to query, "pagesize" to "50"))
                 val expenses = response.data?.expenses ?: return@launch
                 expenseDao.insertAll(expenses.map { it.toEntity() })
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "API search failed: ${e.message}")
             }
@@ -122,6 +125,8 @@ class ExpenseRepository @Inject constructor(
                 val response = expenseApi.getExpenses(params)
                 val expenses = response.data?.expenses ?: return@launch
                 expenseDao.insertAll(expenses.map { it.toEntity() })
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "Filtered expense refresh failed: ${e.message}")
             }
@@ -144,6 +149,8 @@ class ExpenseRepository @Inject constructor(
                 val entity = detail.toEntity()
                 expenseDao.insert(entity)
                 return entity.id
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Online create failed, falling back to offline queue: ${e.message}")
             }
@@ -190,6 +197,8 @@ class ExpenseRepository @Inject constructor(
                 val entity = detail.toEntity()
                 expenseDao.insert(entity)
                 return entity.id
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Online mileage create failed, falling back to offline queue: ${e.message}")
             }
@@ -198,7 +207,11 @@ class ExpenseRepository @Inject constructor(
         // Offline: queue as a 'mileage' payload so SyncManager can call the right endpoint later.
         val tempId = offlineIdGenerator.nextTempId()
         val now = java.time.Instant.now().toString().take(19).replace("T", " ")
-        val computedCents = (request.miles * request.rateCents).toLong().coerceAtLeast(0L)
+        // BUGHUNT-2026-05-17: was `(miles * rateCents).toLong()` — IEEE-754
+        // truncation: 7 cents reimbursement from 0.07 miles can drop to 6
+        // when the product is 6.99999…. Use Math.round so the offline-computed
+        // amount matches what the server will record on later sync.
+        val computedCents = Math.round(request.miles * request.rateCents).coerceAtLeast(0L)
         val entity = ExpenseEntity(
             id = tempId,
             category = request.category,
@@ -240,6 +253,8 @@ class ExpenseRepository @Inject constructor(
                 val entity = detail.toEntity()
                 expenseDao.insert(entity)
                 return entity.id
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Online per-diem create failed, falling back to offline queue: ${e.message}")
             }
@@ -280,6 +295,8 @@ class ExpenseRepository @Inject constructor(
                 val entity = detail.toEntity()
                 expenseDao.insert(entity)
                 return entity
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Online update failed, falling back to offline queue: ${e.message}")
             }
@@ -305,6 +322,8 @@ class ExpenseRepository @Inject constructor(
                 expenseApi.deleteExpense(id)
                 expenseDao.deleteById(id)
                 return
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Online delete failed, falling back to offline queue: ${e.message}")
             }
@@ -346,6 +365,8 @@ class ExpenseRepository @Inject constructor(
                 if (pagination == null || page >= pagination.totalPages) break
                 page++
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "refreshFromServer failed: ${e.message}")
         }
@@ -359,6 +380,8 @@ class ExpenseRepository @Inject constructor(
                 val response = expenseApi.getExpenses(mapOf("pagesize" to "200"))
                 val expenses = response.data?.expenses ?: return@launch
                 expenseDao.insertAll(expenses.map { it.toEntity() })
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "Background expense refresh failed: ${e.message}")
             }
@@ -377,6 +400,8 @@ class ExpenseRepository @Inject constructor(
                 val response = expenseApi.getExpense(id)
                 val detail = response.data ?: return@launch
                 expenseDao.insert(detail.toEntity())
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "Background expense detail refresh failed: ${e.message}")
             } finally {
