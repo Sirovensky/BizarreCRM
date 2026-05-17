@@ -464,8 +464,13 @@ router.patch('/instances/:id', asyncHandler(async (req: Request, res: Response) 
   // Compute completed_at when transitioning to a terminal state
   const completedAt = (status === 'completed' || status === 'abandoned') ? now() : null;
 
+  // BUGHUNT-2026-05-17: guard the UPDATE WHERE status NOT IN
+  // ('completed','abandoned') so a racing /complete or /abandon that
+  // landed between our SELECT and this write isn't silently overridden
+  // (writing 'in_progress' over a terminal state, or shuffling between
+  // completed/abandoned). changes === 0 → 409.
   const notesClause = notesProvided ? 'notes = ?' : 'notes = notes';
-  await adb.run(
+  const patchRes = await adb.run(
     `UPDATE ops_checklist_instances
      SET completed_items_json = COALESCE(?, completed_items_json),
          ${notesClause},
@@ -474,11 +479,14 @@ router.patch('/instances/:id', asyncHandler(async (req: Request, res: Response) 
                                   WHEN ? IS NOT NULL THEN ?
                                   ELSE completed_at
                                 END
-     WHERE id = ?`,
+     WHERE id = ? AND status NOT IN ('completed', 'abandoned')`,
     ...(notesProvided
       ? [completedItemsJson, notes, status, completedAt, completedAt, id]
       : [completedItemsJson, status, completedAt, completedAt, id]),
   );
+  if (patchRes.changes === 0) {
+    throw new AppError('Instance status changed; refresh and retry', 409);
+  }
 
   const updated = await adb.get<AnyRow>('SELECT * FROM ops_checklist_instances WHERE id = ?', id);
   res.json({ success: true, data: updated });
