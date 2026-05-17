@@ -154,7 +154,15 @@ function lookupRetryAfterSeconds(db: any, userKey: string, ipKey: string): numbe
 
 // GET / — List gift cards
 // Tenant isolation: req.asyncDb is already per-tenant via tenantResolver — SC2 verified.
-router.get('/', asyncHandler(async (req, res) => {
+// BUGHUNT-2026-05-17: gift card `code` is a bearer-token equivalent — anyone
+// who knows the code can redeem the balance via POST /:id/redeem. The list
+// endpoint was previously open to every authenticated user, which let a
+// cashier/technician dump every issued card's code+balance and then redeem
+// them against fake POS sessions. Gate behind gift_cards.issue (the same
+// permission required to create cards) so only managers/admins can
+// enumerate the bearer tokens. The cashier register flow uses
+// /lookup/:code (separate, rate-limited, code-as-input) which stays open.
+router.get('/', requirePermission('gift_cards.issue'), asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const keyword = (req.query.keyword as string || '').trim();
   const status = (req.query.status as string || '').trim();
@@ -938,7 +946,10 @@ router.post('/:id/reload', requirePermission('gift_cards.reload'), asyncHandler(
 }));
 
 // GET /:id — Gift card details with transactions
-router.get('/:id', asyncHandler(async (req, res) => {
+// BUGHUNT-2026-05-17: same bearer-token reasoning as GET / — the detail
+// endpoint returns the card code + full balance + transaction history,
+// so gate behind the issue permission to match the list endpoint.
+router.get('/:id', requirePermission('gift_cards.issue'), asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const cardId = validateId(req.params.id, 'id');
   // WEB-UIUX-1452: join customers so the detail page can render a click-
