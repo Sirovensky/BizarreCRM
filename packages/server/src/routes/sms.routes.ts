@@ -536,27 +536,40 @@ router.get('/conversations', async (req, res) => {
 router.patch('/conversations/:phone/flag', async (req, res) => {
   const adb = req.asyncDb;
   const convPhone = req.params.phone;
-  const existing = await adb.get<any>('SELECT is_flagged FROM sms_conversation_flags WHERE conv_phone = ?', convPhone);
-  const newVal = existing ? (existing.is_flagged ? 0 : 1) : 1;
+  // BUGHUNT-2026-05-17: atomic toggle via CASE inside ON CONFLICT so two
+  // concurrent flag clicks don't both read the same is_flagged value and
+  // both write the opposite (which cancels out — net zero flips). The
+  // VALUES branch inserts is_flagged=1 (default flip from no-row); the
+  // CASE in DO UPDATE flips the persisted value. We re-SELECT after to
+  // return the post-flip truth to the client even on contention.
   await adb.run(`
     INSERT INTO sms_conversation_flags (conv_phone, is_flagged, updated_at)
-    VALUES (?, ?, datetime('now'))
-    ON CONFLICT(conv_phone) DO UPDATE SET is_flagged = ?, updated_at = datetime('now')
-  `, convPhone, newVal, newVal);
-  res.json({ success: true, data: { conv_phone: convPhone, is_flagged: !!newVal } });
+    VALUES (?, 1, datetime('now'))
+    ON CONFLICT(conv_phone) DO UPDATE SET
+      is_flagged = CASE WHEN COALESCE(is_flagged, 0) = 1 THEN 0 ELSE 1 END,
+      updated_at = datetime('now')
+  `, convPhone);
+  const fresh = await adb.get<{ is_flagged: number }>(
+    'SELECT is_flagged FROM sms_conversation_flags WHERE conv_phone = ?', convPhone,
+  );
+  res.json({ success: true, data: { conv_phone: convPhone, is_flagged: !!(fresh?.is_flagged) } });
 });
 
 router.patch('/conversations/:phone/pin', async (req, res) => {
   const adb = req.asyncDb;
   const convPhone = req.params.phone;
-  const existing = await adb.get<any>('SELECT is_pinned FROM sms_conversation_flags WHERE conv_phone = ?', convPhone);
-  const newVal = existing ? (existing.is_pinned ? 0 : 1) : 1;
+  // BUGHUNT-2026-05-17: atomic CASE toggle (see /flag for shape + why).
   await adb.run(`
     INSERT INTO sms_conversation_flags (conv_phone, is_pinned, updated_at)
-    VALUES (?, ?, datetime('now'))
-    ON CONFLICT(conv_phone) DO UPDATE SET is_pinned = ?, updated_at = datetime('now')
-  `, convPhone, newVal, newVal);
-  res.json({ success: true, data: { conv_phone: convPhone, is_pinned: !!newVal } });
+    VALUES (?, 1, datetime('now'))
+    ON CONFLICT(conv_phone) DO UPDATE SET
+      is_pinned = CASE WHEN COALESCE(is_pinned, 0) = 1 THEN 0 ELSE 1 END,
+      updated_at = datetime('now')
+  `, convPhone);
+  const fresh = await adb.get<{ is_pinned: number }>(
+    'SELECT is_pinned FROM sms_conversation_flags WHERE conv_phone = ?', convPhone,
+  );
+  res.json({ success: true, data: { conv_phone: convPhone, is_pinned: !!(fresh?.is_pinned) } });
 });
 
 router.get('/conversations/:phone', async (req, res) => {
@@ -604,14 +617,18 @@ router.get('/conversations/:phone', async (req, res) => {
 router.patch('/conversations/:phone/archive', async (req, res) => {
   const adb = req.asyncDb;
   const convPhone = req.params.phone;
-  const existing = await adb.get<any>('SELECT is_archived FROM sms_conversation_flags WHERE conv_phone = ?', convPhone);
-  const newVal = existing ? (existing.is_archived ? 0 : 1) : 1;
+  // BUGHUNT-2026-05-17: atomic CASE toggle (see /flag for shape + why).
   await adb.run(`
     INSERT INTO sms_conversation_flags (conv_phone, is_archived, updated_at)
-    VALUES (?, ?, datetime('now'))
-    ON CONFLICT(conv_phone) DO UPDATE SET is_archived = ?, updated_at = datetime('now')
-  `, convPhone, newVal, newVal);
-  res.json({ success: true, data: { conv_phone: convPhone, is_archived: !!newVal } });
+    VALUES (?, 1, datetime('now'))
+    ON CONFLICT(conv_phone) DO UPDATE SET
+      is_archived = CASE WHEN COALESCE(is_archived, 0) = 1 THEN 0 ELSE 1 END,
+      updated_at = datetime('now')
+  `, convPhone);
+  const fresh = await adb.get<{ is_archived: number }>(
+    'SELECT is_archived FROM sms_conversation_flags WHERE conv_phone = ?', convPhone,
+  );
+  res.json({ success: true, data: { conv_phone: convPhone, is_archived: !!(fresh?.is_archived) } });
 });
 
 router.patch('/conversations/:phone/read', async (req, res) => {
