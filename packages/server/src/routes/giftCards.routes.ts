@@ -1242,28 +1242,55 @@ router.post('/pending-issuances/:id/approve', asyncHandler(async (req, res) => {
 
   const code = generateCode();
   const codeHash = hashCode(code);
-  const inserted = await adb.run(
-    `INSERT INTO gift_cards (code, code_hash, initial_balance, current_balance, status,
-       customer_id, recipient_name, recipient_email, expires_at, notes, created_by,
-       created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)`,
-    code, codeHash, pending.amount, pending.amount, pending.customer_id,
-    pending.recipient_name, pending.recipient_email, pending.expires_at, pending.notes,
-    pending.requester_id, now(), now(),
-  );
-  const giftCardId = Number(inserted.lastInsertRowid);
-  await adb.run(
-    `INSERT INTO gift_card_transactions (gift_card_id, type, amount, notes, user_id, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    giftCardId, 'purchase', pending.amount,
-    `Dual-control issuance (pending #${id})`, pending.requester_id, now(),
-  );
-  await adb.run(
-    `UPDATE gift_card_pending_issuances
-        SET status = 'approved', approver_id = ?, decided_at = datetime('now'), gift_card_id = ?
-      WHERE id = ? AND status = 'pending'`,
-    req.user!.id, giftCardId, id,
-  );
+  // BUGHUNT-2026-05-17: dual-control issuance had three sequential adb.run()
+  // calls (card INSERT → tx audit INSERT → pending status UPDATE). A crash
+  // between any of them broke the dual-control invariant:
+  //   - after card INSERT only: card exists with no audit row; pending row
+  //     still says 'pending', so a second admin click would mint a SECOND card
+  //   - after audit INSERT: same duplicate risk via pending still being open
+  // Bundle all three into one atomic tx. The pending UPDATE is guarded with
+  // expectChanges so a concurrent approve/decline race surfaces as 409 and
+  // rolls back the card INSERT instead of leaving an orphan active card.
+  let approveTxResults;
+  try {
+    approveTxResults = await adb.transaction([
+      {
+        sql: `INSERT INTO gift_cards (code, code_hash, initial_balance, current_balance, status,
+                customer_id, recipient_name, recipient_email, expires_at, notes, created_by,
+                created_at, updated_at)
+              VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [
+          code, codeHash, pending.amount, pending.amount, pending.customer_id,
+          pending.recipient_name, pending.recipient_email, pending.expires_at, pending.notes,
+          pending.requester_id, now(), now(),
+        ],
+      },
+      {
+        sql: `INSERT INTO gift_card_transactions (gift_card_id, type, amount, notes, user_id, created_at)
+              VALUES (?, ?, ?, ?, ?, ?)`,
+        params: [
+          lastInsertRowidFrom(0), 'purchase', pending.amount,
+          `Dual-control issuance (pending #${id})`, pending.requester_id, now(),
+        ],
+      },
+      {
+        sql: `UPDATE gift_card_pending_issuances
+                SET status = 'approved', approver_id = ?, decided_at = datetime('now'),
+                    gift_card_id = ?
+              WHERE id = ? AND status = 'pending'`,
+        params: [req.user!.id, lastInsertRowidFrom(0), id],
+        expectChanges: true,
+        expectChangesError: 'PENDING_ISSUANCE_RACE',
+      },
+    ]);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('PENDING_ISSUANCE_RACE')) {
+      throw new AppError('Pending issuance was already approved or declined by another admin', 409);
+    }
+    throw err;
+  }
+  const giftCardId = Number(approveTxResults[0].lastInsertRowid);
 
   audit(req.db, 'gift_card_pending_issuance_approved', req.user!.id, req.ip || 'unknown', {
     pending_issuance_id: id,
