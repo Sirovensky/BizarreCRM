@@ -226,16 +226,27 @@ router.get('/handoff/poll', asyncHandler(async (req: Request, res: Response) => 
   // multiple poll calls. The mobile app is expected to honor what it just
   // received; if it crashes mid-action, the user re-taps and a fresh row
   // gets enqueued.
-  if (pending.length > 0) {
-    const ids = pending.map((p) => p.id as number);
-    const placeholders = ids.map(() => '?').join(',');
-    await adb.run(
+  // BUGHUNT-2026-05-17: per-row guarded claim. Previously the bulk UPDATE
+  // had no `AND status = 'pending'` guard and the SELECT didn't lock the
+  // rows, so two parallel polls from the same device (e.g. a retried
+  // request, or two browser tabs) would both SELECT the same row, both
+  // flip it to 'delivered', and both return it to their respective
+  // callers — the mobile app then placed two calls / sent two SMS
+  // drafts for one handoff. Per-row guarded UPDATE means only one poller
+  // wins each row; the loser's returned list drops that row.
+  const claimedIds = new Set<number>();
+  for (const p of pending) {
+    const result = await adb.run(
       `UPDATE pos_handoff_queue SET status = 'delivered', delivered_at = datetime('now')
-         WHERE id IN (${placeholders})`,
-      ...ids,
+         WHERE id = ? AND status = 'pending'`,
+      p.id,
     );
+    if (result.changes > 0) {
+      claimedIds.add(p.id as number);
+    }
   }
-  res.json({ success: true, data: pending });
+  const delivered = pending.filter((p) => claimedIds.has(p.id as number));
+  res.json({ success: true, data: delivered });
 }));
 
 router.post('/handoff/:id/cancel', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
