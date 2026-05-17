@@ -328,11 +328,19 @@ router.post('/reminders/:id/complete', asyncHandler(async (req, res) => {
   if (!reminder) throw new AppError('Reminder not found', 404);
   requireReminderAccess(req, reminder);
 
-  await adb.run(`
+  // BUGHUNT-2026-05-17: guard the UPDATE WHERE status='pending' so a
+  // concurrent /cancel or /snooze doesn't get clobbered. CHECK constraint
+  // on the column limits to pending/completed/cancelled, so the loser
+  // either tried to complete a terminal state (already completed) or had
+  // their snooze overridden by this complete.
+  const result = await adb.run(`
     UPDATE sms_followup_reminders
     SET status = 'completed', completed_by = ?, completed_at = datetime('now'), updated_at = datetime('now')
-    WHERE id = ?
+    WHERE id = ? AND status = 'pending'
   `, req.user!.id, id);
+  if (result.changes === 0) {
+    throw new AppError('Reminder status changed; refresh and retry', 409);
+  }
   const updated = await adb.get<any>('SELECT * FROM sms_followup_reminders WHERE id = ?', id);
   res.json({ success: true, data: updated });
 }));
@@ -346,11 +354,18 @@ router.post('/reminders/:id/snooze', asyncHandler(async (req, res) => {
   requireReminderAccess(req, reminder);
 
   const dueAt = parseReminderDueAt(req.body?.due_at);
-  await adb.run(`
+  // BUGHUNT-2026-05-17: guard the UPDATE WHERE status='pending'. Without
+  // this, snoozing a just-completed-or-cancelled reminder silently revives
+  // it (status stays 'pending', new due_at lands) — the reminder fires
+  // again later despite being terminal.
+  const result = await adb.run(`
     UPDATE sms_followup_reminders
     SET status = 'pending', due_at = ?, notified_at = NULL, updated_at = datetime('now')
-    WHERE id = ?
+    WHERE id = ? AND status = 'pending'
   `, dueAt, id);
+  if (result.changes === 0) {
+    throw new AppError('Reminder status changed; refresh and retry', 409);
+  }
   const updated = await adb.get<any>('SELECT * FROM sms_followup_reminders WHERE id = ?', id);
   res.json({ success: true, data: updated });
 }));
@@ -362,7 +377,12 @@ router.delete('/reminders/:id', asyncHandler(async (req, res) => {
   const reminder = await adb.get<any>('SELECT id, created_by FROM sms_followup_reminders WHERE id = ?', id);
   if (!reminder) throw new AppError('Reminder not found', 404);
   requireReminderAccess(req, reminder);
-  await adb.run("UPDATE sms_followup_reminders SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?", id);
+  // BUGHUNT-2026-05-17: guard the UPDATE WHERE status='pending' so a
+  // racing complete doesn't get clobbered by this cancel.
+  const result = await adb.run("UPDATE sms_followup_reminders SET status = 'cancelled', updated_at = datetime('now') WHERE id = ? AND status = 'pending'", id);
+  if (result.changes === 0) {
+    throw new AppError('Reminder status changed; refresh and retry', 409);
+  }
   res.json({ success: true, data: { id, status: 'cancelled' } });
 }));
 
