@@ -78,6 +78,7 @@ import com.bizarreelectronics.crm.util.formatAsMoney
 import com.bizarreelectronics.crm.util.formatPhoneDisplay
 import com.bizarreelectronics.crm.util.toCentsOrZero
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -308,6 +309,16 @@ class CustomerDetailViewModel @Inject constructor(
                 customerRepository.getCustomer(customerId).collectLatest { customer ->
                     _state.value = _state.value.copy(customer = customer, isLoading = false)
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation. The previous
+                // catch (e: Exception) below caught CancellationException —
+                // which fires every time `loadCustomer()` is invoked twice
+                // in quick succession (navigation back-and-forth, the
+                // refresh button after pull-to-refresh, etc.). Result was
+                // a flickering "Failed to load customer details" error
+                // banner even though the second load succeeded. Same fix
+                // pattern as CustomerListViewModel.loadCustomers.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
