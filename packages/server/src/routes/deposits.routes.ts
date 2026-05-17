@@ -57,12 +57,6 @@ function dollarsFromCents(cents: number): number {
   return roundCents(Number(cents || 0) / 100);
 }
 
-function invoiceStatus(total: number, paid: number): string {
-  if (paid <= 0) return 'unpaid';
-  if (paid >= total) return 'paid';
-  return 'partial';
-}
-
 function normalizeProcessor(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim().toLowerCase();
@@ -357,11 +351,6 @@ router.post('/:id/apply-to-invoice', requirePermission('deposits.apply'), asyncH
   const appliedAt = nowIso();
   const appliedAtSql = nowSql();
   const amount = dollarsFromCents(Number(deposit.amount_cents));
-  const priorPaid = roundCents(Number(invoice.amount_paid || 0));
-  const total = roundCents(Number(invoice.total || 0));
-  const newPaid = roundCents(priorPaid + amount);
-  const newDue = roundCents(Math.max(0, total - newPaid));
-  const newStatus = invoiceStatus(total, newPaid);
   const paymentReference = `deposit-${id}`;
 
   // SEC-H64: atomic conditional UPDATE. TOCTOU-safe — SQLite WAL semantics
@@ -416,18 +405,38 @@ router.post('/:id/apply-to-invoice', requirePermission('deposits.apply'), asyncH
         expectChangesError: 'Deposit application payment link failed',
       },
       {
+        // BUGHUNT-2026-05-17: differential SQL so a concurrent payment
+        // landing between our pre-tx SELECT (line 345) and this UPDATE
+        // can't be lost. The old shape computed newPaid in JS from the
+        // pre-tx amount_paid snapshot and wrote that absolute value —
+        // any payment that bumped amount_paid in the meantime got
+        // clobbered. Now amount_paid increments atomically off the
+        // row's current value, amount_due is derived from the same
+        // increment, and status is computed from the new totals in
+        // SQL. Guarded against void/refunded so a deposit can't be
+        // applied to a terminal invoice (matches the PUT /:id guard).
         sql: `UPDATE invoices
-                SET amount_paid = ?,
-                    amount_due = ?,
-                    status = ?,
+                SET amount_paid = ROUND((COALESCE(amount_paid, 0) + ?) * 100) / 100,
+                    amount_due  = MAX(0, ROUND((COALESCE(total, 0) - COALESCE(amount_paid, 0) - ?) * 100) / 100),
+                    status      = CASE
+                      WHEN COALESCE(total, 0) <= COALESCE(amount_paid, 0) + ? THEN 'paid'
+                      WHEN COALESCE(amount_paid, 0) + ? > 0                    THEN 'partial'
+                      ELSE 'unpaid'
+                    END,
                     updated_at = ?
-              WHERE id = ?`,
-        params: [newPaid, newDue, newStatus, appliedAtSql, invoiceId],
+              WHERE id = ? AND status NOT IN ('void', 'refunded')`,
+        params: [amount, amount, amount, amount, appliedAtSql, invoiceId],
+        expectChanges: true,
+        expectChangesError: 'Invoice was voided or refunded; refresh and retry',
       },
     ]);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    if (message.includes('already applied') || message.includes('payment link failed')) {
+    if (
+      message.includes('already applied') ||
+      message.includes('payment link failed') ||
+      message.includes('voided or refunded')
+    ) {
       throw new AppError(message, 409);
     }
     throw err;
