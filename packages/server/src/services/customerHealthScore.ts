@@ -208,7 +208,17 @@ async function loadCustomerMetrics(
 
 function daysBetween(iso: string | null, now: Date): number | null {
   if (!iso) return null;
-  const then = new Date(iso);
+  // BUGHUNT-2026-05-17: SQLite stores timestamps as 'YYYY-MM-DD HH:MM:SS'
+  // with no timezone marker (UTC). V8's Date constructor parses that
+  // shape as LOCAL time — so on any non-UTC server (e.g. America/Denver
+  // = UTC-6) the parsed Date is off by the server's UTC offset, shifting
+  // every "days since interaction" by up to a day at the bucket boundary.
+  // Normalise to RFC-3339 UTC before parsing, matching the parseSqliteTs
+  // helper used by employees.routes.ts auto-clockout.
+  const normalized = iso.includes('T') || iso.endsWith('Z') || iso.includes('+')
+    ? iso
+    : `${iso.replace(' ', 'T')}Z`;
+  const then = new Date(normalized);
   if (isNaN(then.getTime())) return null;
   const ms = now.getTime() - then.getTime();
   if (ms < 0) return 0;
