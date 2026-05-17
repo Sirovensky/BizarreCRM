@@ -351,51 +351,61 @@ router.post(
     // ENR-LE4: Auto-assign if no explicit assigned_to and setting enabled
     const effectiveAssignedTo = assigned_to ?? await autoAssignLead(adb);
 
-    const result = await adb.run(`
-      INSERT INTO leads (order_id, customer_id, first_name, last_name, email, phone,
-        zip_code, address, status, referred_by, assigned_to, source, notes, created_by)
-      VALUES ('TEMP', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `,
-      customer_id ?? null,
-      first_name,
-      last_name ?? '',
-      validatedEmail,
-      validatedPhone,
-      zip_code ?? null,
-      address ?? null,
-      status ?? 'new',
-      referred_by ?? null,
-      effectiveAssignedTo,
-      source ?? null,
-      notes ?? null,
-      req.user!.id,
-    );
-
-    const leadId = result.lastInsertRowid as number;
-    const orderId = generateOrderId('L', leadId);
-    await adb.run('UPDATE leads SET order_id = ? WHERE id = ?', orderId, leadId);
-
-    // Insert devices (all pre-validated above)
+    // BUGHUNT-2026-05-17: bundle the lead INSERT, order_id rename, and all
+    // device INSERTs into a single adb.transaction so a crash mid-loop
+    // can't leave a lead with order_id='TEMP' or a partial device list
+    // that misleads the technician about scope of work. order_id is set
+    // via a SQL printf expression keyed off the just-inserted rowid so we
+    // don't need a round-trip back to JS to compute it.
+    const leadTxQueries: TxQuery[] = [
+      {
+        sql: `INSERT INTO leads (order_id, customer_id, first_name, last_name, email, phone,
+                zip_code, address, status, referred_by, assigned_to, source, notes, created_by)
+              VALUES ('TEMP', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [
+          customer_id ?? null,
+          first_name,
+          last_name ?? '',
+          validatedEmail,
+          validatedPhone,
+          zip_code ?? null,
+          address ?? null,
+          status ?? 'new',
+          referred_by ?? null,
+          effectiveAssignedTo,
+          source ?? null,
+          notes ?? null,
+          req.user!.id,
+        ],
+      },
+      {
+        sql: `UPDATE leads SET order_id = 'L-' || printf('%04d', id) WHERE id = ?`,
+        params: [lastInsertRowidFrom(0)],
+      },
+    ];
     for (const d of validatedDevices) {
-      await adb.run(`
-        INSERT INTO lead_devices (lead_id, device_name, repair_type, service_type, service_id,
-          price, tax, problem, customer_notes, security_code, start_time, end_time)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-        leadId,
-        d.device_name,
-        d.repair_type,
-        d.service_type,
-        d.service_id,
-        d.price,
-        d.tax,
-        d.problem,
-        d.customer_notes,
-        d.security_code,
-        d.start_time,
-        d.end_time,
-      );
+      leadTxQueries.push({
+        sql: `INSERT INTO lead_devices (lead_id, device_name, repair_type, service_type, service_id,
+                price, tax, problem, customer_notes, security_code, start_time, end_time)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [
+          lastInsertRowidFrom(0),
+          d.device_name,
+          d.repair_type,
+          d.service_type,
+          d.service_id,
+          d.price,
+          d.tax,
+          d.problem,
+          d.customer_notes,
+          d.security_code,
+          d.start_time,
+          d.end_time,
+        ],
+      });
     }
+    const txResults = await adb.transaction(leadTxQueries);
+    const leadId = Number(txResults[0]!.lastInsertRowid);
 
     const [lead, leadDevices] = await Promise.all([
       adb.get<any>('SELECT * FROM leads WHERE id = ?', leadId),
