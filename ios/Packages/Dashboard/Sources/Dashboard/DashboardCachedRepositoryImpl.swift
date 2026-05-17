@@ -38,6 +38,11 @@ public actor DashboardCachedRepositoryImpl: DashboardCachedRepository {
 
     private var cachedSnapshot: DashboardSnapshot?
     private var cacheTimestamp: Date?
+    /// BUGHUNT-2026-05-17: single-flight task — see CustomerCachedRepositoryImpl.
+    /// Dashboard is high-traffic (every screen visit triggers load) so the actor
+    /// reentrancy issue was worst here: two concurrent loads each made their
+    /// own KPI aggregate query, doubling server load on every dashboard mount.
+    private var inflightTask: Task<DashboardSnapshot, Error>?
 
     // MARK: - Init
 
@@ -69,6 +74,18 @@ public actor DashboardCachedRepositoryImpl: DashboardCachedRepository {
     // MARK: - Private
 
     private func fetchAndCache() async throws -> DashboardSnapshot {
+        if let existing = inflightTask {
+            return try await existing.value
+        }
+        let task = Task<DashboardSnapshot, Error> {
+            try await self.performFetch()
+        }
+        inflightTask = task
+        defer { inflightTask = nil }
+        return try await task.value
+    }
+
+    private func performFetch() async throws -> DashboardSnapshot {
         let snapshot = try await remote.load()
         cachedSnapshot = snapshot
         cacheTimestamp = Date()
