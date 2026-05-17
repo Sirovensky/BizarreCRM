@@ -641,6 +641,24 @@ router.post(
           continue;
         }
 
+        // BUGHUNT-2026-05-17: atomically CLAIM the estimate by flipping
+        // status to a transient 'converting' state up front. Without this
+        // guard, two concurrent /convert calls for the same estimate both
+        // pass the SELECT precheck above, both INSERT a ticket, and both
+        // UPDATE status='converted' — leaving DUPLICATE tickets for a
+        // single estimate (and only one gets recorded as converted_ticket_id,
+        // so the second ticket is silently orphaned). claimResult.changes
+        // === 0 means another worker already won — skip cleanly.
+        const claimResult = await adb.run(
+          `UPDATE estimates SET status = 'converting', updated_at = datetime('now')
+            WHERE id = ? AND status != 'converted' AND status != 'converting'`,
+          estId,
+        );
+        if (claimResult.changes === 0) {
+          results.push({ estimate_id: estId, error: 'Already converted (or being converted)' });
+          continue;
+        }
+
         // Get default (open) status
         const defaultStatus = await adb.get<any>('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1');
         const statusId = defaultStatus?.id ?? 1;
@@ -713,6 +731,23 @@ router.post(
         results.push({ estimate_id: estId, ticket_id: ticketId });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Unknown error';
+        // BUGHUNT-2026-05-17: if we crashed AFTER claiming the
+        // estimate as 'converting' but BEFORE flipping it to
+        // 'converted', the row is stuck. Revert to the prior status
+        // (best-effort) so future /convert attempts on this estimate
+        // are not permanently blocked. Status pin guards against
+        // racing with a concurrent successful convert.
+        try {
+          await adb.run(
+            "UPDATE estimates SET status = ?, updated_at = datetime('now') WHERE id = ? AND status = 'converting'",
+            estimate.status, estId,
+          );
+        } catch (revertErr) {
+          logger.warn('estimate bulk-convert revert failed', {
+            estimate_id: estId,
+            error: revertErr instanceof Error ? revertErr.message : String(revertErr),
+          });
+        }
         results.push({ estimate_id: estId, error: msg });
       }
     }
