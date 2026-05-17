@@ -15,6 +15,7 @@ import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.bizarreelectronics.crm.util.toCentsOrZero
 import com.bizarreelectronics.crm.util.toDollars
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -130,6 +131,8 @@ class InvoiceRepository @Inject constructor(
                 }
                 // Server returned empty or null data — treat as end of list.
                 return Pair(emptyList(), null)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "Cursor page fetch failed, falling back to Room: ${e.message}")
             }
@@ -168,6 +171,10 @@ class InvoiceRepository @Inject constructor(
             if (page > MAX_PAGINATION_PAGES) {
                 Log.w(TAG, "Invoice pagination hit safety cap of $MAX_PAGINATION_PAGES pages — aborting refresh")
             }
+        } catch (e: CancellationException) {
+            // BUGHUNT-2026-05-17: re-throw cancellation so SyncManager doesn't
+            // record a cancelled pull as success and skip the actual sync.
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "refreshFromServer failed: ${e.message}")
         }
@@ -181,6 +188,8 @@ class InvoiceRepository @Inject constructor(
                 val response = invoiceApi.getInvoices(mapOf("pagesize" to "200"))
                 val invoices = response.data?.invoices ?: return@launch
                 invoiceDao.insertAll(invoices.map { it.toEntity() })
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "Background invoice refresh failed: ${e.message}")
             }
@@ -192,8 +201,13 @@ class InvoiceRepository @Inject constructor(
         if (existing?.isActive == true) return
         val job = scope.launch {
             try {
-                runCatching { refreshInvoiceDetail(id) }
-                    .onFailure { Log.d(TAG, "Background invoice detail refresh failed: ${it.message}") }
+                try {
+                    refreshInvoiceDetail(id)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.d(TAG, "Background invoice detail refresh failed: ${e.message}")
+                }
             } finally {
                 detailRefreshJobs.remove(id)
             }
