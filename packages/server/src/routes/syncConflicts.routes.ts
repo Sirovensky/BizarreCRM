@@ -409,20 +409,27 @@ router.post(
     if (existing.status === 'resolved') throw new AppError('Conflict is already resolved', 409);
 
     const resolvedAt = now();
-    await adb.run(
+    // BUGHUNT-2026-05-17: guard the UPDATE WHERE status != 'resolved'
+    // so a racing /reject or /defer (or a second /resolve) doesn't get
+    // overridden — the audit row for "resolved" would otherwise persist
+    // even though the row is in a different terminal state.
+    const result = await adb.run(
       `UPDATE sync_conflicts
           SET status = 'resolved',
               resolution = ?,
               resolution_notes = ?,
               resolved_by_user_id = ?,
               resolved_at = ?
-        WHERE id = ?`,
+        WHERE id = ? AND status != 'resolved'`,
       safeResolution,
       safeNotes,
       userId,
       resolvedAt,
       id,
     );
+    if (result.changes === 0) {
+      throw new AppError('Conflict status changed; refresh and retry', 409);
+    }
 
     audit(req.db, 'sync_conflict.resolved', userId, ip, {
       conflict_id: id,
@@ -487,19 +494,24 @@ router.post(
     }
 
     const rejectedAt = now();
-    await adb.run(
+    // BUGHUNT-2026-05-17: guard the UPDATE so a racing /resolve doesn't
+    // get overridden by this /reject.
+    const result = await adb.run(
       `UPDATE sync_conflicts
           SET status = 'rejected',
               resolution = 'rejected',
               resolution_notes = ?,
               resolved_by_user_id = ?,
               resolved_at = ?
-        WHERE id = ?`,
+        WHERE id = ? AND status NOT IN ('resolved','rejected')`,
       safeNotes,
       userId,
       rejectedAt,
       id,
     );
+    if (result.changes === 0) {
+      throw new AppError('Conflict status changed; refresh and retry', 409);
+    }
 
     audit(req.db, 'sync_conflict.rejected', userId, ip, {
       conflict_id: id,
@@ -540,16 +552,21 @@ router.post(
       throw new AppError(`Cannot defer a ${existing.status} conflict`, 409);
     }
 
-    await adb.run(
+    // BUGHUNT-2026-05-17: guard the UPDATE so a racing /resolve or
+    // /reject doesn't get clobbered by this /defer.
+    const result = await adb.run(
       `UPDATE sync_conflicts
           SET status = 'deferred',
               resolution = NULL,
               resolution_notes = NULL,
               resolved_by_user_id = NULL,
               resolved_at = NULL
-        WHERE id = ?`,
+        WHERE id = ? AND status NOT IN ('resolved','rejected')`,
       id,
     );
+    if (result.changes === 0) {
+      throw new AppError('Conflict status changed; refresh and retry', 409);
+    }
 
     audit(req.db, 'sync_conflict.deferred', userId, ip, {
       conflict_id: id,
