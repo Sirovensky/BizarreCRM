@@ -40,12 +40,6 @@ function roundMoney(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
-function invoiceStatus(total: number, paid: number): string {
-  if (paid <= 0) return 'unpaid';
-  if (paid >= total) return 'paid';
-  return 'partial';
-}
-
 function parseHostPort(value: string, defaultPort: number): { host: string; port: number } {
   const trimmed = value.trim();
   const [host, rawPort] = trimmed.includes(':') ? trimmed.split(':', 2) : [trimmed, undefined];
@@ -455,9 +449,14 @@ router.post('/process-payment', asyncHandler(async (req: Request, res: Response)
     // (e.g. 33.33 + 33.33 + 33.34) don't accumulate FP drift that leaves
     // amount_due stuck at 0.0000000001 and the invoice in 'partial' forever.
     // Mirrors the void-payment path at line 671-674.
-    const newPaid = roundMoney(invoice.amount_paid + chargeAmount);
-    const newDue = roundMoney(Math.max(0, invoice.total - newPaid));
-    const newStatus = newPaid >= invoice.total ? 'paid' : 'partial';
+    // BUGHUNT-2026-05-17: newStatus is still computed in JS as a
+    // best-guess for the auto-close trigger below. The actual DB write
+    // recomputes it from live amount_paid via differential SQL, so a
+    // concurrent payment can't be lost. If our JS guess disagrees with
+    // the live state (rare) the worst case is a missed auto-close
+    // the operator can flip manually.
+    const projectedPaid = roundMoney(invoice.amount_paid + chargeAmount);
+    const newStatus = projectedPaid >= invoice.total ? 'paid' : 'partial';
 
     const txResults = await adb.transaction([
       {
@@ -518,9 +517,25 @@ router.post('/process-payment', asyncHandler(async (req: Request, res: Response)
         // MUST persist so the merchant has a record of the charge. If the
         // invoice was voided concurrently, the payment row records as an
         // anomaly (audit-detectable) instead of silently overriding void.
-        sql: `UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now')
+        //
+        // BUGHUNT-2026-05-17: differential SQL on amount_paid so a
+        // concurrent payment / deposit-apply that landed between our
+        // pre-tx invoice SELECT (line ~440) and this UPDATE can't be
+        // lost-updated. Old shape wrote the JS-computed newPaid as an
+        // absolute, clobbering the other writer's contribution. Now the
+        // increment is atomic off the row's live amount_paid; amount_due
+        // and status are re-derived from the same new total in SQL.
+        sql: `UPDATE invoices
+                SET amount_paid = ROUND((COALESCE(amount_paid, 0) + ?) * 100) / 100,
+                    amount_due  = MAX(0, ROUND((COALESCE(total, 0) - COALESCE(amount_paid, 0) - ?) * 100) / 100),
+                    status      = CASE
+                      WHEN COALESCE(total, 0) <= COALESCE(amount_paid, 0) + ? THEN 'paid'
+                      WHEN COALESCE(amount_paid, 0) + ? > 0                    THEN 'partial'
+                      ELSE 'unpaid'
+                    END,
+                    updated_at = datetime('now')
               WHERE id = ? AND status NOT IN ('void', 'refunded')`,
-        params: [newPaid, newDue, newStatus, invoice.id],
+        params: [chargeAmount, chargeAmount, chargeAmount, chargeAmount, invoice.id],
       },
     ]);
     // The first query in the batch is the payment INSERT. Its rowid is how
@@ -697,15 +712,7 @@ router.post('/void-payment', asyncHandler(async (req: Request, res: Response) =>
   // BL8: delete the signature file from disk.
   const deleted = deleteSignatureFile(payment.signature_file_path);
 
-  const invoice = await adb.get<{ id: number; total: number; amount_paid: number }>(
-    'SELECT id, total, amount_paid FROM invoices WHERE id = ?',
-    payment.invoice_id,
-  );
-  const priorPaid = roundMoney(Number(invoice?.amount_paid ?? 0));
-  const total = roundMoney(Number(invoice?.total ?? 0));
-  const newPaid = roundMoney(Math.max(0, priorPaid - Number(payment.amount || 0)));
-  const newDue = roundMoney(Math.max(0, total - newPaid));
-  const newStatus = invoiceStatus(total, newPaid);
+  const voidAmount = roundMoney(Number(payment.amount || 0));
 
   // BL8: audit log with transaction id linkage.
   audit(db, 'blockchyp_payment_voided', req.user!.id, req.ip || 'unknown', {
@@ -744,13 +751,24 @@ router.post('/void-payment', asyncHandler(async (req: Request, res: Response) =>
       expectChangesError: 'Payment void local update failed',
     },
     {
+      // BUGHUNT-2026-05-17: differential SQL so a concurrent payment
+      // landing between our pre-tx invoice SELECT and this void's
+      // UPDATE doesn't get lost-updated. Old shape wrote JS-computed
+      // newPaid as absolute, clobbering the other writer's increment.
+      // Decrement amount_paid by the voided amount, derive amount_due
+      // and status from the live post-update total. MAX(0, ...) clamps
+      // mirror the prior JS Math.max(0, priorPaid - amount) pattern.
       sql: `UPDATE invoices
-              SET amount_paid = ?,
-                  amount_due = ?,
-                  status = ?,
+              SET amount_paid = MAX(0, ROUND((COALESCE(amount_paid, 0) - ?) * 100) / 100),
+                  amount_due  = MAX(0, ROUND((COALESCE(total, 0) - MAX(0, COALESCE(amount_paid, 0) - ?)) * 100) / 100),
+                  status      = CASE
+                    WHEN COALESCE(total, 0) <= MAX(0, COALESCE(amount_paid, 0) - ?) THEN 'paid'
+                    WHEN MAX(0, COALESCE(amount_paid, 0) - ?) > 0                    THEN 'partial'
+                    ELSE 'unpaid'
+                  END,
                   updated_at = datetime('now')
             WHERE id = ?`,
-      params: [newPaid, newDue, newStatus, payment.invoice_id],
+      params: [voidAmount, voidAmount, voidAmount, voidAmount, payment.invoice_id],
     },
   ]);
 
