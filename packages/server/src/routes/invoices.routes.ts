@@ -1071,32 +1071,36 @@ async function recordInvoicePayment({
 
   if (overpayment > 0 && invoice.customer_id) {
     try {
+      // BUGHUNT-2026-05-17: bundle the UPSERT + ledger insert into one tx.
+      // Two separate adb.run() calls left a window where the balance moved
+      // but no ledger row landed — silent ghost credit in reconciliation.
       // BUGHUNT-2026-05-10-01: atomic UPSERT — previous SELECT-then-UPDATE
       // pattern allowed two concurrent overpayments on the same customer
       // to both read the same pre-state and the second UPDATE clobbered
-      // the first. Now use INSERT ON CONFLICT DO UPDATE so the +=
-      // happens inside a single SQLite statement (atomic per-row).
-      await adb.run(
-        `INSERT INTO store_credits (customer_id, amount)
-         VALUES (?, ?)
-         ON CONFLICT(customer_id) DO UPDATE SET
-           amount = ROUND((store_credits.amount + excluded.amount) * 100) / 100,
-           updated_at = datetime('now')`,
-        invoice.customer_id,
-        overpayment,
-      );
-      // Ledger row for the credit transaction
-      await adb.run(`
-        INSERT INTO store_credit_transactions
-          (customer_id, amount, type, reference_type, reference_id, notes, user_id)
-        VALUES (?, ?, 'manual_credit', 'invoice', ?, ?, ?)
-      `,
-        invoice.customer_id,
-        overpayment,
-        invoice.id,
-        `Overpayment on invoice ${invoice.order_id}`,
-        userId,
-      );
+      // the first. INSERT ON CONFLICT DO UPDATE keeps the +=
+      // single-statement atomic per-row.
+      await adb.transaction([
+        {
+          sql: `INSERT INTO store_credits (customer_id, amount)
+                VALUES (?, ?)
+                ON CONFLICT(customer_id) DO UPDATE SET
+                  amount = ROUND((store_credits.amount + excluded.amount) * 100) / 100,
+                  updated_at = datetime('now')`,
+          params: [invoice.customer_id, overpayment],
+        },
+        {
+          sql: `INSERT INTO store_credit_transactions
+                  (customer_id, amount, type, reference_type, reference_id, notes, user_id)
+                VALUES (?, ?, 'manual_credit', 'invoice', ?, ?, ?)`,
+          params: [
+            invoice.customer_id,
+            overpayment,
+            invoice.id,
+            `Overpayment on invoice ${invoice.order_id}`,
+            userId,
+          ],
+        },
+      ]);
     } catch (creditErr: unknown) {
       // Do not fail the payment flow if the credit insert fails — log and continue.
       logger.warn(`[invoices] failed to record overpayment store credit`, { err: creditErr });
