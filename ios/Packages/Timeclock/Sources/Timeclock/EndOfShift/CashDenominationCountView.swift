@@ -133,7 +133,11 @@ public struct CashDenominationCountView: View {
                     .foregroundStyle(.bizarreOnSurface)
                 TextField("0.00", value: Binding(
                     get: { Double(vm.handoffCashCents) / 100 },
-                    set: { vm.handoffCashCents = Int($0 * 100) }
+                    // BUGHUNT-2026-05-17: .rounded() so a typed $9.99 handoff
+                    // amount stores as 999 cents, not 998. Cashier hand-off
+                    // amounts get reconciled against next-shift opening cash;
+                    // a cent-off here triggers a fake variance.
+                    set: { vm.handoffCashCents = Int(($0 * 100).rounded()) }
                 ), format: .number.precision(.fractionLength(2)))
                 .keyboardType(.decimalPad)
                 .font(.brandBodyLarge().monospacedDigit())
