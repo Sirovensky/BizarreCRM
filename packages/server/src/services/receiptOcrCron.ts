@@ -165,7 +165,19 @@ export function startReceiptOcrCron(
   getDbsFn: () => Iterable<TenantDbEntry>,
   uploadsPath: string,
 ): NodeJS.Timeout {
+  // BUGHUNT-2026-05-17: reentrancy guard. With 2-minute ticks and
+  // Tesseract OCR taking 5–30s per receipt, a multi-tenant backlog can
+  // easily exceed 2 minutes and stack ticks. The "Process tenants
+  // sequentially to cap peak Tesseract memory usage" invariant is
+  // broken if two ticks overlap — they'd run sequential-within-tick but
+  // doubled-across-ticks, defeating the memory cap. Skip if busy.
+  let running = false;
   async function tick(): Promise<void> {
+    if (running) {
+      logger.warn('receipt-ocr-cron: skipping tick — previous run still in progress');
+      return;
+    }
+    running = true;
     try {
       for (const { slug, db } of getDbsFn()) {
         // Process tenants sequentially to cap peak Tesseract memory usage.
@@ -175,6 +187,8 @@ export function startReceiptOcrCron(
       logger.error('receipt-ocr-cron: top-level tick error', {
         error: err instanceof Error ? err.message : String(err),
       });
+    } finally {
+      running = false;
     }
   }
 

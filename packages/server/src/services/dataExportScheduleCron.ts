@@ -272,7 +272,19 @@ async function processSchedule(slug: string | null, db: Database.Database, sched
 export function startDataExportScheduleCron(
   getDbsFn: () => Iterable<TenantDbEntry>,
 ): NodeJS.Timeout {
+  // BUGHUNT-2026-05-17: reentrancy guard. If a previous tick is still
+  // running (e.g., 100+ tenants with slow S3 uploads pushing total work
+  // over the 1h interval), setInterval would otherwise stack a second
+  // tick on top, doubling the load on the same tenant DBs and risking
+  // duplicate exports. Skip cleanly when busy; the next interval picks
+  // up the work.
+  let running = false;
   async function tick(): Promise<void> {
+    if (running) {
+      logger.warn('data-export-schedule-cron skipping tick — previous run still in progress');
+      return;
+    }
+    running = true;
     try {
       for (const { slug, db } of getDbsFn()) {
         // Sequential across tenants — avoids thundering-herd on shared DB pool.
@@ -282,6 +294,8 @@ export function startDataExportScheduleCron(
       logger.error('data-export-schedule-cron top-level error', {
         err: err instanceof Error ? err.message : String(err),
       });
+    } finally {
+      running = false;
     }
   }
 
