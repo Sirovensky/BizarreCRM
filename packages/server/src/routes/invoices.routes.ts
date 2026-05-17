@@ -1067,10 +1067,26 @@ async function recordInvoicePayment({
         ],
       },
       {
+        // BUGHUNT-2026-05-17: differential SQL so a concurrent payment
+        // (parallel cashier, payment link, deposit-apply) landing
+        // between our pre-tx SUM-of-payments read and this UPDATE
+        // can't have its amount_paid increment lost. Old shape wrote
+        // the JS-predicted absolute total — last writer won. Now we
+        // increment off the row's live amount_paid and derive
+        // amount_due + status inline. predictedStatus / overpayment /
+        // displayAmountDue continue to be the response payload's
+        // best-guess; the audited record of truth is the live row.
         sql: `UPDATE invoices
-                SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now')
+                SET amount_paid = ROUND((COALESCE(amount_paid, 0) + ?) * 100) / 100,
+                    amount_due  = MAX(0, ROUND((COALESCE(total, 0) - COALESCE(amount_paid, 0) - ?) * 100) / 100),
+                    status      = CASE
+                      WHEN COALESCE(total, 0) <= COALESCE(amount_paid, 0) + ? THEN 'paid'
+                      WHEN COALESCE(amount_paid, 0) + ? > 0                    THEN 'partial'
+                      ELSE 'unpaid'
+                    END,
+                    updated_at  = datetime('now')
               WHERE id = ? AND status NOT IN ('void', 'refunded')`,
-        params: [predictedTotalPaid, displayAmountDuePredicted, predictedStatus, invoice.id],
+        params: [amount, amount, amount, amount, invoice.id],
         expectChanges: true,
         expectChangesError: 'INVOICE_NOT_PAYABLE',
       },
