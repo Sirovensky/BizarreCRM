@@ -56,6 +56,8 @@ public struct RoleListView: View {
             viewModel.onPreviewRoleChanged = onPreviewRoleChanged
             viewModel.subscribeToRolesChangedNotification()
         }
+        // BUGHUNT-2026-05-17: balance the subscribe — see RolesEditorThreeColumnView.
+        .onDisappear { viewModel.unsubscribeFromRolesChangedNotification() }
         .safeAreaInset(edge: .top) { previewBanner }
     }
 

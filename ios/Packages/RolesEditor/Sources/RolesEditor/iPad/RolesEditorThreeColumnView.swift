@@ -181,6 +181,9 @@ public struct RolesEditorThreeColumnView: View {
         }
         .task { await viewModel.load() }
         .onAppear { viewModel.subscribeToRolesChangedNotification() }
+        // BUGHUNT-2026-05-17: balance the subscribe so a re-appear doesn't
+        // accumulate NotificationCenter observers across view appears.
+        .onDisappear { viewModel.unsubscribeFromRolesChangedNotification() }
         // Error toast
         .overlay(alignment: .bottom) {
             if let err = viewModel.errorMessage {

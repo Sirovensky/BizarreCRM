@@ -37,10 +37,31 @@ public final class RolesMatrixViewModel {
 
     public let repository: any RolesRepository
 
+    // BUGHUNT-2026-05-17: NotificationCenter observer token, captured so
+    // subscribeToRolesChangedNotification can dedup repeat subscriptions and
+    // unsubscribe() can be called explicitly from view onDisappear. Without
+    // this, every call (one per view appear) registered a new observer
+    // whose [weak self] closure went no-op once the VM died — but the
+    // registration itself stayed in NotificationCenter forever, so the
+    // .rolesChanged fan-out cost grew linearly with screen visits.
+    @ObservationIgnored
+    private var rolesChangedObserver: NSObjectProtocol?
+
     // MARK: Init
 
     public nonisolated init(repository: any RolesRepository) {
         self.repository = repository
+    }
+
+    /// Call from `onDisappear` of any view that previously invoked
+    /// [subscribeToRolesChangedNotification] so the observer is released
+    /// before the VM is dropped. A MainActor `deinit` can't safely access
+    /// the token under Swift 6 strict concurrency, so cleanup is explicit.
+    public func unsubscribeFromRolesChangedNotification() {
+        if let token = rolesChangedObserver {
+            NotificationCenter.default.removeObserver(token)
+            rolesChangedObserver = nil
+        }
     }
 
     // MARK: Load
@@ -136,7 +157,14 @@ public final class RolesMatrixViewModel {
     // MARK: §47.9 Revocation subscription
 
     public func subscribeToRolesChangedNotification() {
-        NotificationCenter.default.addObserver(
+        // BUGHUNT-2026-05-17: remove any prior registration so calling this
+        // method twice (e.g. on view re-appear) doesn't stack observers.
+        // The captured token now lives in `rolesChangedObserver` and is
+        // removed in deinit too.
+        if let existing = rolesChangedObserver {
+            NotificationCenter.default.removeObserver(existing)
+        }
+        rolesChangedObserver = NotificationCenter.default.addObserver(
             forName: .rolesChanged,
             object: nil,
             queue: .main
