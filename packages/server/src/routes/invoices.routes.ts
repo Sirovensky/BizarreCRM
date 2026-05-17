@@ -821,7 +821,12 @@ router.put('/:id', requirePermission('invoices.edit'), async (req: Request<{ id:
   const total = roundCents(existing.subtotal + existing.total_tax - newDiscount);
   const amountDue = roundCents(total - existing.amount_paid);
 
-  await adb.run(`
+  // BUGHUNT-2026-05-17: guard the UPDATE against a void that landed
+  // between the pre-check at line 752 and the write. Otherwise PUT /:id
+  // would silently override a voided invoice's discount/total/notes —
+  // which an external integration listening on invoice_updated would
+  // then treat as a live invoice. changes === 0 → 409.
+  const updRes = await adb.run(`
     UPDATE invoices SET
       notes = COALESCE(?, notes),
       due_on = COALESCE(?, due_on),
@@ -832,7 +837,7 @@ router.put('/:id', requirePermission('invoices.edit'), async (req: Request<{ id:
       payment_plan = COALESCE(?, payment_plan),
       location_id = COALESCE(?, location_id),
       updated_at = datetime('now')
-    WHERE id = ?
+    WHERE id = ? AND status NOT IN ('void', 'refunded')
   `,
     notes ?? null, dueDate, newDiscount, discount_reason ?? null,
     total, Math.max(0, amountDue),
@@ -840,6 +845,9 @@ router.put('/:id', requirePermission('invoices.edit'), async (req: Request<{ id:
     resolvedLocationId,
     req.params.id,
   );
+  if (updRes.changes === 0) {
+    throw new AppError('Invoice was voided or refunded; refresh and retry', 409);
+  }
 
   const invoice = await getInvoiceDetail(adb, req.params.id);
   broadcast(WS_EVENTS.INVOICE_UPDATED, invoice, req.tenantSlug || null);
