@@ -30,9 +30,12 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
 import java.util.Locale
-import java.util.TimeZone
 import javax.inject.Inject
 
 // §5.14 — Customer notes screen.
@@ -156,19 +159,25 @@ class CustomerNotesViewModel @Inject constructor(
 
 // ── Timestamp formatter ─────────────────────────────────────────────────────
 
-private val ISO_IN = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
-    timeZone = TimeZone.getTimeZone("UTC")
-}
-private val ISO_IN_SHORT = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
-    timeZone = TimeZone.getTimeZone("UTC")
-}
-private val DISPLAY_OUT = SimpleDateFormat("MMM d, yyyy · h:mm a", Locale.getDefault())
+// BUGHUNT-2026-05-17: SimpleDateFormat is NOT thread-safe; file-level
+// shared instances corrupted output when two LazyColumn item composables
+// formatted in parallel. Switched to java.time DateTimeFormatter which is
+// immutable and thread-safe, available on every API level the app supports
+// via core-library desugaring.
+private val ISO_IN = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
+private val ISO_IN_SHORT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
+private val DISPLAY_OUT = DateTimeFormatter.ofPattern("MMM d, yyyy · h:mm a", Locale.getDefault())
 
 private fun formatTimestamp(iso: String?): String {
     if (iso.isNullOrBlank()) return ""
     return try {
-        val date = try { ISO_IN.parse(iso) } catch (_: Exception) { ISO_IN_SHORT.parse(iso) }
-        DISPLAY_OUT.format(date ?: return iso)
+        val utc = try {
+            LocalDateTime.parse(iso, ISO_IN)
+        } catch (_: DateTimeParseException) {
+            LocalDateTime.parse(iso, ISO_IN_SHORT)
+        }
+        val local = utc.atOffset(ZoneOffset.UTC).atZoneSameInstant(ZoneId.systemDefault())
+        DISPLAY_OUT.format(local)
     } catch (_: Exception) {
         iso
     }
