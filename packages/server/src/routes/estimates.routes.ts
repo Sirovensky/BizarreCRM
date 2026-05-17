@@ -913,7 +913,16 @@ router.put(
         throw new AppError('discount cannot exceed subtotal', 400);
       }
 
-      await adb.run('DELETE FROM estimate_line_items WHERE estimate_id = ?', id);
+      // BUGHUNT-2026-05-17: bundle DELETE + every INSERT + the totals
+      // UPDATE into a single adb.transaction so a partial write (constraint
+      // miss, disk full, FK race) cannot leave the estimate with wiped
+      // line items but stale totals — silent corruption that only surfaces
+      // when the operator notices the line vs total disagreement on PDF.
+      //
+      // Pre-fetch cost_price for each line OUTSIDE the tx because adb.get
+      // can't run inside a tx; collect into params arrays first, then build
+      // and submit the tx as one batch.
+      const lineParamRows: Array<[number, number | null, string, number, number, number, number | null, number, number | null]> = [];
       for (const item of normalizedItems) {
         // WEB-UIUX-659: re-snapshot cost_price on PUT replace so the margin
         // tracks the current supplier price for any newly-added line.
@@ -926,15 +935,35 @@ router.put(
             costPrice = Number(row.cost_price);
           }
         }
-        await adb.run(`
-          INSERT INTO estimate_line_items (estimate_id, inventory_item_id, description, quantity, unit_price, tax_amount, tax_class_id, total, cost_price)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, id, item.inventory_item_id, item.description, item.quantity, item.unit_price, item.tax_amount, item.tax_class_id, item.line_total, costPrice);
+        lineParamRows.push([
+          id,
+          item.inventory_item_id,
+          item.description,
+          item.quantity,
+          item.unit_price,
+          item.tax_amount,
+          item.tax_class_id,
+          item.line_total,
+          costPrice,
+        ]);
       }
 
       const total = subtotal - effectiveDiscount + totalTax;
-      await adb.run('UPDATE estimates SET subtotal = ?, total_tax = ?, total = ? WHERE id = ?',
-        subtotal, totalTax, total, id);
+      const lineTxQueries: import('../db/async-db.js').TxQuery[] = [
+        { sql: 'DELETE FROM estimate_line_items WHERE estimate_id = ?', params: [id] },
+      ];
+      for (const params of lineParamRows) {
+        lineTxQueries.push({
+          sql: `INSERT INTO estimate_line_items (estimate_id, inventory_item_id, description, quantity, unit_price, tax_amount, tax_class_id, total, cost_price)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          params,
+        });
+      }
+      lineTxQueries.push({
+        sql: 'UPDATE estimates SET subtotal = ?, total_tax = ?, total = ? WHERE id = ?',
+        params: [subtotal, totalTax, total, id],
+      });
+      await adb.transaction(lineTxQueries);
     } else if (validatedDiscount !== undefined) {
       // If only discount changed without replacing line items, sanity-check against current subtotal.
       const cur = await adb.get<{ subtotal: number; total_tax: number }>(
