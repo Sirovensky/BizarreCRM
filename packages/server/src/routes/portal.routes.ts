@@ -1421,10 +1421,27 @@ router.post('/tickets/:id/feedback', portalAuth, requireCsrfToken, requireTicket
     return;
   }
 
-  await adb.run(`
+  // BUGHUNT-2026-05-17: atomic conditional INSERT instead of
+  // SELECT-then-INSERT. customer_feedback (mig 025) has no UNIQUE on
+  // (ticket_id, customer_id), so two concurrent submissions from the
+  // portal (double-tap on mobile) both passed the precheck and both
+  // INSERTed — two feedback rows for the same repair skewed the
+  // CSAT roll-up. Loser sees the same 409 the precheck would have
+  // returned.
+  const insertResult = await adb.run(`
     INSERT INTO customer_feedback (ticket_id, customer_id, rating, comment, source, responded_at, created_at, updated_at)
-    VALUES (?, ?, ?, ?, 'portal', datetime('now'), datetime('now'), datetime('now'))
-  `, ticketId, req.portalCustomerId!, rating, comment?.trim() || null);
+    SELECT ?, ?, ?, ?, 'portal', datetime('now'), datetime('now'), datetime('now')
+    WHERE NOT EXISTS (
+      SELECT 1 FROM customer_feedback WHERE ticket_id = ? AND customer_id = ?
+    )
+  `,
+    ticketId, req.portalCustomerId!, rating, comment?.trim() || null,
+    ticketId, req.portalCustomerId!,
+  );
+  if (insertResult.changes === 0) {
+    res.status(409).json({ success: false, code: ERROR_CODES.ERR_RESOURCE_CONFLICT, message: 'You have already left feedback for this repair' });
+    return;
+  }
 
   res.json({ success: true, data: { submitted: true } });
 }));
