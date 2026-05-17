@@ -187,7 +187,11 @@ object LocaleAwareFormatters {
      * code to avoid IEEE-754 drift.
      */
     fun formatCurrencyDollars(amount: Double, currencyCodeOverride: String? = null): String =
-        formatCurrency((amount * 100).toLong(), currencyCodeOverride)
+        // BUGHUNT-2026-05-17: Math.round so $9.99 dollars rendered through
+        // this convenience overload formats as $9.99, not $9.98 from IEEE-754
+        // truncation. Real fix is to migrate callers to the Long-cents
+        // overload above; this keeps existing call sites correct meanwhile.
+        formatCurrency(Math.round(amount * 100), currencyCodeOverride)
 
     // ------------------------------------------------------------------
     // First day of week  (§27.3)

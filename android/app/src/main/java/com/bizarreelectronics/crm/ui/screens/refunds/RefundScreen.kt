@@ -362,7 +362,10 @@ private fun RefundListItem(
     refund: RefundRow,
     viewModel: RefundViewModel,
 ) {
-    val amountCents = (refund.amount * 100).toLong()
+    // BUGHUNT-2026-05-17: Math.round on server-returned refund dollars.
+    // `(9.99 * 100).toLong()` truncates to 998 cents in IEEE-754 — the
+    // refund list row displays a cent less than the actual refunded amount.
+    val amountCents = Math.round(refund.amount * 100)
     val statusColor = when (refund.status) {
         "completed" -> MaterialTheme.colorScheme.primaryContainer
         "declined" -> MaterialTheme.colorScheme.errorContainer

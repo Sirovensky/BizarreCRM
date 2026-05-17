@@ -202,10 +202,15 @@ fun InventoryFilterSheet(
                                 supplier = supplier.trim().takeIf { it.isNotEmpty() },
                                 stockStatus = stockStatus,
                                 bin = bin.trim().takeIf { it.isNotEmpty() },
+                                // BUGHUNT-2026-05-17: Math.round so a $9.99
+                                // filter bound becomes 999 cents, not 998.
+                                // Inventory filters compare against stored
+                                // unit prices in cents; the off-by-one made
+                                // ">= $9.99" exclude rows priced at 999.
                                 minPriceCents = minPrice.trim().toDoubleOrNull()
-                                    ?.let { (it * 100).toLong() },
+                                    ?.let { Math.round(it * 100) },
                                 maxPriceCents = maxPrice.trim().toDoubleOrNull()
-                                    ?.let { (it * 100).toLong() },
+                                    ?.let { Math.round(it * 100) },
                                 tag = tag.trim().takeIf { it.isNotEmpty() },
                             )
                         )

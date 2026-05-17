@@ -99,7 +99,9 @@ fun buildPaymentMethodSlices(
             InvoicePaymentMethodSlice(
                 label      = label,
                 count      = item.count,
-                totalCents = (item.total * 100).toLong(),
+                // BUGHUNT-2026-05-17: Math.round so $9.99 totals become 999
+                // cents in the donut chart, not 998 from IEEE-754 truncation.
+                totalCents = Math.round(item.total * 100),
                 color      = colorForMethod(item.method),
             )
         }

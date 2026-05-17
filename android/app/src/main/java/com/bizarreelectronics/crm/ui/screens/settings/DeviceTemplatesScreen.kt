@@ -593,7 +593,11 @@ fun DeviceTemplateEditDialog(
                         // Parse money fields: strip currency symbols, parse as Double, convert to cents
                         fun parseCents(raw: String): Long {
                             val cleaned = raw.replace(Regex("[^0-9.]"), "")
-                            return ((cleaned.toDoubleOrNull() ?: 0.0) * 100).toLong()
+                            // BUGHUNT-2026-05-17: Math.round so a user-typed
+                            // $9.99 template price becomes 999 cents, not 998
+                            // from IEEE-754 truncation. Device-template prices
+                            // seed quotes at check-in.
+                            return Math.round((cleaned.toDoubleOrNull() ?: 0.0) * 100)
                         }
                         val checklist = checklistText.lines()
                             .map { it.trim() }

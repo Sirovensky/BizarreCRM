@@ -165,7 +165,10 @@ fun ExpenseDetailScreen(
                             DetailRow(
                                 label = "Amount",
                                 value = expense.amount
-                                    ?.let { ((it * 100).toLong()).formatAsMoney() }
+                                    // BUGHUNT-2026-05-17: Math.round so $9.99
+                                    // expense rows render as $9.99, not $9.98
+                                    // (IEEE-754 truncation).
+                                    ?.let { Math.round(it * 100).formatAsMoney() }
                                     ?: "-",
                                 highlight = true,
                             )

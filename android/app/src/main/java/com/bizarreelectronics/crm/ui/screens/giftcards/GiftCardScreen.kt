@@ -355,7 +355,10 @@ private fun StoreCreditTab(viewModel: GiftCardViewModel) {
             Button(
                 onClick = {
                     val cid = customerIdText.toLongOrNull() ?: return@Button
-                    val cents = ((issueAmountText.toDoubleOrNull() ?: 0.0) * 100).toLong()
+                    // BUGHUNT-2026-05-17: Math.round so a $9.99 store-credit
+                    // grant lands on the customer's ledger as 999 cents, not
+                    // 998 (IEEE-754 truncation). Same money-math fix family.
+                    val cents = Math.round((issueAmountText.toDoubleOrNull() ?: 0.0) * 100)
                     viewModel.issueStoreCredit(cid, cents, issueReason.trim())
                     issueAmountText = ""
                     issueReason = ""
