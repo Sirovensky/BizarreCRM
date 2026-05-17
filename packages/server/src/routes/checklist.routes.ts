@@ -505,12 +505,17 @@ router.post('/instances/:id/complete', asyncHandler(async (req: Request, res: Re
   if (existing.status === 'abandoned') throw new AppError('Cannot complete an abandoned instance', 409);
 
   const completedAt = now();
-  await adb.run(
+  // BUGHUNT-2026-05-17: guard the UPDATE WHERE status NOT IN
+  // ('completed','abandoned') so a racing /abandon doesn't get clobbered.
+  const result = await adb.run(
     `UPDATE ops_checklist_instances
      SET status = 'completed', completed_at = ?
-     WHERE id = ?`,
+     WHERE id = ? AND status NOT IN ('completed','abandoned')`,
     completedAt, id,
   );
+  if (result.changes === 0) {
+    throw new AppError('Instance status changed; refresh and retry', 409);
+  }
 
   logger.info('checklist instance completed', { instance_id: id, user_id: req.user!.id });
   res.json({ success: true, data: { id, status: 'completed', completed_at: completedAt } });
@@ -537,12 +542,17 @@ router.post('/instances/:id/abandon', asyncHandler(async (req: Request, res: Res
   if (existing.status === 'completed') throw new AppError('Cannot abandon a completed instance', 409);
 
   const abandonedAt = now();
-  await adb.run(
+  // BUGHUNT-2026-05-17: guard the UPDATE WHERE status NOT IN
+  // ('completed','abandoned') so a racing /complete doesn't get clobbered.
+  const result = await adb.run(
     `UPDATE ops_checklist_instances
      SET status = 'abandoned', completed_at = ?
-     WHERE id = ?`,
+     WHERE id = ? AND status NOT IN ('completed','abandoned')`,
     abandonedAt, id,
   );
+  if (result.changes === 0) {
+    throw new AppError('Instance status changed; refresh and retry', 409);
+  }
 
   res.json({ success: true, data: { id, status: 'abandoned', completed_at: abandonedAt } });
 }));
