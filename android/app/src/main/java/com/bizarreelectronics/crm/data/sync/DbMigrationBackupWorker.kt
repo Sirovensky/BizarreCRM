@@ -71,6 +71,14 @@ class DbMigrationBackupWorker @AssistedInject constructor(
             //   4. Insert the AppliedMigrationEntity row via the DAO once done.
             Log.i(TAG, "Heavy migration $fromVersion → $toVersion: stub — no-op (no heavy migration registered yet)")
             Result.success()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // BUGHUNT-2026-05-17: heavy migrations will run for many seconds
+            // / minutes. Cancellation mid-migration must not retry — the
+            // partial migration may have left the schema half-applied and
+            // a retry could corrupt state. Re-throw so WorkManager honors
+            // the cancel, and the migration coordinator decides what to do
+            // (typically: restore from backup, prompt for manual repair).
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Heavy migration $fromVersion → $toVersion failed: ${e.message}", e)
             if (runAttemptCount < 2) Result.retry() else Result.failure()

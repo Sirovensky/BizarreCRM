@@ -46,6 +46,15 @@ class SyncWorker @AssistedInject constructor(
             syncManager.syncAll()
             Log.d(TAG, "Sync completed successfully")
             Result.success()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // BUGHUNT-2026-05-17: re-throw so WorkManager honors the cancel
+            // signal. Previously the broad Exception catch returned
+            // Result.retry(), so a cancelled SyncWorker (Doze, replacement
+            // enqueue, user-triggered cancel) was scheduled for retry like
+            // a transient failure — wasted retries against a worker the
+            // system explicitly cancelled. SyncManager.syncAll() now also
+            // re-throws cancellation so this catch ordering matters.
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Sync failed [${e.javaClass.simpleName}]: ${e.message}")
             if (runAttemptCount < MAX_WORKER_ATTEMPTS) Result.retry() else Result.failure()

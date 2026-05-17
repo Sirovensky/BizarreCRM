@@ -49,6 +49,13 @@ class RoomVacuumWorker @AssistedInject constructor(
             db.openHelper.writableDatabase.execSQL("VACUUM")
             Log.i(TAG, "SQLite VACUUM completed successfully")
             Result.success()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // BUGHUNT-2026-05-17: VACUUM is long-running and the worker can
+            // be cancelled mid-operation. Treating that as Result.retry()
+            // (the previous behaviour via the broad Exception catch) just
+            // schedules another VACUUM run when SQLite already aborted the
+            // partial one. Re-throw so WorkManager honours the cancel.
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "RoomVacuumWorker failed [${e.javaClass.simpleName}]: ${e.message}")
             if (runAttemptCount < MAX_ATTEMPTS) Result.retry() else Result.failure()
