@@ -248,18 +248,28 @@ router.post('/', asyncHandler(async (req, res) => {
   }
 
   // Verify customer exists
-  const cust = await adb.get<{ id: number }>('SELECT id FROM customers WHERE id = ?', safeCustomerId);
+  // BUGHUNT-2026-05-17: include is_deleted = 0 so a soft-deleted customer
+  // can't have a recurring invoice template attached to them. The cron
+  // runner would then create invoices in their name forever — billing a
+  // deleted customer and leaking their PII into new invoice rows that
+  // GDPR-erase never saw.
+  const cust = await adb.get<{ id: number }>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', safeCustomerId);
   if (!cust) throw new AppError('Customer not found', 404);
 
   // First next_run_at = start_date (beginning of day UTC)
   const nextRunAt = `${safeStartDate} 00:00:00`;
 
+  // BUGHUNT-2026-05-17: atomic insert-if-customer-still-active so a /DELETE
+  // landing between the precheck and the INSERT can't silently orphan a
+  // recurring template onto a soft-deleted customer (with the cron then
+  // generating phantom invoices in perpetuity).
   const result = await adb.run(`
     INSERT INTO invoice_templates
       (name, customer_id, interval_kind, interval_count, start_date,
        next_run_at, status, line_items_json, notes_template, tax_class_id,
        created_by_user_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, datetime('now'), datetime('now'))
+      SELECT ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, datetime('now'), datetime('now')
+       WHERE EXISTS (SELECT 1 FROM customers WHERE id = ? AND is_deleted = 0)
   `,
     name.trim(),
     safeCustomerId,
@@ -271,7 +281,11 @@ router.post('/', asyncHandler(async (req, res) => {
     (typeof notes_template === 'string' ? notes_template : null),
     (tax_class_id != null ? parseInt(String(tax_class_id), 10) : null),
     req.user!.id,
+    safeCustomerId,
   );
+  if (result.changes === 0) {
+    throw new AppError('Customer was just deleted; refresh and retry', 409);
+  }
 
   const newId = result.lastInsertRowid as number;
 
