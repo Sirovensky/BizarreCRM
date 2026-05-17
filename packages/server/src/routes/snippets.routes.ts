@@ -66,14 +66,19 @@ router.post(
       throw new AppError('category must be a string of 64 characters or less', 400);
     }
 
-    // Check uniqueness
-    const existing = await adb.get('SELECT id FROM snippets WHERE shortcode = ?', shortcode);
-    if (existing) throw new AppError('A snippet with this shortcode already exists', 409);
-
+    // BUGHUNT-2026-05-17: atomic insert-if-no-shortcode-conflict. Two
+    // concurrent POSTs with the same shortcode previously both passed
+    // the SELECT precheck and both INSERTed — the in-message snippet
+    // expander then non-deterministically picked one of the duplicates
+    // and the other operator's edit silently disappeared from rotation.
     const result = await adb.run(`
       INSERT INTO snippets (shortcode, title, content, category, created_by)
-      VALUES (?, ?, ?, ?, ?)
-    `, shortcode, title, content, category ?? null, req.user!.id);
+        SELECT ?, ?, ?, ?, ?
+         WHERE NOT EXISTS (SELECT 1 FROM snippets WHERE shortcode = ?)
+    `, shortcode, title, content, category ?? null, req.user!.id, shortcode);
+    if (result.changes === 0) {
+      throw new AppError('A snippet with this shortcode already exists', 409);
+    }
 
     const snippet = await adb.get('SELECT * FROM snippets WHERE id = ?', result.lastInsertRowid);
     audit(req.db, 'snippet_created', req.user!.id, req.ip || 'unknown', { snippet_id: Number(result.lastInsertRowid), shortcode, title });
