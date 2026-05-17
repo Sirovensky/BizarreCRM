@@ -1736,7 +1736,14 @@ export function UnifiedPosPage() {
    * fan out as many parallel intake slots as they want.
    */
   const spawnBlankTab = useCallback(() => {
-    persistBlankTab().then(startNewSale).catch(() => undefined);
+    // BUGHUNT-2026-05-17: surface the failure instead of swallowing it.
+    // The + button is the only way for a cashier to fan out a parallel
+    // intake slot; silent failure left them clicking with no feedback,
+    // then assuming the button is broken. Toast on error so they can
+    // retry or notify ops.
+    persistBlankTab().then(startNewSale).catch(() => {
+      toast.error('Could not open a new tab. Try again or refresh.');
+    });
   }, [persistBlankTab, startNewSale]);
 
   const restoreSnapshot = useCallback((snapshot: HeldCartSnapshot) => {
