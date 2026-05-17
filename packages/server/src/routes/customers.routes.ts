@@ -2397,10 +2397,20 @@ router.post(
 
     if (!name) throw new AppError('Asset name is required');
 
+    // BUGHUNT-2026-05-17: atomic insert-if-customer-not-soft-deleted. The
+    // SELECT precheck above is TOCTOU — if a /DELETE soft-deletes the
+    // customer between the SELECT and the INSERT, the asset would orphan
+    // onto a deleted customer. INSERT...WHERE EXISTS forces the second
+    // writer to 409 cleanly.
     const result = await adb.run(
         `INSERT INTO customer_assets (customer_id, name, device_type, serial, imei, color, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      customerId, name, device_type ?? null, serial ?? null, imei ?? null, color ?? null, notes ?? null);
+           SELECT ?, ?, ?, ?, ?, ?, ?
+            WHERE EXISTS (SELECT 1 FROM customers WHERE id = ? AND is_deleted = 0)`,
+      customerId, name, device_type ?? null, serial ?? null, imei ?? null, color ?? null, notes ?? null,
+      customerId);
+    if (result.changes === 0) {
+      throw new AppError('Customer was just deleted; refresh and retry', 409);
+    }
 
     const asset = await adb.get<AnyRow>('SELECT * FROM customer_assets WHERE id = ?', result.lastInsertRowid);
     res.status(201).json({ success: true, data: asset });
