@@ -2159,38 +2159,49 @@ router.post('/reset-password', asyncHandler(async (req: Request, res: Response) 
   //          the second finds changes === 0 and is rejected. Also, password
   //          history is recorded inside the same transaction (SEC-M24) so a
   //          crash between statements cannot leave history missing.
-  const results = await adb.transaction([
-    {
-      sql: "UPDATE users SET password_hash = ?, password_set = 1, reset_token = NULL, reset_token_expires = NULL, updated_at = datetime('now') WHERE id = ? AND reset_token = ? AND reset_token_expires > datetime('now')",
-      params: [hashedPassword, user.id, tokenHash],
-    },
-    {
-      sql: 'DELETE FROM sessions WHERE user_id = ?',
-      params: [user.id],
-    },
-    {
-      sql: 'INSERT INTO password_history (user_id, password_hash) VALUES (?, ?)',
-      params: [user.id, hashedPassword],
-    },
-    {
-      sql: `DELETE FROM password_history
-             WHERE user_id = ?
-               AND id NOT IN (
-                 SELECT id FROM password_history
-                   WHERE user_id = ?
-                   ORDER BY created_at DESC
-                   LIMIT ?
-               )`,
-      params: [user.id, user.id, PASSWORD_HISTORY_DEPTH],
-    },
-  ]);
-
-  // SEC-H65: If the UPDATE touched zero rows the token was already consumed
-  // (or expired between the SELECT above and the write lock). Reject immediately
-  // without leaking which branch fired — same message as the SELECT-based check.
-  if (results[0].changes === 0) {
-    res.status(400).json({ success: false, message: 'Invalid or expired reset token' });
-    return;
+  // BUGHUNT-2026-05-17: add expectChanges to the UPDATE so a losing CAS
+  // (token already consumed by a concurrent /reset-password call, or
+  // expired between SELECT + write lock) rolls back the entire tx.
+  // Previously the post-tx `results[0].changes === 0` check fired the
+  // 400 response, but the DELETE sessions + INSERT password_history
+  // had already committed: the legitimate user got logged out across
+  // every device AND their password_history accreted a spurious hash
+  // they never set (which could later block a legitimate reuse-check).
+  try {
+    await adb.transaction([
+      {
+        sql: "UPDATE users SET password_hash = ?, password_set = 1, reset_token = NULL, reset_token_expires = NULL, updated_at = datetime('now') WHERE id = ? AND reset_token = ? AND reset_token_expires > datetime('now')",
+        params: [hashedPassword, user.id, tokenHash],
+        expectChanges: true,
+        expectChangesError: 'RESET_TOKEN_CONSUMED',
+      },
+      {
+        sql: 'DELETE FROM sessions WHERE user_id = ?',
+        params: [user.id],
+      },
+      {
+        sql: 'INSERT INTO password_history (user_id, password_hash) VALUES (?, ?)',
+        params: [user.id, hashedPassword],
+      },
+      {
+        sql: `DELETE FROM password_history
+               WHERE user_id = ?
+                 AND id NOT IN (
+                   SELECT id FROM password_history
+                     WHERE user_id = ?
+                     ORDER BY created_at DESC
+                     LIMIT ?
+                 )`,
+        params: [user.id, user.id, PASSWORD_HISTORY_DEPTH],
+      },
+    ]);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('RESET_TOKEN_CONSUMED')) {
+      res.status(400).json({ success: false, message: 'Invalid or expired reset token' });
+      return;
+    }
+    throw err;
   }
 
   audit(dbSync, 'password_reset_completed', user.id, ip, { sessions_revoked: true });
