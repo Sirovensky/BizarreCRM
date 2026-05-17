@@ -1169,11 +1169,30 @@ router.post('/statuses', adminOnly, async (req, res) => {
   // V23: sort_order clamped to 0-9999 integer.
   const sortOrderInt = clampSortOrder(sort_order, 'sort_order');
 
-  const result = await adb.run(`
-    INSERT INTO ticket_statuses (name, color, sort_order, is_default, is_closed, is_cancelled, notify_customer, notification_template)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `, nameClean, colorClean, sortOrderInt, is_default, is_closed, is_cancelled, notify_customer, notification_template || null);
-  const status = await adb.get<any>('SELECT * FROM ticket_statuses WHERE id = ?', result.lastInsertRowid);
+  // BUGHUNT-2026-05-17: if is_default=1 is sent we must clear other defaults
+  // in the same tx — mirroring the tax_classes pattern at line 1291+. Without
+  // this, the schema's "one default status" invariant breaks silently, every
+  // lookup is `WHERE is_default = 1 LIMIT 1` and returns an arbitrary winner,
+  // and operators end up with new tickets landing on the wrong status.
+  let newId: number;
+  if (is_default) {
+    const txResults = await adb.transaction([
+      { sql: 'UPDATE ticket_statuses SET is_default = 0', params: [] },
+      {
+        sql: `INSERT INTO ticket_statuses (name, color, sort_order, is_default, is_closed, is_cancelled, notify_customer, notification_template)
+              VALUES (?, ?, ?, 1, ?, ?, ?, ?)`,
+        params: [nameClean, colorClean, sortOrderInt, is_closed, is_cancelled, notify_customer, notification_template || null],
+      },
+    ]);
+    newId = Number(txResults[1].lastInsertRowid);
+  } else {
+    const result = await adb.run(`
+      INSERT INTO ticket_statuses (name, color, sort_order, is_default, is_closed, is_cancelled, notify_customer, notification_template)
+      VALUES (?, ?, ?, 0, ?, ?, ?, ?)
+    `, nameClean, colorClean, sortOrderInt, is_closed, is_cancelled, notify_customer, notification_template || null);
+    newId = Number(result.lastInsertRowid);
+  }
+  const status = await adb.get<any>('SELECT * FROM ticket_statuses WHERE id = ?', newId);
   res.status(201).json({ success: true, data: status });
 });
 
@@ -1194,15 +1213,37 @@ router.put('/statuses/:id', adminOnly, async (req, res) => {
     ? clampSortOrder(sort_order, 'sort_order')
     : null;
 
-  await adb.run(`
-    UPDATE ticket_statuses SET
-      name = COALESCE(?, name), color = COALESCE(?, color), sort_order = COALESCE(?, sort_order),
-      is_default = COALESCE(?, is_default), is_closed = COALESCE(?, is_closed),
-      is_cancelled = COALESCE(?, is_cancelled), notify_customer = COALESCE(?, notify_customer),
-      notification_template = COALESCE(?, notification_template)
-    WHERE id = ?
-  `, nameClean, colorClean, sortOrderInt, is_default ?? null, is_closed ?? null,
-    is_cancelled ?? null, notify_customer ?? null, notification_template ?? null, req.params.id);
+  // BUGHUNT-2026-05-17: same "one default" invariant as POST /statuses —
+  // when is_default flips to 1, clear other defaults in the same tx.
+  const promotingToDefault = is_default === 1 || is_default === true || is_default === '1';
+  if (promotingToDefault) {
+    await adb.transaction([
+      { sql: 'UPDATE ticket_statuses SET is_default = 0 WHERE id != ?', params: [req.params.id] },
+      {
+        sql: `UPDATE ticket_statuses SET
+                name = COALESCE(?, name), color = COALESCE(?, color), sort_order = COALESCE(?, sort_order),
+                is_default = 1, is_closed = COALESCE(?, is_closed),
+                is_cancelled = COALESCE(?, is_cancelled), notify_customer = COALESCE(?, notify_customer),
+                notification_template = COALESCE(?, notification_template)
+              WHERE id = ?`,
+        params: [
+          nameClean, colorClean, sortOrderInt,
+          is_closed ?? null, is_cancelled ?? null, notify_customer ?? null,
+          notification_template ?? null, req.params.id,
+        ],
+      },
+    ]);
+  } else {
+    await adb.run(`
+      UPDATE ticket_statuses SET
+        name = COALESCE(?, name), color = COALESCE(?, color), sort_order = COALESCE(?, sort_order),
+        is_default = COALESCE(?, is_default), is_closed = COALESCE(?, is_closed),
+        is_cancelled = COALESCE(?, is_cancelled), notify_customer = COALESCE(?, notify_customer),
+        notification_template = COALESCE(?, notification_template)
+      WHERE id = ?
+    `, nameClean, colorClean, sortOrderInt, is_default ?? null, is_closed ?? null,
+      is_cancelled ?? null, notify_customer ?? null, notification_template ?? null, req.params.id);
+  }
   const status = await adb.get<any>('SELECT * FROM ticket_statuses WHERE id = ?', req.params.id);
   res.json({ success: true, data: status });
 });
