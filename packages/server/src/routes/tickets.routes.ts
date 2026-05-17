@@ -2789,11 +2789,24 @@ router.patch('/:id/pin', requirePermission('tickets.edit'), asyncHandler(async (
 
   if (!ticketId) throw new AppError('Invalid ticket ID');
 
-  const existing = await adb.get<AnyRow>('SELECT id, is_pinned FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
+  const existing = await adb.get<AnyRow>('SELECT id FROM tickets WHERE id = ? AND is_deleted = 0', ticketId);
   if (!existing) throw new AppError('Ticket not found', 404);
 
-  const newPinned = existing.is_pinned ? 0 : 1;
-  await adb.run('UPDATE tickets SET is_pinned = ?, updated_at = ? WHERE id = ?', newPinned, now(), ticketId);
+  // BUGHUNT-2026-05-17: atomic flip via CASE so two parallel /pin clicks
+  // don't both read the same is_pinned value and both write the opposite,
+  // cancelling out. Re-SELECT the post-flip truth so the response matches
+  // the persisted state even under contention.
+  await adb.run(
+    `UPDATE tickets
+        SET is_pinned = CASE WHEN COALESCE(is_pinned, 0) = 1 THEN 0 ELSE 1 END,
+            updated_at = ?
+      WHERE id = ?`,
+    now(), ticketId,
+  );
+  const fresh = await adb.get<{ is_pinned: number }>(
+    'SELECT is_pinned FROM tickets WHERE id = ?', ticketId,
+  );
+  const newPinned = fresh?.is_pinned ?? 0;
 
   res.json({ success: true, data: { id: ticketId, is_pinned: !!newPinned } });
 }));
