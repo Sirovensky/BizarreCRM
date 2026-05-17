@@ -210,7 +210,7 @@ function substituteVars(template: string, vars: Record<string, string>): string 
 // ---------------------------------------------------------------------------
 // GET /sms/unread-count — Lightweight total unread SMS count (no conversation data)
 // ---------------------------------------------------------------------------
-router.get('/unread-count', async (req, res) => {
+router.get('/unread-count', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const userId = req.user!.id;
 
@@ -238,7 +238,7 @@ router.get('/unread-count', async (req, res) => {
   `, userId);
 
   res.json({ success: true, data: { count: row!.total } });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // SMS follow-up reminders
@@ -389,7 +389,7 @@ router.delete('/reminders/:id', asyncHandler(async (req, res) => {
 // ---------------------------------------------------------------------------
 // GET /sms/conversations
 // ---------------------------------------------------------------------------
-router.get('/conversations', async (req, res) => {
+router.get('/conversations', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   // WEB-S6-034: accept `q=` (debounced server-side search) or legacy `keyword=`.
   const keyword = ((req.query.q as string) || (req.query.keyword as string) || '').trim();
@@ -528,12 +528,12 @@ router.get('/conversations', async (req, res) => {
   });
 
   res.json({ success: true, data: { conversations: sorted } });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // Conversation flag/pin/read + message list (unchanged)
 // ---------------------------------------------------------------------------
-router.patch('/conversations/:phone/flag', async (req, res) => {
+router.patch('/conversations/:phone/flag', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const convPhone = req.params.phone;
   // BUGHUNT-2026-05-17: atomic toggle via CASE inside ON CONFLICT so two
@@ -553,9 +553,9 @@ router.patch('/conversations/:phone/flag', async (req, res) => {
     'SELECT is_flagged FROM sms_conversation_flags WHERE conv_phone = ?', convPhone,
   );
   res.json({ success: true, data: { conv_phone: convPhone, is_flagged: !!(fresh?.is_flagged) } });
-});
+}));
 
-router.patch('/conversations/:phone/pin', async (req, res) => {
+router.patch('/conversations/:phone/pin', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const convPhone = req.params.phone;
   // BUGHUNT-2026-05-17: atomic CASE toggle (see /flag for shape + why).
@@ -570,9 +570,9 @@ router.patch('/conversations/:phone/pin', async (req, res) => {
     'SELECT is_pinned FROM sms_conversation_flags WHERE conv_phone = ?', convPhone,
   );
   res.json({ success: true, data: { conv_phone: convPhone, is_pinned: !!(fresh?.is_pinned) } });
-});
+}));
 
-router.get('/conversations/:phone', async (req, res) => {
+router.get('/conversations/:phone', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const phone = req.params.phone;
 
@@ -611,10 +611,10 @@ router.get('/conversations/:phone', async (req, res) => {
   }
 
   res.json({ success: true, data: { messages, customer, recent_tickets } });
-});
+}));
 
 // ENR-SMS7: Archive/unarchive a conversation
-router.patch('/conversations/:phone/archive', async (req, res) => {
+router.patch('/conversations/:phone/archive', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const convPhone = req.params.phone;
   // BUGHUNT-2026-05-17: atomic CASE toggle (see /flag for shape + why).
@@ -629,9 +629,9 @@ router.patch('/conversations/:phone/archive', async (req, res) => {
     'SELECT is_archived FROM sms_conversation_flags WHERE conv_phone = ?', convPhone,
   );
   res.json({ success: true, data: { conv_phone: convPhone, is_archived: !!(fresh?.is_archived) } });
-});
+}));
 
-router.patch('/conversations/:phone/read', async (req, res) => {
+router.patch('/conversations/:phone/read', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const userId = req.user!.id;
   await adb.run(`
@@ -640,7 +640,7 @@ router.patch('/conversations/:phone/read', async (req, res) => {
     ON CONFLICT(conv_phone, user_id) DO UPDATE SET read_at = datetime('now')
   `, req.params.phone, userId);
   res.json({ success: true });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // POST /sms/upload-media — Upload image for MMS (auto-compresses if over 600KB)
@@ -1133,7 +1133,7 @@ function findUnknownTemplateTokens(content: string): string[] {
   return unknown.sort();
 }
 
-router.get('/templates', async (req, res) => {
+router.get('/templates', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const templates = await adb.all<any>('SELECT * FROM sms_templates WHERE is_active = 1 ORDER BY category, name');
   // ENR-SMS5: Include available template variables for documentation.
@@ -1141,9 +1141,9 @@ router.get('/templates', async (req, res) => {
   // KNOWN_SMS_TEMPLATE_VARS above in sync if you add anything.
   const available_variables = Array.from(KNOWN_SMS_TEMPLATE_VARS).sort();
   res.json({ success: true, data: { templates, available_variables } });
-});
+}));
 
-router.post('/templates', async (req, res) => {
+router.post('/templates', asyncHandler(async (req, res) => {
   requireManagerOrAdmin(req);
   const adb = req.asyncDb;
   const { name, content, category } = req.body;
@@ -1161,9 +1161,9 @@ router.post('/templates', async (req, res) => {
   const result = await adb.run('INSERT INTO sms_templates (name, content, category) VALUES (?, ?, ?)', name, content, category || null);
   const tpl = await adb.get<any>('SELECT * FROM sms_templates WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: tpl });
-});
+}));
 
-router.put('/templates/:id', async (req, res) => {
+router.put('/templates/:id', asyncHandler(async (req, res) => {
   requireManagerOrAdmin(req);
   const adb = req.asyncDb;
   const { name, content, category, is_active } = req.body;
@@ -1185,16 +1185,16 @@ router.put('/templates/:id', async (req, res) => {
   `, name ?? null, content ?? null, category ?? null, is_active ?? null, req.params.id);
   const tpl = await adb.get<any>('SELECT * FROM sms_templates WHERE id = ?', req.params.id);
   res.json({ success: true, data: tpl });
-});
+}));
 
-router.delete('/templates/:id', async (req, res) => {
+router.delete('/templates/:id', asyncHandler(async (req, res) => {
   requireManagerOrAdmin(req);
   const adb = req.asyncDb;
   await adb.run('UPDATE sms_templates SET is_active = 0 WHERE id = ?', req.params.id);
   res.json({ success: true, data: { message: 'Template deleted' } });
-});
+}));
 
-router.post('/preview-template', async (req, res) => {
+router.post('/preview-template', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const { template_id, vars } = req.body;
   // SCAN-535: sms_templates has no tenant_id column (see migration 001_initial.sql).
@@ -1205,7 +1205,7 @@ router.post('/preview-template', async (req, res) => {
   if (!tpl) throw new AppError('Template not found', 404);
   const preview = substituteVars(tpl.content, vars || {});
   res.json({ success: true, data: { preview, char_count: preview.length } });
-});
+}));
 
 export default router;
 
