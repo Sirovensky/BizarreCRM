@@ -1,5 +1,6 @@
 import { Router, Request } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
 import { requirePermission } from '../middleware/auth.js';
 import {
@@ -292,7 +293,7 @@ async function postPaymentSideEffects({
 }
 
 // GET /invoices
-router.get('/', requirePermission('invoices.view'), async (req, res) => {
+router.get('/', requirePermission('invoices.view'), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const { page = '1', pagesize = '20', status, from_date, to_date, keyword, customer_id, location_id, sort_by, sort_dir, include_credit_notes } = req.query as Record<string, string>;
   const p = Math.max(1, parseInt(page, 10));
@@ -407,7 +408,7 @@ router.get('/', requirePermission('invoices.view'), async (req, res) => {
       aging_summary: agingSummary,
     },
   });
-});
+}));
 
 // GET /invoices/stats — KPIs and distribution data for overview
 // WEB-W2-022 + WEB-W2-023: accepts the same filter params as GET / so the
@@ -415,7 +416,7 @@ router.get('/', requirePermission('invoices.view'), async (req, res) => {
 // from_date, to_date, customer_id, location_id, keyword.
 // Additionally exposes overdue_count + overdue_amount as standalone fields
 // (WEB-W2-023 — overdue stats independent of pagination).
-router.get('/stats', requirePermission('invoices.view'), async (req, res) => {
+router.get('/stats', requirePermission('invoices.view'), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const { status, from_date, to_date, customer_id, location_id, keyword } = req.query as Record<string, string>;
 
@@ -496,21 +497,21 @@ router.get('/stats', requirePermission('invoices.view'), async (req, res) => {
       overdue_amount: overdueRow?.overdue_amount ?? 0,
     },
   });
-});
+}));
 
 // GET /invoices/:id
 // SCAN-1072: sibling list/stats routes are gated on invoices.view; this handler
 // was left open, letting any authenticated user enumerate any invoice by id.
-router.get('/:id', requirePermission('invoices.view'), async (req, res) => {
+router.get('/:id', requirePermission('invoices.view'), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const invoice = await getInvoiceDetail(adb, req.params.id as string);
   if (!invoice) throw new AppError('Invoice not found', 404);
   res.json({ success: true, data: invoice });
-});
+}));
 
 // POST /invoices
 // SEC-H25: creating an invoice is a financial write — gate behind invoices.create.
-router.post('/', idempotent, requirePermission('invoices.create'), async (req, res) => {
+router.post('/', idempotent, requirePermission('invoices.create'), asyncHandler(async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
   const {
@@ -741,11 +742,11 @@ router.post('/', idempotent, requirePermission('invoices.create'), async (req, r
   runAutomations(db, 'invoice_created', { invoice, customer: cust ?? {} });
 
   res.status(201).json({ success: true, data: invoice });
-});
+}));
 
 // PUT /invoices/:id
 // SEC-H25: updating an invoice is a financial write — gate behind invoices.edit.
-router.put('/:id', requirePermission('invoices.edit'), async (req: Request<{ id: string }>, res) => {
+router.put('/:id', requirePermission('invoices.edit'), asyncHandler(async (req: Request<{ id: string }>, res) => {
   const adb = req.asyncDb;
   const existing = await adb.get<any>('SELECT * FROM invoices WHERE id = ?', req.params.id);
   if (!existing) throw new AppError('Invoice not found', 404);
@@ -852,7 +853,7 @@ router.put('/:id', requirePermission('invoices.edit'), async (req: Request<{ id:
   const invoice = await getInvoiceDetail(adb, req.params.id);
   broadcast(WS_EVENTS.INVOICE_UPDATED, invoice, req.tenantSlug || null);
   res.json({ success: true, data: invoice });
-});
+}));
 
 // Payment dedup: prevent double-submit within 5 seconds for same invoice+amount
 const recentPayments = new Map<string, number>();
@@ -1177,7 +1178,7 @@ async function recordInvoicePayment({
 
 // POST /invoices/:id/payments
 // SEC-H25: recording a payment is a financial write — gate behind invoices.record_payment.
-router.post('/:id/payments', idempotent, requirePermission('invoices.record_payment'), async (req, res) => {
+router.post('/:id/payments', idempotent, requirePermission('invoices.record_payment'), asyncHandler(async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
   const { method = 'cash', method_detail, transaction_id, notes, payment_type = 'payment' } = req.body;
@@ -1213,7 +1214,7 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
   }
 
   res.status(201).json({ success: true, data: payment.updatedInvoice });
-});
+}));
 
 // WEB-UIUX-1526: per-payment reverse. Cashier fat-fingers $5,000 instead of
 // $50 — Void Invoice would VOID every payment on the invoice (destroys
@@ -1224,7 +1225,7 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
 // remaining positive payment rows after marking the row voided. Refunds /
 // credit-notes recorded as separate payment rows are intentionally NOT
 // reversible via this route — they have their own lifecycle.
-router.patch('/payments/:paymentId/reverse', async (req: Request<{ paymentId: string }>, res) => {
+router.patch('/payments/:paymentId/reverse', asyncHandler(async (req: Request<{ paymentId: string }>, res) => {
   const adb = req.asyncDb;
   const role = (req as any)?.user?.role;
   if (role !== 'admin' && role !== 'manager') {
@@ -1335,7 +1336,7 @@ router.patch('/payments/:paymentId/reverse', async (req: Request<{ paymentId: st
 
   const updatedInvoice = await getInvoiceDetail(adb, payment.invoice_id);
   res.json({ success: true, data: updatedInvoice });
-});
+}));
 
 // POST /invoices/:id/void (rate limited: 1 per minute per user)
 // SA5-1: rate-limit state lives in the tenant DB `rate_limits` table so
@@ -1343,7 +1344,7 @@ router.patch('/payments/:paymentId/reverse', async (req: Request<{ paymentId: st
 // is `invoice_void`, key is the user id as string, window 60s, max 1 attempt.
 // SEC-H25: voiding is destructive — gate behind invoices.void permission. The
 // inline role check below is kept as defence-in-depth.
-router.post('/:id/void', requirePermission('invoices.void'), async (req, res) => {
+router.post('/:id/void', requirePermission('invoices.void'), asyncHandler(async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
   // Defence-in-depth: requirePermission above is authoritative; this role check
@@ -1442,14 +1443,14 @@ router.post('/:id/void', requirePermission('invoices.void'), async (req, res) =>
   audit(db, 'invoice_voided', req.user!.id, req.ip || 'unknown', { invoice_id: Number(req.params.id) });
   broadcast(WS_EVENTS.INVOICE_UPDATED, { id: Number(req.params.id), status: 'void' }, req.tenantSlug || null);
   res.json({ success: true, data: { message: 'Invoice voided, stock restored' } });
-});
+}));
 
 // ===================================================================
 // POST /bulk-action - Batch invoice actions
 // ===================================================================
 // SEC-H25: bulk invoice actions (mark_paid, void, send_reminder) are privileged
 // — gate behind invoices.bulk_action permission.
-router.post('/bulk-action', requirePermission('invoices.bulk_action'), async (req, res) => {
+router.post('/bulk-action', requirePermission('invoices.bulk_action'), asyncHandler(async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
 
@@ -1625,7 +1626,7 @@ router.post('/bulk-action', requirePermission('invoices.bulk_action'), async (re
       errors: errors.length > 0 ? errors : undefined,
     },
   });
-});
+}));
 
 // ===================================================================
 // POST /:id/credit-note - Generate credit note for an invoice
@@ -1633,7 +1634,7 @@ router.post('/bulk-action', requirePermission('invoices.bulk_action'), async (re
 // SEC-H25: credit notes modify the invoice ledger — gate behind invoices.credit_note.
 // WEB-UIUX-1294: idempotent middleware coalesces duplicate POSTs (slow-network
 // double-click) onto a single CRN row + audit entry + broadcast.
-router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_note'), async (req: Request<{ id: string }>, res) => {
+router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_note'), asyncHandler(async (req: Request<{ id: string }>, res) => {
   const db = req.db;
   const adb = req.asyncDb;
   // @audit-fixed: validate id and use radix 10. Previously parseInt("abc") = NaN
@@ -2012,7 +2013,7 @@ router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_n
       store_credit_balance,
     },
   });
-});
+}));
 
 // POST /invoices/:id/send-receipt — dispatch the post-sale receipt via SMS
 // or email. Called from the POS receipt screen ("SMS" / "Email" buttons).
@@ -2024,7 +2025,7 @@ router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_n
 // can already see; we audit the dispatch and log only redacted recipient
 // info (phone last-4, email domain) so the audit trail isn't a PII honey
 // pot. Touches no invoice rows — re-sending a receipt is non-mutating.
-router.post('/:id/send-receipt', requirePermission('invoices.view'), async (req, res) => {
+router.post('/:id/send-receipt', requirePermission('invoices.view'), asyncHandler(async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
   const invoiceId = validateId(req.params.id, 'invoice_id');
@@ -2136,6 +2137,6 @@ router.post('/:id/send-receipt', requirePermission('invoices.view'), async (req,
     success: true,
     data: { delivered, channel: 'email', to_domain: toDomain },
   });
-});
+}));
 
 export default router;
