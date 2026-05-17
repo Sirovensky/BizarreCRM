@@ -327,8 +327,18 @@ router.post('/:id/return', requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK)
 
   const txNow = now();
   const returnTx = db.transaction(() => {
-    db.prepare('UPDATE loaner_history SET returned_at = ?, condition_in = ?, notes = COALESCE(?, notes) WHERE id = ?')
-      .run(txNow, normalizedCondition, cleanNotes, active.id);
+    // BUGHUNT-2026-05-17: guard the loaner_history UPDATE with `returned_at
+    // IS NULL`. Without this, two concurrent /return calls would both pass
+    // the SELECT-active check above, both reach this UPDATE, and both
+    // create a full invoice + payment + return-charge row for the same
+    // loan — duplicate billing. changes === 0 means another return won
+    // the race; abort the tx so the duplicate charges never land.
+    const closeRes = db.prepare(
+      'UPDATE loaner_history SET returned_at = ?, condition_in = ?, notes = COALESCE(?, notes) WHERE id = ? AND returned_at IS NULL'
+    ).run(txNow, normalizedCondition, cleanNotes, active.id);
+    if (closeRes.changes === 0) {
+      throw new AppError('Loaner was just returned by another user; refresh the device list.', 409);
+    }
     db.prepare('UPDATE loaner_devices SET status = ?, condition = COALESCE(?, condition), updated_at = ? WHERE id = ?')
       .run('available', normalizedCondition, txNow, id);
 
@@ -481,27 +491,41 @@ router.post('/:id/mark-lost', requirePermission(PERMISSIONS.INVENTORY_ADJUST_STO
   const recordCharge = chargeAmountNum !== null && chargeAmountNum > 0;
   const txNow = now();
 
-  const lostTx = db.transaction((): void => {
+  const lostTx = db.transaction((): { historyClosed: boolean } => {
     const u = db.prepare(
       "UPDATE loaner_devices SET status = 'lost', updated_at = ? WHERE id = ? AND is_deleted = 0"
     ).run(txNow, id);
     if (u.changes === 0) throw new AppError('Loaner device not found', 404);
 
+    let historyClosed = false;
     if (active) {
-      db.prepare(
+      // BUGHUNT-2026-05-17: guard the loaner_history UPDATE with
+      // `returned_at IS NULL`. Without this, a concurrent /return call
+      // could already have closed the loan — the mark-lost UPDATE would
+      // overwrite condition_in='good' (or whatever the technician keyed)
+      // back to 'lost' and clobber the return notes. changes === 0 means
+      // the loan was already closed; that's fine, we proceed to flip the
+      // device status without re-closing the history row.
+      const closeRes = db.prepare(
         `UPDATE loaner_history
             SET returned_at = ?,
                 condition_in = COALESCE(condition_in, 'lost'),
                 notes = COALESCE(?, notes)
-          WHERE id = ?`,
+          WHERE id = ? AND returned_at IS NULL`,
       ).run(txNow, notes ?? null, active.id);
+      historyClosed = closeRes.changes > 0;
     }
+    return { historyClosed };
   });
-  lostTx();
+  const { historyClosed: lostHistoryClosed } = lostTx();
 
   // Optional invoice for the unreturned device — mirrors `/return` charge.
+  // BUGHUNT-2026-05-17: only invoice if we actually closed the history row
+  // inside the tx. If a concurrent /return slipped in first, the loaner is
+  // already legitimately returned and we should not double-charge the
+  // customer for "loss" on the same loan.
   let charge: any = null;
-  if (recordCharge && active?.customer_id) {
+  if (recordCharge && active?.customer_id && lostHistoryClosed) {
     try {
       // BUGHUNT-2026-05-16: mirror the `/return` charge path — use the
       // shared INV-XXXX counter so the row lands in the regular invoice
