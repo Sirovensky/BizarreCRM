@@ -290,8 +290,13 @@ class InventoryDetailViewModel @Inject constructor(
                 val points = resp.data?.history?.map { p ->
                     PricePoint(
                         isoDate = p.date,
-                        costCents = ((p.costPrice ?: 0.0) * 100).toLong(),
-                        retailCents = ((p.retailPrice ?: 0.0) * 100).toLong(),
+                        // BUGHUNT-2026-05-17: Math.round so server-returned
+                        // decimal prices like $9.99 map to 999 cents, not 998
+                        // from IEEE-754 truncation. Without this the price
+                        // history chart plotted each point a cent below the
+                        // real catalog cost/retail.
+                        costCents = Math.round((p.costPrice ?: 0.0) * 100),
+                        retailCents = Math.round((p.retailPrice ?: 0.0) * 100),
                     )
                 } ?: emptyList()
                 _state.value = _state.value.copy(priceHistory = points)

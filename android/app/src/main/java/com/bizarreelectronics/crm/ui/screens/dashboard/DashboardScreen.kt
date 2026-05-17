@@ -302,7 +302,12 @@ class DashboardViewModel @Inject constructor(
             try {
                 val data: CashTrappedData? = dashboardRepository.getCashTrapped()
                 if (data != null) {
-                    _cashTrappedTotalCents.value = (data.totalCashTrapped * 100).toLong()
+                    // BUGHUNT-2026-05-17: Math.round on server-returned
+                    // decimal dollar amounts. Without this every cash-trapped
+                    // total displayed on the dashboard read one cent low for
+                    // any total that happened to be a fractional dollar like
+                    // $1299.99 (truncated to 129998 cents).
+                    _cashTrappedTotalCents.value = Math.round(data.totalCashTrapped * 100)
                     _cashTrappedItemCount.value = data.itemCount
                     _cashTrappedTopItems.value = data.topOffenders.map { offender ->
                         val daysSince = offender.lastSold?.let { iso ->
@@ -315,7 +320,7 @@ class DashboardViewModel @Inject constructor(
                         CashTrappedItem(
                             id = offender.id,
                             name = offender.name,
-                            valueCents = (offender.value * 100).toLong(),
+                            valueCents = Math.round(offender.value * 100),
                             daysSinceLastSale = daysSince,
                         )
                     }

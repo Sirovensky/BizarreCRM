@@ -115,7 +115,11 @@ fun CustomerLtvTierScreen(
                 val currencyFormat = NumberFormat.getCurrencyInstance(Locale.US)
                 // lifetimeValue from server is a double (dollars); multiply by 100 for cents
                 // then format back to dollars for display.
-                val lifetimeValueCents = (ltv.lifetimeValue * 100).toLong()
+                // BUGHUNT-2026-05-17: Math.round so `$1000.00 * 100` doesn't
+                // truncate to 99999 in IEEE-754. Without this a customer
+                // landing exactly on the gold/platinum tier threshold was
+                // displayed in the lower tier on the LTV-tier screen.
+                val lifetimeValueCents = Math.round(ltv.lifetimeValue * 100)
                 val formattedLtv = currencyFormat.format(lifetimeValueCents / 100.0)
 
                 Column(

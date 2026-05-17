@@ -69,7 +69,12 @@ class GiftCardLiabilityViewModel @Inject constructor(
                 val gcResp = refundApi.listGiftCards(status = "active", perPage = 1)
                 val summary = gcResp.data?.summary
 
-                val outstandingCents = ((summary?.totalOutstanding ?: 0.0) * 100).toLong()
+                // BUGHUNT-2026-05-17: Math.round on server-returned float
+                // dollars. `(9.99 * 100).toLong()` is 998 in IEEE-754 — the
+                // gift-card liability total displayed on the Reports tab
+                // was one cent low for any fractional-dollar total. That's
+                // visible to the operator on a critical liability metric.
+                val outstandingCents = Math.round((summary?.totalOutstanding ?: 0.0) * 100)
                 val activeCount = summary?.activeCount ?: 0
 
                 // Store-credit aggregate: server has no dedicated summary endpoint yet.

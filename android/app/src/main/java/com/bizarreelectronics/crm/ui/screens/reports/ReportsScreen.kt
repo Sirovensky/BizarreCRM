@@ -745,13 +745,17 @@ class ReportsViewModel @Inject constructor(
         //   once /reports/services endpoint is available. For now, payment-method
         //   revenue breakdown is a reasonable proxy for category breakdown.
         val rowsRaw = data["rows"] as? List<*> ?: emptyList<Any>()
+        // BUGHUNT-2026-05-17: Math.round on server-returned daily revenue
+        // dollars. Without it, every Reports chart point read one cent low
+        // for any day whose revenue happened to be a fractional dollar
+        // amount — that's visible drift on the most-trafficked dashboard.
         val salesByDay = rowsRaw.mapNotNull { row ->
             val map = row as? Map<*, *> ?: return@mapNotNull null
             val period = map["period"] as? String ?: return@mapNotNull null
             val revenueDollars = (map["revenue"] as? Number)?.toDouble() ?: 0.0
             SalesByDayPoint(
                 isoDate = period,
-                totalCents = (revenueDollars * 100).toLong(),
+                totalCents = Math.round(revenueDollars * 100),
             )
         }
         val revenueOverTime = rowsRaw.mapNotNull { row ->
@@ -760,7 +764,7 @@ class ReportsViewModel @Inject constructor(
             val revenueDollars = (map["revenue"] as? Number)?.toDouble() ?: 0.0
             RevenueOverTimePoint(
                 isoDate = period,
-                revenueCents = (revenueDollars * 100).toLong(),
+                revenueCents = Math.round(revenueDollars * 100),
             )
         }
 
