@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { Buffer } from 'node:buffer';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import type { AsyncDb } from '../db/async-db.js';
 
@@ -73,7 +74,12 @@ router.put('/:key', asyncHandler(async (req, res) => {
     res.status(400).json({ success: false, error: 'value must be JSON-serialisable' });
     return;
   }
-  if (value.length > MAX_PREF_VALUE_BYTES) {
+  // BUGHUNT-2026-05-17: cap on serialized BYTES, not JS chars. value.length
+  // counts UTF-16 code units, so a value made entirely of emoji or other
+  // 4-byte UTF-8 codepoints could pass the 32KB check while occupying
+  // 128KB on disk (4x the intended ceiling). Use Buffer.byteLength to
+  // compare like-for-like.
+  if (Buffer.byteLength(value, 'utf8') > MAX_PREF_VALUE_BYTES) {
     res.status(400).json({ success: false, error: `value too large (max ${MAX_PREF_VALUE_BYTES} bytes)` });
     return;
   }
