@@ -16,9 +16,11 @@
  *   forged "authorized" event cannot mark an invoice paid.
  */
 import { Router, Request, Response } from 'express';
+import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { audit } from '../utils/audit.js';
+import { checkWindowRate } from '../utils/rateLimiter.js';
 import { createLogger } from '../utils/logger.js';
 import {
   createCheckoutSession,
@@ -64,6 +66,16 @@ async function loadFinancingConfig(asyncDb: Request['asyncDb']): Promise<Financi
 }
 
 router.post('/checkout-session', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
+  // BUGHUNT-2026-05-17: rate-limit external Affirm/Klarna calls so a
+  // buggy POS script can't burst the financing provider and trip our
+  // tenant's per-merchant throttle (some providers ban after thousands
+  // of failed checkouts/min). 20/min/user is generous for legitimate
+  // cashier use; double-clicks are dedup'd by 30s idempotency at the
+  // provider level too.
+  const userId = req.user?.id;
+  if (userId && !checkWindowRate(req.db, 'financing_checkout', String(userId), 20, 60_000)) {
+    throw new AppError('Too many financing checkout requests. Try again shortly.', 429);
+  }
   const cfg = await loadFinancingConfig(req.asyncDb);
   const { invoice_id, amount_cents, customer_email, customer_first_name, customer_last_name, customer_phone } = req.body ?? {};
   const invoiceId = Number(invoice_id);
