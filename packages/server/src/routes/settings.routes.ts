@@ -1440,7 +1440,19 @@ router.delete('/tax-classes/:id', adminOnly, async (req, res) => {
   }
 
   const before = await adb.get<any>('SELECT * FROM tax_classes WHERE id = ?', taxClassId);
-  await adb.run('DELETE FROM tax_classes WHERE id = ?', taxClassId);
+  // BUGHUNT-2026-05-17: pre-check above is TOCTOU. Two admins concurrently
+  // deleting two different tax classes (when there are exactly 2 left) both
+  // pass count > 1 and both DELETE, leaving 0 tax classes. pos.routes.ts
+  // then hangs on every checkout because the default-class lookup returns
+  // empty. Atomic guard: only delete if at least 2 tax classes exist at
+  // write time so deleting THIS row still leaves >= 1.
+  const delResult = await adb.run(
+    `DELETE FROM tax_classes WHERE id = ? AND (SELECT COUNT(*) FROM tax_classes) >= 2`,
+    taxClassId,
+  );
+  if (delResult.changes === 0) {
+    throw new AppError('Cannot delete the last remaining tax class', 400);
+  }
   audit(db, 'tax_class_deleted', req.user!.id, req.ip || 'unknown', {
     tax_class_id: Number(taxClassId),
     name: before?.name,
