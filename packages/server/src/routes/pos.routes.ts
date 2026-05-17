@@ -2295,7 +2295,6 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
   let change = 0;
   let cardOverpayment = 0;
   let overpaymentMethodLabel: string | null = null;
-  let existingCreditId: number | null = null;
 
   if (isPaid) {
     if (Array.isArray(splitPayments) && splitPayments.length > 0) {
@@ -2360,15 +2359,12 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
       overpaymentMethodLabel = payment_method;
     }
 
-    // Resolve whether store_credits has an existing row for this customer so
-    // we know whether to UPDATE vs INSERT inside the txn batch.
-    if (cardOverpayment > 0 && customerId) {
-      const existingCredit = await adb.get<{ id: number }>(
-        'SELECT id FROM store_credits WHERE customer_id = ?',
-        customerId,
-      );
-      if (existingCredit) existingCreditId = existingCredit.id;
-    }
+    // BUGHUNT-2026-05-17: removed pre-SELECT for existing store_credits row.
+    // The SELECT-then-INSERT/UPDATE branch raced: two concurrent overpayment
+    // checkouts both seeing "no row exists" would both queue an INSERT, and
+    // the second tx would die on the UNIQUE(customer_id) constraint added
+    // in migration 109 — rolling back the entire POS sale. Replaced by an
+    // atomic INSERT ... ON CONFLICT DO UPDATE in the tx batch below.
   }
 
   // ---- 4b. If closing a ticket, resolve the closed-status row (async read) -
@@ -2683,21 +2679,21 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
     });
 
     // SEC-M43: card overpayment becomes store credit, atomically.
+    // BUGHUNT-2026-05-17: single ON CONFLICT DO UPDATE instead of
+    // pre-SELECT-then-branch. Avoids racing two concurrent POS checkouts
+    // on the same customer (UNIQUE(customer_id) from mig 109 would have
+    // killed the losing tx).
     if (cardOverpayment > 0 && customerId) {
-      if (existingCreditId) {
-        txQueries.push({
-          sql: 'UPDATE store_credits SET amount = amount + ?, updated_at = ? WHERE id = ?',
-          params: [cardOverpayment, now(), existingCreditId],
-        });
-      } else {
-        txQueries.push({
-          sql: `
-            INSERT INTO store_credits (customer_id, amount, created_at, updated_at)
-            VALUES (?, ?, ?, ?)
-          `,
-          params: [customerId, cardOverpayment, now(), now()],
-        });
-      }
+      txQueries.push({
+        sql: `
+          INSERT INTO store_credits (customer_id, amount, created_at, updated_at)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(customer_id) DO UPDATE SET
+            amount = amount + excluded.amount,
+            updated_at = excluded.updated_at
+        `,
+        params: [customerId, cardOverpayment, now(), now()],
+      });
       txQueries.push({
         sql: `
           INSERT INTO store_credit_transactions
