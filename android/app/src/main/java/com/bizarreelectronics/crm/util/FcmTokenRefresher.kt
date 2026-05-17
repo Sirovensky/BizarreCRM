@@ -5,6 +5,7 @@ import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
 import com.google.firebase.messaging.FirebaseMessaging
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -66,7 +67,7 @@ class FcmTokenRefresher @Inject constructor(
         if (appPreferences.fcmTokenRegistered && nowMs - lastRefreshMs < REFRESH_INTERVAL_MS) return
 
         withContext(Dispatchers.IO) {
-            runCatching {
+            try {
                 val token = FirebaseMessaging.getInstance().token.await()
                 if (BuildConfig.DEBUG) {
                     Timber.d("FcmTokenRefresher: fetched token (len=%d)", token.length)
@@ -78,7 +79,13 @@ class FcmTokenRefresher @Inject constructor(
                 if (ok) {
                     Timber.i("FcmTokenRefresher: token refreshed and registered with server")
                 }
-            }.onFailure { e ->
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation. Was inside
+                // runCatching which catches CancellationException via
+                // kotlin.Result; the swallow logged a misleading
+                // "refresh failed" line on legitimate app-background cancel.
+                throw e
+            } catch (e: Exception) {
                 // Non-fatal — the existing token remains valid; retry next cycle.
                 Timber.w(e, "FcmTokenRefresher: refresh failed, will retry on next foreground")
             }
