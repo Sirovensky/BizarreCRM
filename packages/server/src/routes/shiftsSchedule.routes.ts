@@ -356,20 +356,35 @@ router.post('/swap/:requestId/accept', asyncHandler(async (req: any, res: any) =
   }
 
   // Transfer shift ownership atomically — both updates must succeed together.
-  await adb.transaction([
-    {
-      sql: `UPDATE shift_schedules SET user_id = ?, updated_at = datetime('now') WHERE id = ?`,
-      params: [callerId, swap.shift_id],
-      expectChanges: true,
-      expectChangesError: 'Shift no longer exists',
-    },
-    {
-      sql: `UPDATE shift_swap_requests SET status = 'accepted', decided_at = datetime('now') WHERE id = ?`,
-      params: [reqId],
-      expectChanges: true,
-      expectChangesError: 'Swap request no longer exists',
-    },
-  ]);
+  // BUGHUNT-2026-05-17: guard both UPDATEs with CAS conditions. Without
+  // them: (a) a racing /cancel by the requester is silently overwritten
+  // back to 'accepted' (the requester thinks they canceled, but the
+  // shift is transferred anyway); (b) if a manager reassigned the
+  // shift between the SELECT and now, the /accept silently steals the
+  // shift back from the new owner. CAS rolls the whole tx back if
+  // either race materialised.
+  try {
+    await adb.transaction([
+      {
+        sql: `UPDATE shift_schedules SET user_id = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?`,
+        params: [callerId, swap.shift_id, swap.requester_user_id],
+        expectChanges: true,
+        expectChangesError: 'SHIFT_OWNER_CHANGED',
+      },
+      {
+        sql: `UPDATE shift_swap_requests SET status = 'accepted', decided_at = datetime('now') WHERE id = ? AND status = 'pending'`,
+        params: [reqId],
+        expectChanges: true,
+        expectChangesError: 'SWAP_STATUS_CHANGED',
+      },
+    ]);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('SHIFT_OWNER_CHANGED') || msg.includes('SWAP_STATUS_CHANGED')) {
+      throw new AppError('Shift or swap state changed concurrently; refresh and retry', 409);
+    }
+    throw err;
+  }
 
   audit(db, 'shift_swap_accepted', callerId, req.ip || 'unknown', {
     swap_id: reqId, shift_id: swap.shift_id, from_user_id: swap.requester_user_id,
