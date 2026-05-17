@@ -974,12 +974,17 @@ router.put(
         : undefined,
     }));
 
-    await adb.run(`
+    // BUGHUNT-2026-05-17: CAS on status — the state-machine transition was
+    // validated against existing.status above, but the unguarded UPDATE
+    // would let a concurrent /convert (or another PUT) silently slip its
+    // status change past us, bypassing assertLeadTransition. With `AND
+    // status = ?` the writer that arrives second sees changes=0 → 409.
+    const leadUpdRes = await adb.run(`
       UPDATE leads SET
         customer_id = ?, first_name = ?, last_name = ?, email = ?, phone = ?,
         zip_code = ?, address = ?, status = ?, referred_by = ?, assigned_to = ?,
         source = ?, notes = ?, lost_reason = ?, updated_at = datetime('now')
-      WHERE id = ?
+      WHERE id = ? AND status = ?
     `,
       customer_id !== undefined ? customer_id : existing.customer_id,
       first_name !== undefined ? first_name : existing.first_name,
@@ -995,7 +1000,11 @@ router.put(
       notes !== undefined ? notes : existing.notes,
       effectiveStatus === 'lost' ? (validatedLostReason ?? existing.lost_reason) : null,
       id,
+      existing.status,
     );
+    if (leadUpdRes.changes === 0) {
+      throw new AppError('Lead status changed concurrently; refresh and retry', 409);
+    }
 
     // Replace devices if provided
     // BUGHUNT-2026-05-17: bundle the DELETE + each INSERT into a single
