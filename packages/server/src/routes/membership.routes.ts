@@ -17,6 +17,7 @@ import {
   loadMembershipBillingSubscription,
   runMembershipBillingOnce,
 } from '../services/membershipBilling.js';
+import { checkWindowRate } from '../utils/rateLimiter.js';
 
 const router = Router();
 type AnyRow = Record<string, any>;
@@ -1005,6 +1006,17 @@ router.post('/:id/run-billing', asyncHandler(async (req: Request, res: Response)
   const db = req.db;
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid subscription id', 400);
+  // BUGHUNT-2026-05-17: per-subscription rate limit so a double-click on
+  // /run-billing (or two operators clicking within seconds) can't both
+  // race past the in-memory subscription snapshot + gateway.charge()
+  // before either commits — which would charge the card twice and push
+  // current_period_end forward by two months in a single user action.
+  // billMembershipSubscription's pre-charge re-read protects against
+  // cancel-during-charge but not against two concurrent SAME-status
+  // calls. 60s is generous for legitimate "click bill now once" usage.
+  if (!checkWindowRate(db, 'membership_manual_bill', String(id), 1, 60_000)) {
+    throw new AppError('Billing was just attempted for this subscription. Wait a minute before retrying.', 429);
+  }
   const force = req.query.force === '1' || req.body?.force === true;
   const sub = loadMembershipBillingSubscription(db, id);
   if (!sub) throw new AppError('Subscription not found', 404);
@@ -1036,6 +1048,14 @@ router.post('/:id/retry-payment', asyncHandler(async (req: Request, res: Respons
   const db = req.db;
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid subscription id', 400);
+  // BUGHUNT-2026-05-17: share the same per-subscription window as
+  // /run-billing — a Retry button double-click against a past-due sub
+  // would otherwise double-charge. The rate-limit key is the
+  // subscription id (not the user), so the window applies whether
+  // it's one admin clicking twice or two admins racing the click.
+  if (!checkWindowRate(db, 'membership_manual_bill', String(id), 1, 60_000)) {
+    throw new AppError('Billing was just attempted for this subscription. Wait a minute before retrying.', 429);
+  }
   const sub = loadMembershipBillingSubscription(db, id);
   if (!sub) throw new AppError('Subscription not found', 404);
   if ((sub as any).status !== 'past_due') {
