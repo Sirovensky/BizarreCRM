@@ -234,6 +234,18 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   const conditions: string[] = [];
   const params: any[] = [];
 
+  // BUGHUNT-2026-05-17: non-admin/manager users only see their OWN
+  // expenses. Previously this endpoint returned every employee's
+  // expense rows (amount, description, receipt path) to any
+  // authenticated user — an obvious within-tenant PII leak. The PUT
+  // and DELETE handlers below already enforce owner-or-admin; the
+  // list/detail GETs missed the matching guard.
+  const isPrivileged = req.user?.role === 'admin' || req.user?.role === 'manager';
+  if (!isPrivileged) {
+    conditions.push('e.user_id = ?');
+    params.push(req.user!.id);
+  }
+
   if (category) { conditions.push('e.category = ?'); params.push(category); }
   if (fromDate) { conditions.push('e.date >= ?'); params.push(fromDate); }
   if (toDate) { conditions.push('e.date <= ?'); params.push(toDate); }
@@ -307,8 +319,15 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
   // @audit-fixed: validate id is positive integer (NaN previously slipped to SQL as `WHERE id = NaN`)
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isInteger(id) || id <= 0) throw new AppError('Invalid expense ID', 400);
-  const expense = await adb.get('SELECT e.*, u.first_name, u.last_name FROM expenses e LEFT JOIN users u ON u.id = e.user_id WHERE e.id = ?', id);
+  const expense = await adb.get<Record<string, any>>('SELECT e.*, u.first_name, u.last_name FROM expenses e LEFT JOIN users u ON u.id = e.user_id WHERE e.id = ?', id);
   if (!expense) throw new AppError('Expense not found', 404);
+  // BUGHUNT-2026-05-17: non-admin/manager only see their own expense.
+  // Previously an employee could enumerate sequential IDs and read
+  // every coworker's expense detail (amount, receipt path, description).
+  const isPrivileged = req.user?.role === 'admin' || req.user?.role === 'manager';
+  if (!isPrivileged && expense.user_id !== req.user!.id) {
+    throw new AppError('Expense not found', 404);
+  }
   res.json({ success: true, data: expense });
 }));
 
