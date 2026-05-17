@@ -33,6 +33,11 @@ public actor SmsCachedRepositoryImpl: SmsCachedRepository {
     private let maxAgeSeconds: Int
     private var cache: [String: CacheEntry] = [:]
     private var globalLastSyncedAt: Date?
+    /// BUGHUNT-2026-05-17: single-flight inflight tracker. Two concurrent
+    /// cache-miss callers used to spawn separate listSmsConversations calls —
+    /// the `await` inside `fetchAndCache` releases the actor so the second
+    /// caller observed an empty cache and fired its own request.
+    private var inflight: [String: Task<[SmsConversation], Error>] = [:]
 
     // MARK: - Init
 
@@ -90,8 +95,22 @@ public actor SmsCachedRepositoryImpl: SmsCachedRepository {
     // MARK: - Private
 
     private func fetchAndCache(keyword: String?) async throws -> [SmsConversation] {
-        let rows = try await api.listSmsConversations(keyword: keyword)
         let key = keyword ?? ""
+        if let existing = inflight[key] {
+            return try await existing.value
+        }
+        let task = Task<[SmsConversation], Error> { [keyword, key] in
+            try await self.performFetch(keyword: keyword, key: key)
+        }
+        inflight[key] = task
+        defer { inflight[key] = nil }
+        return try await task.value
+    }
+
+    /// Actor-isolated network call + cache write. Factored out so the Task in
+    /// `fetchAndCache` can be a `@Sendable` closure that hops onto the actor.
+    private func performFetch(keyword: String?, key: String) async throws -> [SmsConversation] {
+        let rows = try await api.listSmsConversations(keyword: keyword)
         let now = Date()
         cache[key] = CacheEntry(rows: rows, timestamp: now)
         globalLastSyncedAt = now

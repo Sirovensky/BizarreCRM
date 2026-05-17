@@ -69,6 +69,9 @@ public actor ExpenseCachedRepositoryImpl: ExpenseCachedRepository {
     private let maxAgeSeconds: Int
     private var cache: [String: CacheEntry] = [:]
     private var globalLastSyncedAt: Date?
+    /// BUGHUNT-2026-05-17: single-flight inflight tracker. See
+    /// CustomerCachedRepositoryImpl for the rationale.
+    private var inflight: [String: Task<ExpensesListResponse, Error>] = [:]
 
     // MARK: - Init
 
@@ -101,6 +104,19 @@ public actor ExpenseCachedRepositoryImpl: ExpenseCachedRepository {
     }
 
     private func fetchAndCache(keyword: String?, filter: ExpenseListFilter) async throws -> ExpensesListResponse {
+        let key = cacheKey(keyword: keyword, filter: filter)
+        if let existing = inflight[key] {
+            return try await existing.value
+        }
+        let task = Task<ExpensesListResponse, Error> { [keyword, filter, key] in
+            try await self.performFetch(keyword: keyword, filter: filter, key: key)
+        }
+        inflight[key] = task
+        defer { inflight[key] = nil }
+        return try await task.value
+    }
+
+    private func performFetch(keyword: String?, filter: ExpenseListFilter, key: String) async throws -> ExpensesListResponse {
         let resp = try await api.listExpenses(
             keyword: keyword,
             category: filter.category.flatMap { $0.isEmpty ? nil : $0 },
@@ -108,7 +124,6 @@ public actor ExpenseCachedRepositoryImpl: ExpenseCachedRepository {
             toDate: filter.toDate.flatMap { $0.isEmpty ? nil : $0 },
             status: filter.status.flatMap { $0.isEmpty ? nil : $0 }
         )
-        let key = cacheKey(keyword: keyword, filter: filter)
         let now = Date()
         cache[key] = CacheEntry(response: resp, timestamp: now)
         globalLastSyncedAt = now

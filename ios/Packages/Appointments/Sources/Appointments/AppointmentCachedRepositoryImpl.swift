@@ -26,6 +26,8 @@ public actor AppointmentCachedRepositoryImpl: AppointmentCachedRepository {
     private let maxAgeSeconds: Int
     private var cachedRows: [Appointment] = []
     private var cacheTimestamp: Date?
+    /// BUGHUNT-2026-05-17: single-flight task — see CustomerCachedRepositoryImpl.
+    private var inflightTask: Task<[Appointment], Error>?
 
     // MARK: - Init
 
@@ -53,6 +55,18 @@ public actor AppointmentCachedRepositoryImpl: AppointmentCachedRepository {
     // MARK: - Private
 
     private func fetchAndCache() async throws -> [Appointment] {
+        if let existing = inflightTask {
+            return try await existing.value
+        }
+        let task = Task<[Appointment], Error> {
+            try await self.performFetch()
+        }
+        inflightTask = task
+        defer { inflightTask = nil }
+        return try await task.value
+    }
+
+    private func performFetch() async throws -> [Appointment] {
         let rows = try await api.listAppointments()
         cachedRows = rows
         cacheTimestamp = Date()

@@ -47,6 +47,12 @@ public actor TicketCachedRepositoryImpl: TicketCachedRepository {
     private let maxAgeSeconds: Int
     private var cache: [String: CacheEntry] = [:]
     private var latestSyncedAt: Date?
+    /// BUGHUNT-2026-05-17: single-flight inflight tracker. Two concurrent
+    /// cache-miss callers used to spawn separate `remote.list(...)` calls —
+    /// the `await` inside `fetch()` releases the actor so the second caller
+    /// observed an empty cache and fired its own request. Same fix pattern as
+    /// CustomerCachedRepositoryImpl.
+    private var inflight: [String: Task<[TicketSummary], Error>] = [:]
 
     // MARK: - Init
 
@@ -104,6 +110,21 @@ public actor TicketCachedRepositoryImpl: TicketCachedRepository {
     }
 
     private func fetch(filter: TicketListFilter, urgency: TicketUrgencyFilter?, keyword: String?, key: String) async throws -> [TicketSummary] {
+        if let existing = inflight[key] {
+            return try await existing.value
+        }
+        let task = Task<[TicketSummary], Error> { [filter, urgency, keyword, key] in
+            try await self.performFetch(filter: filter, urgency: urgency, keyword: keyword, key: key)
+        }
+        inflight[key] = task
+        defer { inflight[key] = nil }
+        return try await task.value
+    }
+
+    /// Actor-isolated network call + cache write. Factored out so the Task in
+    /// `fetch` can be a plain `@Sendable` closure that hops onto the actor via
+    /// `await self.performFetch(...)`.
+    private func performFetch(filter: TicketListFilter, urgency: TicketUrgencyFilter?, keyword: String?, key: String) async throws -> [TicketSummary] {
         let tickets = try await remote.list(filter: filter, urgency: urgency, keyword: keyword)
         let now = Date()
         cache[key] = CacheEntry(tickets: tickets, fetchedAt: now)

@@ -36,6 +36,9 @@ public actor LeadCachedRepositoryImpl: LeadCachedRepository {
     private var cache: [String: CacheEntry] = [:]
     /// Most-recent successful fetch across all keywords (used for StalenessIndicator).
     private var globalLastSyncedAt: Date?
+    /// BUGHUNT-2026-05-17: single-flight inflight tracker. See
+    /// CustomerCachedRepositoryImpl for the rationale.
+    private var inflight: [String: Task<[Lead], Error>] = [:]
 
     // MARK: - Init
 
@@ -64,8 +67,20 @@ public actor LeadCachedRepositoryImpl: LeadCachedRepository {
     // MARK: - Private
 
     private func fetchAndCache(keyword: String?) async throws -> [Lead] {
-        let rows = try await api.listLeads(keyword: keyword)
         let key = keyword ?? ""
+        if let existing = inflight[key] {
+            return try await existing.value
+        }
+        let task = Task<[Lead], Error> { [keyword, key] in
+            try await self.performFetch(keyword: keyword, key: key)
+        }
+        inflight[key] = task
+        defer { inflight[key] = nil }
+        return try await task.value
+    }
+
+    private func performFetch(keyword: String?, key: String) async throws -> [Lead] {
+        let rows = try await api.listLeads(keyword: keyword)
         let now = Date()
         cache[key] = CacheEntry(rows: rows, timestamp: now)
         globalLastSyncedAt = now

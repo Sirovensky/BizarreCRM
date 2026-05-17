@@ -26,6 +26,10 @@ public actor EmployeeCachedRepositoryImpl: EmployeeCachedRepository {
     private let maxAgeSeconds: Int
     private var cachedRows: [Employee] = []
     private var cacheTimestamp: Date?
+    /// BUGHUNT-2026-05-17: single-flight task so two concurrent cache-miss
+    /// callers don't each fire api.listEmployees(). See
+    /// CustomerCachedRepositoryImpl for the rationale.
+    private var inflightTask: Task<[Employee], Error>?
 
     // MARK: - Init
 
@@ -53,6 +57,18 @@ public actor EmployeeCachedRepositoryImpl: EmployeeCachedRepository {
     // MARK: - Private
 
     private func fetchAndCache() async throws -> [Employee] {
+        if let existing = inflightTask {
+            return try await existing.value
+        }
+        let task = Task<[Employee], Error> {
+            try await self.performFetch()
+        }
+        inflightTask = task
+        defer { inflightTask = nil }
+        return try await task.value
+    }
+
+    private func performFetch() async throws -> [Employee] {
         let rows = try await api.listEmployees()
         cachedRows = rows
         cacheTimestamp = Date()
