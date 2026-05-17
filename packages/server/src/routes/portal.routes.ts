@@ -911,19 +911,25 @@ router.post('/register/check-code', asyncHandler(async (req: PortalRequest, res:
   `, normalized, code);
 
   if (!verification) {
-    // Increment attempt counter on any live code for this phone
-    const anyCode = await adb.get<AnyRow>(`
-      SELECT id, attempts FROM portal_verification_codes
+    // BUGHUNT-2026-05-17: atomic increment + lockout in a single statement so
+    // two parallel wrong-code attempts can't both read attempts=N, both
+    // compute N+1, and both write N+1 (effectively skipping an increment
+    // and letting an attacker pass the 5-attempt cap by issuing two
+    // requests at once). The CASE folds the lockout flip into the same
+    // write, so the moment the counter reaches 5 the code is marked used.
+    const anyCode = await adb.get<{ id: number }>(`
+      SELECT id FROM portal_verification_codes
       WHERE phone = ? AND used = 0 AND expires_at > datetime('now')
       ORDER BY created_at DESC LIMIT 1
     `, normalized);
     if (anyCode) {
-      const newAttempts = anyCode.attempts + 1;
-      if (newAttempts >= 5) {
-        await adb.run('UPDATE portal_verification_codes SET used = 1 WHERE id = ?', anyCode.id);
-      } else {
-        await adb.run('UPDATE portal_verification_codes SET attempts = ? WHERE id = ?', newAttempts, anyCode.id);
-      }
+      await adb.run(
+        `UPDATE portal_verification_codes
+            SET attempts = attempts + 1,
+                used = CASE WHEN attempts + 1 >= 5 THEN 1 ELSE used END
+          WHERE id = ? AND used = 0`,
+        anyCode.id,
+      );
     }
     res.status(400).json({ success: false, message: 'Invalid or expired verification code' });
     return;
@@ -972,20 +978,25 @@ router.post('/register/verify', asyncHandler(async (req: PortalRequest, res: Res
   `, normalized, code);
 
   if (!verification) {
-    // Check if there's an unused code to increment attempts
-    const anyCode = await adb.get<AnyRow>(`
-      SELECT id, attempts FROM portal_verification_codes
+    // BUGHUNT-2026-05-17: atomic increment + lockout (see the sibling
+    // /verify-code endpoint — same race shape and same fix). Without this,
+    // two parallel wrong-code attempts to /register/verify can let an
+    // attacker burn past the 5-attempt lockout by issuing concurrent
+    // requests on the same live code.
+    const anyCode = await adb.get<{ id: number }>(`
+      SELECT id FROM portal_verification_codes
       WHERE phone = ? AND used = 0 AND expires_at > datetime('now')
       ORDER BY created_at DESC LIMIT 1
     `, normalized);
 
     if (anyCode) {
-      const newAttempts = anyCode.attempts + 1;
-      if (newAttempts >= 5) {
-        await adb.run('UPDATE portal_verification_codes SET used = 1 WHERE id = ?', anyCode.id);
-      } else {
-        await adb.run('UPDATE portal_verification_codes SET attempts = ? WHERE id = ?', newAttempts, anyCode.id);
-      }
+      await adb.run(
+        `UPDATE portal_verification_codes
+            SET attempts = attempts + 1,
+                used = CASE WHEN attempts + 1 >= 5 THEN 1 ELSE used END
+          WHERE id = ? AND used = 0`,
+        anyCode.id,
+      );
     }
 
     res.status(400).json({ success: false, message: 'Invalid or expired verification code' });
@@ -1002,23 +1013,41 @@ router.post('/register/verify', asyncHandler(async (req: PortalRequest, res: Res
   const hashedPin = await bcrypt.hash(pin, 12);
   const token = generateToken();
   const sessionId = crypto.randomUUID();
-  await adb.transaction([
-    {
-      sql: 'UPDATE portal_verification_codes SET used = 1 WHERE id = ?',
-      params: [verification.id],
-    },
-    {
-      sql: `UPDATE customers
-              SET portal_pin = ?, portal_verified = 1, portal_created_at = datetime('now'), updated_at = datetime('now')
-            WHERE id = ?`,
-      params: [hashedPin, verification.customer_id],
-    },
-    {
-      sql: `INSERT INTO portal_sessions (id, customer_id, token, scope, expires_at)
-            VALUES (?, ?, ?, 'full', datetime('now', '+24 hours'))`,
-      params: [sessionId, verification.customer_id, token],
-    },
-  ]);
+  // BUGHUNT-2026-05-17: guard the verification-code burn with `AND used = 0`
+  // + expectChanges so two parallel /register/verify calls with the same
+  // valid code can't both flip used=1, both set the customer PIN, and
+  // both mint portal sessions. The first writer wins, the second tx
+  // rolls back and surfaces a clean 409 instead of doubly-applying the
+  // customer-side update (which would otherwise overwrite the PIN
+  // hash and emit a duplicate session row).
+  try {
+    await adb.transaction([
+      {
+        sql: 'UPDATE portal_verification_codes SET used = 1 WHERE id = ? AND used = 0',
+        params: [verification.id],
+        expectChanges: true,
+        expectChangesError: 'PORTAL_CODE_ALREADY_BURNED',
+      },
+      {
+        sql: `UPDATE customers
+                SET portal_pin = ?, portal_verified = 1, portal_created_at = datetime('now'), updated_at = datetime('now')
+              WHERE id = ?`,
+        params: [hashedPin, verification.customer_id],
+      },
+      {
+        sql: `INSERT INTO portal_sessions (id, customer_id, token, scope, expires_at)
+              VALUES (?, ?, ?, 'full', datetime('now', '+24 hours'))`,
+        params: [sessionId, verification.customer_id, token],
+      },
+    ]);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('PORTAL_CODE_ALREADY_BURNED')) {
+      res.status(409).json({ success: false, message: 'Verification code was just consumed; request a new one.' });
+      return;
+    }
+    throw err;
+  }
 
   // PT2: Issue CSRF token cookie alongside the new full-scope session.
   const csrfToken = generateCsrfToken();
