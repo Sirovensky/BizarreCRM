@@ -225,25 +225,53 @@ authedRouter.post('/', asyncHandler(async (req: Request, res: Response) => {
     }
   }
   if (customerIdClean !== null) {
-    const cust = await adb.get('SELECT id FROM customers WHERE id = ?', customerIdClean);
+    // BUGHUNT-2026-05-17: require is_deleted=0 so a soft-deleted customer
+    // can't have a fresh payment link minted (which would email a
+    // payment URL to an unsubscribed customer).
+    const cust = await adb.get('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customerIdClean);
     if (!cust) throw new AppError('Customer not found', 404);
   }
 
   const token = generateToken();
 
-  const result = await adb.run(
-    `INSERT INTO payment_links
-       (token, invoice_id, customer_id, amount_cents, description, provider, status, expires_at, created_by_user_id)
-     VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
-    token,
-    invoiceIdClean,
-    customerIdClean,
-    amountCents,
-    desc || null,
-    providerVal,
-    expires,
-    req.user?.id ?? null,
-  );
+  // BUGHUNT-2026-05-17: atomic insert-if-customer-still-active when a
+  // customer_id was supplied. The token is unique, so the INSERT itself
+  // won't violate any uniqueness on the second writer — but the WHERE
+  // EXISTS guard catches the case where the customer was just /DELETED
+  // between our precheck and the INSERT, preventing the link from being
+  // orphaned onto a soft-deleted row.
+  const result = customerIdClean !== null
+    ? await adb.run(
+        `INSERT INTO payment_links
+           (token, invoice_id, customer_id, amount_cents, description, provider, status, expires_at, created_by_user_id)
+           SELECT ?, ?, ?, ?, ?, ?, 'active', ?, ?
+            WHERE EXISTS (SELECT 1 FROM customers WHERE id = ? AND is_deleted = 0)`,
+        token,
+        invoiceIdClean,
+        customerIdClean,
+        amountCents,
+        desc || null,
+        providerVal,
+        expires,
+        req.user?.id ?? null,
+        customerIdClean,
+      )
+    : await adb.run(
+        `INSERT INTO payment_links
+           (token, invoice_id, customer_id, amount_cents, description, provider, status, expires_at, created_by_user_id)
+         VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
+        token,
+        invoiceIdClean,
+        null,
+        amountCents,
+        desc || null,
+        providerVal,
+        expires,
+        req.user?.id ?? null,
+      );
+  if (customerIdClean !== null && result.changes === 0) {
+    throw new AppError('Customer was just deleted; refresh and retry', 409);
+  }
 
   audit(req.db, 'payment_link.create', req.user?.id ?? null, req.ip ?? '', {
     id: result.lastInsertRowid,
