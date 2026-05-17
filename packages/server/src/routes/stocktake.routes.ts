@@ -119,30 +119,47 @@ router.post(
     // create a fresh empty session and orphan day-1 counts in the prior row.
     // Cancelled / committed rows are fine to share a name — those are
     // historical and won't be confused with the new session.
-    const dup = await adb.get<{ id: number }>(
-      `SELECT id FROM stocktakes
-        WHERE status = 'open'
-          AND LOWER(name) = LOWER(?)
-          AND COALESCE(LOWER(location), '') = COALESCE(LOWER(?), '')
-        LIMIT 1`,
-      name,
-      location,
-    );
-    if (dup) {
-      throw new AppError(
-        `An open stocktake named "${name}"${location ? ` at "${location}"` : ''} already exists (id=${dup.id}). Resume that session or close it before opening another.`,
-        409,
-      );
-    }
-
+    //
+    // BUGHUNT-2026-05-17: stocktakes has no UNIQUE on (status, name, location)
+    // (migration 091), so a pre-check SELECT then bare INSERT was a TOCTOU
+    // window — two concurrent "open count for Back Stock" requests both
+    // passed the SELECT and both INSERTed, splitting the day's counts
+    // across two sessions and silently zeroing one of them on commit.
+    // Fold the dup check into the INSERT via WHERE NOT EXISTS so SQLite's
+    // writer lock serialises the race; the loser sees changes=0 -> 409.
     const result = await adb.run(
       `INSERT INTO stocktakes (name, location, opened_by_user_id, notes)
-       VALUES (?, ?, ?, ?)`,
+       SELECT ?, ?, ?, ?
+        WHERE NOT EXISTS (
+          SELECT 1 FROM stocktakes
+           WHERE status = 'open'
+             AND LOWER(name) = LOWER(?)
+             AND COALESCE(LOWER(location), '') = COALESCE(LOWER(?), '')
+        )`,
       name,
       location,
       req.user!.id,
       notes,
+      name,
+      location,
     );
+    if (result.changes === 0) {
+      const dup = await adb.get<{ id: number }>(
+        `SELECT id FROM stocktakes
+          WHERE status = 'open'
+            AND LOWER(name) = LOWER(?)
+            AND COALESCE(LOWER(location), '') = COALESCE(LOWER(?), '')
+          LIMIT 1`,
+        name,
+        location,
+      );
+      throw new AppError(
+        dup
+          ? `An open stocktake named "${name}"${location ? ` at "${location}"` : ''} already exists (id=${dup.id}). Resume that session or close it before opening another.`
+          : 'A concurrent request created a matching open stocktake. Refresh and try again.',
+        409,
+      );
+    }
 
     const id = Number(result.lastInsertRowid);
     audit(req.db, 'stocktake_opened', req.user!.id, req.ip || 'unknown', {

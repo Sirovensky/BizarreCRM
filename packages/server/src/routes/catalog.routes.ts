@@ -194,16 +194,30 @@ router.post('/devices', adminOnly, asyncHandler(async (req, res) => {
   );
   if (existing) throw new AppError('A device model with this name already exists for this manufacturer', 409);
 
-  const result = await adb.run(
-    `INSERT INTO device_models (manufacturer_id, name, slug, category, release_year, is_popular)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    Number(manufacturer_id),
-    nameTrimmed,
-    slug,
-    cat,
-    release_year != null && Number.isFinite(Number(release_year)) ? Number(release_year) : null,
-    is_popular ? 1 : 0,
-  );
+  // BUGHUNT-2026-05-17: the SELECT above is TOCTOU vs UNIQUE(manufacturer_id, name)
+  // from migration 002 — two concurrent admins seeding device catalog both
+  // pass the pre-check and the second INSERT hits the UNIQUE constraint
+  // and surfaces as a generic 500. Translate the violation to the same
+  // friendly 409 shape the pre-check returns on the no-race path.
+  let result;
+  try {
+    result = await adb.run(
+      `INSERT INTO device_models (manufacturer_id, name, slug, category, release_year, is_popular)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      Number(manufacturer_id),
+      nameTrimmed,
+      slug,
+      cat,
+      release_year != null && Number.isFinite(Number(release_year)) ? Number(release_year) : null,
+      is_popular ? 1 : 0,
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/UNIQUE constraint.*device_models/i.test(msg)) {
+      throw new AppError('A device model with this name already exists for this manufacturer', 409);
+    }
+    throw err;
+  }
 
   const newModel = await adb.get(`
     SELECT dm.*, m.name AS manufacturer_name
