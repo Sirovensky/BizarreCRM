@@ -2558,12 +2558,19 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
       : cappedPaid > 0
         ? 'partial'
         : 'unpaid';
+    // BUGHUNT-2026-05-17: guard the existing-invoice UPDATE WHERE status
+    // NOT IN ('void','refunded') + expectChanges so a /void or refund
+    // landing between the Layer-1 precheck and this tx commit causes
+    // the whole POS save to roll back (no orphan line items, no
+    // double-charged customer). The whole batch goes through one tx
+    // so a rolled-back UPDATE here unwinds the DELETE + the INSERTs
+    // below, too.
     txQueries.push({
       sql: `
         UPDATE invoices SET
           customer_id = ?, subtotal = ?, discount = ?, total_tax = ?, total = ?,
           amount_paid = ?, amount_due = ?, status = ?, updated_at = ?
-        WHERE id = ?
+        WHERE id = ? AND status NOT IN ('void', 'refunded')
       `,
       params: [
         customerId,
@@ -2577,6 +2584,8 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
         now(),
         existingInvoiceId,
       ],
+      expectChanges: true,
+      expectChangesError: 'POS_INVOICE_TERMINAL_RACE',
     });
 
     // Replace line items (delete old, insert new)
