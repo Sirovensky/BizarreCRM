@@ -44,11 +44,18 @@ public extension TicketSortOrder {
         case .assignee:
             return tickets.sorted { assigneeName($0) < assigneeName($1) }
         case .dueDate:
-            // Tickets without a due date sort to the end.
+            // BUGHUNT-2026-05-17: previously sorted by `createdAt`, which made
+            // the "Due date" sort label a misnomer — tickets were just ordered
+            // by creation time. TicketSummary has `dueOn` (ISO-8601 string,
+            // nil when no due date is set); sort by that with nil dropped to
+            // the end.
             return tickets.sorted { a, b in
-                guard let da = a.createdAt.isEmpty ? nil : a.createdAt,
-                      let db = b.createdAt.isEmpty ? nil : b.createdAt else { return false }
-                return da < db
+                switch (a.dueOn, b.dueOn) {
+                case let (la?, lb?): return la < lb
+                case (_?, nil):      return true   // a has a due date, b doesn't → a first
+                case (nil, _?):      return false  // b has a due date, a doesn't → b first
+                case (nil, nil):     return false  // stable for equal-nil pairs
+                }
             }
         case .totalDesc:
             return tickets.sorted { $0.total > $1.total }

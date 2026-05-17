@@ -23,6 +23,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.IOException
 import java.net.SocketTimeoutException
@@ -201,6 +202,40 @@ class CustomerRepository @Inject constructor(
             } catch (e: Exception) {
                 Log.w(TAG, "Online customer update failed [${e.javaClass.simpleName}], falling back to offline queue: ${e.message}")
             }
+        }
+
+        // BUGHUNT-2026-05-17: previously this only enqueued — the local Room row
+        // was not updated, so the user's edit was invisible in the UI until the
+        // queue drained. Snapshot the row, overlay non-null request fields,
+        // mark dirty, and insert. UpdateCustomerRequest is a partial update so
+        // null fields preserve the snapshot's existing value.
+        val snapshot = runCatching { customerDao.getById(id).first() }.getOrNull()
+        if (snapshot != null) {
+            val now = java.time.Instant.now().toString().take(19).replace("T", " ")
+            val locallyDirty = snapshot.copy(
+                firstName = request.firstName ?: snapshot.firstName,
+                lastName = request.lastName ?: snapshot.lastName,
+                email = request.email ?: snapshot.email,
+                phone = request.phone ?: snapshot.phone,
+                mobile = request.mobile ?: snapshot.mobile,
+                address1 = request.address1 ?: snapshot.address1,
+                address2 = request.address2 ?: snapshot.address2,
+                city = request.city ?: snapshot.city,
+                state = request.state ?: snapshot.state,
+                country = request.country ?: snapshot.country,
+                postcode = request.postcode ?: snapshot.postcode,
+                organization = request.organization ?: snapshot.organization,
+                type = request.type ?: snapshot.type,
+                groupId = request.customerGroupId ?: snapshot.groupId,
+                tags = request.customerTags ?: snapshot.tags,
+                comments = request.comments ?: snapshot.comments,
+                emailOptIn = request.emailOptIn?.let { it == 1 } ?: snapshot.emailOptIn,
+                smsOptIn = request.smsOptIn?.let { it == 1 } ?: snapshot.smsOptIn,
+                referredBy = request.referredBy ?: snapshot.referredBy,
+                updatedAt = now,
+                locallyModified = true,
+            )
+            customerDao.insert(locallyDirty)
         }
 
         syncQueueDao.insert(
