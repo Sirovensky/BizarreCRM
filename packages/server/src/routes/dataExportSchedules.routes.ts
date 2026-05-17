@@ -340,11 +340,18 @@ router.post(
       throw new AppError(`Schedule is already ${existing.status}`, 409);
     }
 
-    await adb.run(
-      `UPDATE data_export_schedules SET status = 'paused', updated_at = ? WHERE id = ?`,
+    // BUGHUNT-2026-05-17: guard WHERE status='active' so a racing
+    // /cancel can't be silently overwritten back to 'paused' (which
+    // would re-enable the schedule's next-run-at picker and start
+    // exporting customer data after the admin already cancelled it).
+    const result = await adb.run(
+      `UPDATE data_export_schedules SET status = 'paused', updated_at = ? WHERE id = ? AND status = 'active'`,
       sqlNow(),
       id,
     );
+    if (result.changes === 0) {
+      throw new AppError('Schedule status changed; refresh and retry', 409);
+    }
 
     audit(req.db, 'data_export_schedule_paused', req.user!.id, req.ip || 'unknown', { schedule_id: id });
 
@@ -373,11 +380,18 @@ router.post(
       throw new AppError(`Schedule is not paused (current status: ${existing.status})`, 409);
     }
 
-    await adb.run(
-      `UPDATE data_export_schedules SET status = 'active', updated_at = ? WHERE id = ?`,
+    // BUGHUNT-2026-05-17: guard WHERE status='paused' so a racing
+    // /cancel isn't overwritten back to 'active' (which would resume
+    // a schedule the admin had just cancelled — same dataset would
+    // continue to be exported and emailed externally).
+    const result = await adb.run(
+      `UPDATE data_export_schedules SET status = 'active', updated_at = ? WHERE id = ? AND status = 'paused'`,
       sqlNow(),
       id,
     );
+    if (result.changes === 0) {
+      throw new AppError('Schedule status changed; refresh and retry', 409);
+    }
 
     audit(req.db, 'data_export_schedule_resumed', req.user!.id, req.ip || 'unknown', { schedule_id: id });
 
@@ -406,11 +420,19 @@ router.post(
       throw new AppError('Schedule is already canceled', 409);
     }
 
-    await adb.run(
-      `UPDATE data_export_schedules SET status = 'canceled', updated_at = ? WHERE id = ?`,
+    // BUGHUNT-2026-05-17: idempotent guard — already-canceled rows match
+    // 0 and surface 409 instead of redundantly bumping updated_at and
+    // emitting a duplicate audit row. The guard also prevents a race
+    // where two admins both /cancel concurrently and both audit-log the
+    // event.
+    const result = await adb.run(
+      `UPDATE data_export_schedules SET status = 'canceled', updated_at = ? WHERE id = ? AND status != 'canceled'`,
       sqlNow(),
       id,
     );
+    if (result.changes === 0) {
+      throw new AppError('Schedule was just canceled by another admin', 409);
+    }
 
     audit(req.db, 'data_export_schedule_canceled', req.user!.id, req.ip || 'unknown', { schedule_id: id });
 
