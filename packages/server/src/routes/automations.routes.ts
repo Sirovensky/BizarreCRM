@@ -143,24 +143,24 @@ router.post(
     // only; the operator can deactivate the older row first if a true
     // replacement is intended.
     const triggerConfigJson = JSON.stringify(trigger_config ?? {});
-    const dup = await adb.get<{ id: number; name: string }>(
-      `SELECT id, name FROM automations
-        WHERE trigger_type = ?
-          AND trigger_config = ?
-          AND COALESCE(is_active, 1) = 1`,
-      trigger_type,
-      triggerConfigJson,
-    );
-    if (dup) {
-      throw new AppError(
-        `Duplicate automation: "${dup.name}" (id ${dup.id}) already fires on this trigger + config. Deactivate or edit that rule first.`,
-        409,
-      );
-    }
-
+    // BUGHUNT-2026-05-17: atomic insert-if-no-active-dupe. There is no
+    // UNIQUE constraint on automations(trigger_type, trigger_config) so
+    // the pre-check SELECT was a TOCTOU window — two concurrent POSTs
+    // with the same trigger config both saw "no dup" and both INSERTed
+    // active rows. The automation engine then fired both rules on every
+    // matching event, double-SMS-ing the customer (the exact bug the
+    // dedup intent above was trying to prevent). Single-statement
+    // INSERT...WHERE NOT EXISTS closes the race; surface 409 when the
+    // race loser hits changes===0 so the operator can see the conflict.
     const result = await adb.run(`
       INSERT INTO automations (name, trigger_type, trigger_config, action_type, action_config, sort_order)
-      VALUES (?, ?, ?, ?, ?, ?)
+        SELECT ?, ?, ?, ?, ?, ?
+         WHERE NOT EXISTS (
+           SELECT 1 FROM automations
+            WHERE trigger_type = ?
+              AND trigger_config = ?
+              AND COALESCE(is_active, 1) = 1
+         )
     `,
       name,
       trigger_type,
@@ -168,7 +168,26 @@ router.post(
       action_type,
       JSON.stringify(action_config ?? {}),
       sort_order ?? 0,
+      trigger_type,
+      triggerConfigJson,
     );
+    if (result.changes === 0) {
+      const dup = await adb.get<{ id: number; name: string }>(
+        `SELECT id, name FROM automations
+          WHERE trigger_type = ?
+            AND trigger_config = ?
+            AND COALESCE(is_active, 1) = 1
+          ORDER BY id DESC LIMIT 1`,
+        trigger_type,
+        triggerConfigJson,
+      );
+      throw new AppError(
+        dup
+          ? `Duplicate automation: "${dup.name}" (id ${dup.id}) already fires on this trigger + config. Deactivate or edit that rule first.`
+          : 'A duplicate automation was created concurrently — refresh and try again.',
+        409,
+      );
+    }
 
     const automation = await adb.get('SELECT * FROM automations WHERE id = ?', result.lastInsertRowid) as any;
     audit(req.db, 'automation_created', req.user!.id, req.ip || 'unknown', { automation_id: Number(result.lastInsertRowid), name, trigger_type, action_type });
@@ -235,28 +254,22 @@ router.put(
     const resolvedTriggerConfigJson = trigger_config !== undefined
       ? JSON.stringify(trigger_config)
       : existing.trigger_config;
-    const dup = await adb.get<{ id: number; name: string }>(
-      `SELECT id, name FROM automations
-        WHERE id != ?
-          AND trigger_type = ?
-          AND trigger_config = ?
-          AND COALESCE(is_active, 1) = 1`,
-      id,
-      resolvedTriggerType,
-      resolvedTriggerConfigJson,
-    );
-    if (dup) {
-      throw new AppError(
-        `Duplicate automation: "${dup.name}" (id ${dup.id}) already fires on this trigger + config. Deactivate or edit that rule first.`,
-        409,
-      );
-    }
-
-    await adb.run(`
+    // BUGHUNT-2026-05-17: convert pre-check to a single-statement
+    // UPDATE...WHERE NOT EXISTS so a concurrent INSERT/UPDATE that
+    // creates the duplicate active rule between our SELECT and UPDATE
+    // can't slip through. changes===0 surfaces as the same friendly 409.
+    const updRes = await adb.run(`
       UPDATE automations SET
         name = ?, trigger_type = ?, trigger_config = ?, action_type = ?, action_config = ?,
         sort_order = ?, updated_at = datetime('now')
       WHERE id = ?
+        AND NOT EXISTS (
+          SELECT 1 FROM automations
+           WHERE id != ?
+             AND trigger_type = ?
+             AND trigger_config = ?
+             AND COALESCE(is_active, 1) = 1
+        )
     `,
       name !== undefined ? name : existing.name,
       resolvedTriggerType,
@@ -265,7 +278,29 @@ router.put(
       action_config !== undefined ? JSON.stringify(action_config) : existing.action_config,
       sort_order !== undefined ? sort_order : existing.sort_order,
       id,
+      id,
+      resolvedTriggerType,
+      resolvedTriggerConfigJson,
     );
+    if (updRes.changes === 0) {
+      const dup = await adb.get<{ id: number; name: string }>(
+        `SELECT id, name FROM automations
+          WHERE id != ?
+            AND trigger_type = ?
+            AND trigger_config = ?
+            AND COALESCE(is_active, 1) = 1
+          ORDER BY id DESC LIMIT 1`,
+        id,
+        resolvedTriggerType,
+        resolvedTriggerConfigJson,
+      );
+      throw new AppError(
+        dup
+          ? `Duplicate automation: "${dup.name}" (id ${dup.id}) already fires on this trigger + config. Deactivate or edit that rule first.`
+          : 'A duplicate automation was created concurrently — refresh and try again.',
+        409,
+      );
+    }
 
     const updated = await adb.get('SELECT * FROM automations WHERE id = ?', id) as any;
     audit(req.db, 'automation_updated', req.user!.id, req.ip || 'unknown', { automation_id: id });
