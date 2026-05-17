@@ -4,6 +4,7 @@ import android.util.Log
 import com.bizarreelectronics.crm.data.local.db.dao.CustomerDao
 import com.bizarreelectronics.crm.data.local.db.dao.InventoryDao
 import com.bizarreelectronics.crm.data.local.db.dao.TicketDao
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -99,6 +100,12 @@ class CacheEvictor @Inject constructor(
         try {
             evict(excess)
             Log.d(TAG, "$name: eviction complete (≤$excess rows removed, pending rows protected)")
+        } catch (e: CancellationException) {
+            // BUGHUNT-2026-05-17: re-throw cancellation so a WorkManager- or
+            // SyncManager-driven cancel doesn't get swallowed and let the
+            // next evictEntity() call kick off a fresh Room DELETE on a
+            // coroutine that's already in the cancelled state.
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "$name: eviction failed [${e.javaClass.simpleName}]: ${e.message}")
             // Non-fatal — the cache is slightly over cap. It will be evicted on
