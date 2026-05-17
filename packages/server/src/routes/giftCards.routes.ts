@@ -884,10 +884,16 @@ router.post('/:id/reload', requirePermission('gift_cards.reload'), asyncHandler(
   // history row existed — an audit gap on a money-in event. Bundle into a
   // single transaction; expectChanges preserves the original 409.
   const reloadNow = now();
+  // BUGHUNT-2026-05-17: guard the UPDATE WHERE status != 'disabled'.
+  // Without this, a concurrent /disable racing against a /reload would
+  // be silently overridden: SELECT-precheck above sees 'active', the
+  // disable lands first, and the reload's blind UPDATE flips status
+  // back to 'active' with new balance — reviving a card the admin
+  // had just locked.
   try {
     await adb.transaction([
       {
-        sql: "UPDATE gift_cards SET current_balance = current_balance + ?, status = 'active', version = version + 1, updated_at = ? WHERE id = ? AND is_deleted = 0",
+        sql: "UPDATE gift_cards SET current_balance = current_balance + ?, status = 'active', version = version + 1, updated_at = ? WHERE id = ? AND is_deleted = 0 AND status != 'disabled'",
         params: [amount, reloadNow, cardId],
         expectChanges: true,
         expectChangesError: 'GIFT_CARD_RELOAD_REJECTED',
@@ -900,7 +906,7 @@ router.post('/:id/reload', requirePermission('gift_cards.reload'), asyncHandler(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes('GIFT_CARD_RELOAD_REJECTED')) {
-      throw new AppError('Gift card not found or was deleted (concurrent request)', 409);
+      throw new AppError('Gift card was disabled or deleted concurrently; refresh and retry', 409);
     }
     throw err;
   }
