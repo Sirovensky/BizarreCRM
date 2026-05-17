@@ -4842,20 +4842,31 @@ router.post('/bulk-action', requirePermission('tickets.bulk_update'), asyncHandl
         }
 
         // Restore inventory stock for all parts on all devices in this ticket
+        // BUGHUNT-2026-05-17: bundle every per-part stock UPDATE with its
+        // matching stock_movements INSERT into one adb.transaction so a
+        // crash inside the loop can't leave inflated stock without an audit
+        // entry, or a ledger row for stock that was never restored.
         const devices = await adb.all<AnyRow>('SELECT id FROM ticket_devices WHERE ticket_id = ?', id);
+        const bulkRestoreTx: TxQuery[] = [];
+        const bulkRestoreNow = now();
         for (const dev of devices) {
           const parts = await adb.all<AnyRow>('SELECT * FROM ticket_device_parts WHERE ticket_device_id = ?', dev.id);
           for (const part of parts) {
             if (part.inventory_item_id) {
-              await adb.run('UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = ? WHERE id = ?',
-                part.quantity, now(), part.inventory_item_id);
-
-              await adb.run(`
-                INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
-                VALUES (?, 'ticket_return', ?, 'ticket', ?, 'Stock restored — ticket bulk deleted', ?, ?, ?)
-              `, part.inventory_item_id, part.quantity, id, userId, now(), now());
+              bulkRestoreTx.push({
+                sql: 'UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = ? WHERE id = ?',
+                params: [part.quantity, bulkRestoreNow, part.inventory_item_id],
+              });
+              bulkRestoreTx.push({
+                sql: `INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
+                      VALUES (?, 'ticket_return', ?, 'ticket', ?, 'Stock restored — ticket bulk deleted', ?, ?, ?)`,
+                params: [part.inventory_item_id, part.quantity, id, userId, bulkRestoreNow, bulkRestoreNow],
+              });
             }
           }
+        }
+        if (bulkRestoreTx.length > 0) {
+          await adb.transaction(bulkRestoreTx);
         }
 
         await insertHistoryAsync(adb, id, userId, 'deleted', 'Bulk deleted');
