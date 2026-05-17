@@ -763,7 +763,7 @@ router.post(
         // crash between them left a customer row with code IS NULL that
         // never appeared in the operator's customer lookups (code-based
         // search returned no results).
-        const customerTxResults = await adb.transaction([
+        await adb.transaction([
           {
             sql: `INSERT INTO customers (first_name, last_name, email, phone, mobile, organization, city, state, postcode, address1, source)
                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -776,8 +776,6 @@ router.post(
             params: [],
           },
         ]);
-        const customerId = Number(customerTxResults[0].lastInsertRowid);
-        void customerId; // retained for clarity / debug breakpoints
         results.created++;
 
         // Track newly created entries so subsequent rows in the same batch
