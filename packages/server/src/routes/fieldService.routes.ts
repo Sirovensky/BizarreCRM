@@ -467,17 +467,31 @@ router.delete('/jobs/:id', asyncHandler(async (req: Request, res: Response) => {
   // BUGHUNT-2026-05-16: bundle the status flip with the dispatch_status_history
   // INSERT so a crash between them can't leave a job in 'canceled' with no
   // matching history row (breaks the dispatch-history audit reconstruction).
-  await adb.transaction([
-    {
-      sql: "UPDATE field_service_jobs SET status = 'canceled', updated_at = ? WHERE id = ?",
-      params: [ts, id],
-    },
-    {
-      sql: `INSERT INTO dispatch_status_history (job_id, status, actor_user_id, notes, created_at)
-            VALUES (?, 'canceled', ?, 'Soft-deleted via DELETE endpoint', ?)`,
-      params: [id, req.user!.id, ts],
-    },
-  ]);
+  // BUGHUNT-2026-05-17: guard the status flip WHERE status != 'canceled' +
+  // expectChanges so two concurrent cancel requests don't both INSERT a
+  // dispatch_status_history row — duplicate cancel audit entries confuse
+  // the audit reconstruction. Loser sees a clean 409 instead.
+  try {
+    await adb.transaction([
+      {
+        sql: "UPDATE field_service_jobs SET status = 'canceled', updated_at = ? WHERE id = ? AND status != 'canceled'",
+        params: [ts, id],
+        expectChanges: true,
+        expectChangesError: 'JOB_ALREADY_CANCELED',
+      },
+      {
+        sql: `INSERT INTO dispatch_status_history (job_id, status, actor_user_id, notes, created_at)
+              VALUES (?, 'canceled', ?, 'Soft-deleted via DELETE endpoint', ?)`,
+        params: [id, req.user!.id, ts],
+      },
+    ]);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('JOB_ALREADY_CANCELED')) {
+      throw new AppError('Job is already canceled', 409);
+    }
+    throw err;
+  }
 
   audit(db, 'field_service.job_canceled', req.user!.id, req.ip || 'unknown', { job_id: id });
   res.json({ success: true, data: { id, status: 'canceled' } });
