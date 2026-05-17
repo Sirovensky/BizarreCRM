@@ -670,6 +670,14 @@ private fun BulkActionBar(
     onBulkExport: () -> Unit,
     onDelete: () -> Unit,
     onClearSelection: () -> Unit,
+    // BUGHUNT-2026-05-17: callers pass empty lambdas for unwired actions and
+    // the buttons looked interactive (tapped → nothing). Default each to
+    // disabled and let the caller opt in by passing `<action>Enabled = true`.
+    // Once the corresponding flow is wired the caller flips the flag without
+    // touching this composable.
+    adjustEnabled: Boolean = false,
+    exportEnabled: Boolean = false,
+    deleteEnabled: Boolean = false,
 ) {
     Surface(
         tonalElevation = 8.dp,
@@ -687,10 +695,11 @@ private fun BulkActionBar(
                 style = MaterialTheme.typography.titleSmall,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = onBulkAdjust) { Text("Adjust") }
-                TextButton(onClick = onBulkExport) { Text("Export") }
+                TextButton(onClick = onBulkAdjust, enabled = adjustEnabled) { Text("Adjust") }
+                TextButton(onClick = onBulkExport, enabled = exportEnabled) { Text("Export") }
                 TextButton(
                     onClick = onDelete,
+                    enabled = deleteEnabled,
                     colors = ButtonDefaults.textButtonColors(
                         contentColor = MaterialTheme.colorScheme.error,
                     ),
