@@ -165,7 +165,32 @@ public extension JSONDecoder {
     static let bizarre: JSONDecoder = {
         let d = JSONDecoder()
         d.keyDecodingStrategy = .convertFromSnakeCase
-        d.dateDecodingStrategy = .iso8601
+        // BUGHUNT-2026-05-17: match APIClient — accept both fractional and
+        // non-fractional ISO8601 because the server's res.json(...) path
+        // emits Date.toISOString() with millisecond precision while a few
+        // hand-built strings drop fractions.
+        d.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let raw = try container.decode(String.self)
+            if let date = wsFractionalISO.date(from: raw) { return date }
+            if let date = wsPlainISO.date(from: raw) { return date }
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unsupported date format: \(raw)"
+            )
+        }
         return d
     }()
 }
+
+private let wsFractionalISO: ISO8601DateFormatter = {
+    let f = ISO8601DateFormatter()
+    f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return f
+}()
+
+private let wsPlainISO: ISO8601DateFormatter = {
+    let f = ISO8601DateFormatter()
+    f.formatOptions = [.withInternetDateTime]
+    return f
+}()

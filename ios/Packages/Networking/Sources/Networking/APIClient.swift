@@ -132,7 +132,26 @@ public actor APIClientImpl: APIClient {
 
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
-        decoder.dateDecodingStrategy = .iso8601
+        // BUGHUNT-2026-05-17: .iso8601 uses ISO8601DateFormatter with NO
+        // fractional-second support. The Node server's res.json(...) path
+        // serialises Postgres TIMESTAMP/TIMESTAMPTZ columns via
+        // Date.toISOString(), which always produces "...123Z" (millisecond
+        // precision). Decoding those with .iso8601 threw on every list /
+        // detail endpoint that returned a Date as-is. Custom strategy below
+        // accepts both shapes and falls back gracefully.
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let raw = try container.decode(String.self)
+            if let date = Self.iso8601WithFractional.date(from: raw) { return date }
+            if let date = Self.iso8601NoFractional.date(from: raw) { return date }
+            // Last-ditch: a few server endpoints emit "YYYY-MM-DD HH:MM:SS"
+            // (no T, no Z). Treat those as UTC.
+            if let date = Self.spaceSeparatedUTC.date(from: raw) { return date }
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unsupported date format: \(raw)"
+            )
+        }
         self.decoder = decoder
 
         // Encoder sends keys as-declared (camelCase by default). The server
@@ -143,6 +162,33 @@ public actor APIClientImpl: APIClient {
         encoder.dateEncodingStrategy = .iso8601
         self.encoder = encoder
     }
+
+    // MARK: - Date parsers
+    //
+    // BUGHUNT-2026-05-17: built once and reused — ISO8601DateFormatter is
+    // not cheap to allocate per-decode (locale + calendar + tz init under
+    // the hood). Sendable wrapper isolation is fine because the formatter
+    // is only mutated at construction.
+
+    private static let iso8601WithFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let iso8601NoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private static let spaceSeparatedUTC: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return f
+    }()
 
     public func setAuthToken(_ token: String?) { self.authToken = token }
     public func setBaseURL(_ url: URL?) { self.baseURL = url }
