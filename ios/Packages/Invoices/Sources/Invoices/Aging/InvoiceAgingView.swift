@@ -489,7 +489,11 @@ public struct InvoiceAgingView: View {
     // item 4: project a 2% flat late fee for invoices overdue > 30 days (policy preview only)
     private func lateFeePreview(daysOverdue: Int, totalCents: Int) -> Int? {
         guard daysOverdue > 30 else { return nil }
-        let fee = Int(Double(totalCents) * 0.02)
+        // BUGHUNT-2026-05-17: was `Int(...)` truncating toward zero — a 2% fee
+        // on $123.45 displayed as $2.46 instead of $2.47. Use .rounded() to
+        // match the cart-side cents math and avoid sub-cent drift in the
+        // preview shown to staff.
+        let fee = Int((Double(totalCents) * 0.02).rounded())
         return fee > 0 ? fee : nil
     }
 

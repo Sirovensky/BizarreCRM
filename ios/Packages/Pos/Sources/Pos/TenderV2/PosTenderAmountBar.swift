@@ -173,9 +173,14 @@ public struct PosTenderAmountBar: View {
 
                 // Preset amounts
                 HStack(spacing: BrandSpacing.sm) {
-                    tipPreset(label: "10%", cents: Int(Double(coordinator.totalCents) * 0.10))
-                    tipPreset(label: "15%", cents: Int(Double(coordinator.totalCents) * 0.15))
-                    tipPreset(label: "20%", cents: Int(Double(coordinator.totalCents) * 0.20))
+                    // BUGHUNT-2026-05-17: `Int(...)` truncates — a 10% tip on
+                    // $12.99 became $1.29 instead of $1.30. Cart.setTipPercent
+                    // and the cart-discount math already use .rounded(); match
+                    // them so the preset tip the cashier taps equals the
+                    // amount applied to the cart.
+                    tipPreset(label: "10%", cents: Int((Double(coordinator.totalCents) * 0.10).rounded()))
+                    tipPreset(label: "15%", cents: Int((Double(coordinator.totalCents) * 0.15).rounded()))
+                    tipPreset(label: "20%", cents: Int((Double(coordinator.totalCents) * 0.20).rounded()))
                 }
                 .padding(.horizontal, BrandSpacing.base)
 

@@ -57,8 +57,14 @@ public final class CartLineEditViewModel {
     public var derivedDiscountCents: Int {
         switch discountMode {
         case .none:        return 0
-        case .percent5:    return Int(Double(unitPriceCents * qty) * 0.05)
-        case .percent10:   return Int(Double(unitPriceCents * qty) * 0.10)
+        // BUGHUNT-2026-05-17: was `Int(...)` which truncates toward zero — a
+        // 5% discount on $12.99 produced 64 cents instead of 65 because
+        // 1299 * 0.05 = 64.95 → 64. The cart-level discount in Cart.swift
+        // already uses `.rounded()`; line-level discounts must match so the
+        // per-line totals plus tax don't disagree with the cart's running
+        // total by 1¢ per discounted line.
+        case .percent5:    return Int((Double(unitPriceCents * qty) * 0.05).rounded())
+        case .percent10:   return Int((Double(unitPriceCents * qty) * 0.10).rounded())
         case .fixedCustom: return min(customDiscountCents, unitPriceCents * qty)
         }
     }
