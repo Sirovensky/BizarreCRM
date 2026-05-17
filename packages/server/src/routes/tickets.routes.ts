@@ -3356,9 +3356,18 @@ router.post('/:id/convert-to-invoice', requirePermission('tickets.edit'), asyncH
   }
 
   // Link invoice → ticket (this is what makes the conversion observable).
+  // BUGHUNT-2026-05-17: guard the link UPDATE with `invoice_id IS NULL` +
+  // expectChanges. The SELECT existing-invoice precheck above is TOCTOU
+  // racy — two concurrent /convert-to-invoice calls both passed the
+  // precheck and both ran the tx, each INSERTing a fresh invoice row
+  // and the second UPDATE silently overwrote the first invoice link.
+  // The losing tx rolls back (with the just-inserted invoice row), so
+  // no duplicate invoice survives.
   conversionTxQueries.push({
-    sql: 'UPDATE tickets SET invoice_id = ?, updated_at = ? WHERE id = ?',
+    sql: 'UPDATE tickets SET invoice_id = ?, updated_at = ? WHERE id = ? AND invoice_id IS NULL',
     params: [lastInsertRowidFrom(INVOICE_QUERY_INDEX), now(), ticketId],
+    expectChanges: true,
+    expectChangesError: 'TICKET_ALREADY_INVOICED',
   });
 
   // F4 + F5: optional auto-close + passcode wipe, included in the same tx so
@@ -3376,7 +3385,16 @@ router.post('/:id/convert-to-invoice', requirePermission('tickets.edit'), asyncH
     });
   }
 
-  const conversionTxResults = await adb.transaction(conversionTxQueries);
+  let conversionTxResults: Awaited<ReturnType<typeof adb.transaction>>;
+  try {
+    conversionTxResults = await adb.transaction(conversionTxQueries);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('TICKET_ALREADY_INVOICED')) {
+      throw new AppError('Ticket already has an invoice (race with concurrent request)', 409);
+    }
+    throw err;
+  }
   const invoiceId = Number(conversionTxResults[INVOICE_QUERY_INDEX].lastInsertRowid);
 
   // History rows are non-critical — write after the atomic conversion so a
