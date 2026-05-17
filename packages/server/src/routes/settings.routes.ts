@@ -1301,8 +1301,12 @@ router.delete('/statuses/:id', adminOnly, async (req, res) => {
       migrated_ticket_count: refCount.c,
     });
   } else {
-    // No referencing tickets — straight delete.
-    await adb.run('DELETE FROM ticket_statuses WHERE id = ?', statusId);
+    // BUGHUNT-2026-05-17: gate the audit on actual DELETE — without
+    // this, a second concurrent /DELETE for an already-deleted status
+    // still fires 'status_deleted', producing duplicate audit rows the
+    // compliance reviewer can't tell apart.
+    const delRes = await adb.run('DELETE FROM ticket_statuses WHERE id = ?', statusId);
+    if (delRes.changes === 0) throw new AppError('Status not found', 404);
   }
   audit(db, 'status_deleted', req.user!.id, req.ip || 'unknown', { status_id: Number(statusId) });
   res.json({ success: true, data: { message: 'Status deleted' } });

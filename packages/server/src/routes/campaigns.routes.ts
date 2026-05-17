@@ -760,12 +760,9 @@ router.delete(
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     if (!id || isNaN(id)) throw new AppError('Invalid campaign id', 400);
-    const existing = await adb.get<{ id: number }>(
-      `SELECT id FROM marketing_campaigns WHERE id = ?`,
-      id,
-    );
-    if (!existing) throw new AppError('Campaign not found', 404);
-    await adb.run(`DELETE FROM marketing_campaigns WHERE id = ?`, id);
+    // BUGHUNT-2026-05-17: drop SELECT precheck; gate audit on changes.
+    const delRes = await adb.run(`DELETE FROM marketing_campaigns WHERE id = ?`, id);
+    if (delRes.changes === 0) throw new AppError('Campaign not found', 404);
     audit(db, 'campaign_deleted', req.user!.id, req.ip || 'unknown', { campaign_id: id });
     res.json({ success: true, data: { id } });
   }),

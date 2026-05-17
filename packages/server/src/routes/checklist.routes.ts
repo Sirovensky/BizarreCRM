@@ -301,10 +301,15 @@ router.delete('/templates/:id', asyncHandler(async (req: Request, res: Response)
   const db = req.db;
   const id = parseId(req.params.id, 'template ID');
 
-  const existing = await adb.get<AnyRow>('SELECT id FROM ops_checklist_templates WHERE id = ? AND is_active = 1', id);
-  if (!existing) throw new AppError('Active checklist template not found', 404);
-
-  await adb.run('UPDATE ops_checklist_templates SET is_active = 0, updated_at = ? WHERE id = ?', now(), id);
+  // BUGHUNT-2026-05-17: AND is_active = 1 on the UPDATE; drop SELECT
+  // precheck; gate audit on changes. Two concurrent /DELETEs would
+  // both pass the precheck and both fire the audit even though only
+  // one transitioned the row.
+  const delRes = await adb.run(
+    'UPDATE ops_checklist_templates SET is_active = 0, updated_at = ? WHERE id = ? AND is_active = 1',
+    now(), id,
+  );
+  if (delRes.changes === 0) throw new AppError('Active checklist template not found', 404);
 
   audit(db, 'checklist_template.deleted', req.user!.id, req.ip || 'unknown', { template_id: id });
   res.json({ success: true, data: { id } });

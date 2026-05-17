@@ -273,17 +273,20 @@ router.delete(
     const userId = req.user!.id;
     const id = validateId(req.params.id);
 
-    const existing = await adb.get<{ id: number; name: string }>(
-      'SELECT id, name FROM sms_customer_groups WHERE id = ?',
+    // BUGHUNT-2026-05-17: DELETE...RETURNING claims the row atomically
+    // and surfaces the name in one round-trip. Without this, two
+    // concurrent /DELETEs both passed the SELECT precheck and both
+    // wrote 'sms_group_deleted' audit rows for the same group_id —
+    // duplicate compliance trail.
+    const deleted = await adb.get<{ id: number; name: string }>(
+      'DELETE FROM sms_customer_groups WHERE id = ? RETURNING id, name',
       id,
     );
-    if (!existing) throw new AppError('Group not found', 404);
-
-    await adb.run('DELETE FROM sms_customer_groups WHERE id = ?', id);
+    if (!deleted) throw new AppError('Group not found', 404);
 
     audit(db, 'sms_group_deleted', userId, req.ip || 'unknown', {
       group_id: id,
-      name: existing.name,
+      name: deleted.name,
     });
 
     res.json({ success: true, data: { id } });

@@ -930,10 +930,9 @@ router.delete('/routes/:id', asyncHandler(async (req: Request, res: Response) =>
   const db = req.db;
 
   const id = validateIntId(req.params.id, 'route ID');
-  const existing = await adb.get<AnyRow>('SELECT id FROM dispatch_routes WHERE id = ?', id);
-  if (!existing) throw new AppError('Route not found', 404);
-
-  await adb.run('DELETE FROM dispatch_routes WHERE id = ?', id);
+  // BUGHUNT-2026-05-17: drop SELECT precheck; gate audit on changes.
+  const delRes = await adb.run('DELETE FROM dispatch_routes WHERE id = ?', id);
+  if (delRes.changes === 0) throw new AppError('Route not found', 404);
   audit(db, 'field_service.route_deleted', req.user!.id, req.ip || 'unknown', { route_id: id });
   res.json({ success: true, data: { id } });
 }));

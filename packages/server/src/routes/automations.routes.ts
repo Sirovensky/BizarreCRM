@@ -286,10 +286,11 @@ router.delete(
     requireAdmin(req);
     const adb = req.asyncDb;
     const id = validateId(req.params.id, 'id');
-    const existing = await adb.get('SELECT id FROM automations WHERE id = ?', id);
-    if (!existing) throw new AppError('Automation not found', 404);
-
-    await adb.run('DELETE FROM automations WHERE id = ?', id);
+    // BUGHUNT-2026-05-17: drop SELECT precheck; gate audit on changes.
+    // Two concurrent /DELETEs previously both passed the precheck and
+    // both audit-logged 'automation_deleted' for the same id.
+    const delRes = await adb.run('DELETE FROM automations WHERE id = ?', id);
+    if (delRes.changes === 0) throw new AppError('Automation not found', 404);
     audit(req.db, 'automation_deleted', req.user!.id, req.ip || 'unknown', { automation_id: id });
     res.json({ success: true, data: { message: 'Automation deleted' } });
   }),

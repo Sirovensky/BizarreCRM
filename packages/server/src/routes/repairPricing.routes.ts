@@ -1258,11 +1258,25 @@ router.put('/services/:id', adminOrManager, asyncHandler(async (req, res) => {
 // Previous code returned 200 even when the service didn't exist; we now 404.
 router.delete('/services/:id', adminOrManager, asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
-  const existing = await adb.get('SELECT id FROM repair_services WHERE id = ?', req.params.id);
-  if (!existing) throw new AppError('Service not found', 404);
+  // BUGHUNT-2026-05-17: atomic delete-if-not-in-use guard prevents both
+  // a concurrent-delete race (only one DELETE actually removes the row,
+  // only one audit fires) AND a concurrent repair_prices INSERT that
+  // could land between the in-use precheck and the DELETE (the DELETE
+  // would then orphan the just-inserted price). NOT EXISTS subquery
+  // serialises via SQLite writer lock; loser gets 409 or 400 cleanly.
   const inUse = await adb.get<any>('SELECT COUNT(*) as c FROM repair_prices WHERE repair_service_id = ?', req.params.id);
   if (inUse && inUse.c > 0) throw new AppError('Service is in use by repair prices', 400);
-  await adb.run('DELETE FROM repair_services WHERE id = ?', req.params.id);
+  const delRes = await adb.run(
+    'DELETE FROM repair_services WHERE id = ? AND NOT EXISTS (SELECT 1 FROM repair_prices WHERE repair_service_id = ?)',
+    req.params.id, req.params.id,
+  );
+  if (delRes.changes === 0) {
+    // Either the service was already deleted (404) or a price was just
+    // attached (409). Re-check to give a precise error.
+    const stillExists = await adb.get('SELECT id FROM repair_services WHERE id = ?', req.params.id);
+    if (!stillExists) throw new AppError('Service not found', 404);
+    throw new AppError('Service is in use by repair prices', 400);
+  }
   audit(req.db, 'repair_service_deleted', req.user!.id, req.ip || 'unknown', { service_id: Number(req.params.id) });
   res.json({ success: true, data: { message: 'Service deleted' } });
 }));

@@ -359,10 +359,9 @@ router.delete(
     const id = Number(req.params.id);
     if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid template id', 400);
 
-    const existing = await adb.get('SELECT id FROM device_model_templates WHERE id = ?', id);
-    if (!existing) throw new AppError('Template not found', 404);
-
-    await adb.run('DELETE FROM device_model_templates WHERE id = ?', id);
+    // BUGHUNT-2026-05-17: drop SELECT precheck; gate audit on changes.
+    const delRes = await adb.run('DELETE FROM device_model_templates WHERE id = ?', id);
+    if (delRes.changes === 0) throw new AppError('Template not found', 404);
 
     audit(req.db, 'device_template_deleted', req.user?.id ?? null, req.ip ?? 'unknown', {
       template_id: id,

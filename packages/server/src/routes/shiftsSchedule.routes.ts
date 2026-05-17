@@ -253,12 +253,9 @@ router.delete('/shifts/:id', asyncHandler(async (req: any, res: any) => {
   }
 
   const id = parseId(req.params.id, 'shift id');
-  const existing = await adb.get<{ id: number }>(
-    'SELECT id FROM shift_schedules WHERE id = ?', id,
-  );
-  if (!existing) throw new AppError('Shift not found', 404);
-
-  await adb.run('DELETE FROM shift_schedules WHERE id = ?', id);
+  // BUGHUNT-2026-05-17: drop SELECT precheck; gate audit on changes.
+  const delRes = await adb.run('DELETE FROM shift_schedules WHERE id = ?', id);
+  if (delRes.changes === 0) throw new AppError('Shift not found', 404);
   audit(db, 'shift_deleted', callerId, req.ip || 'unknown', { shift_id: id });
   res.json({ success: true, data: { id } });
 }));

@@ -291,10 +291,13 @@ router.delete('/policies/:id', asyncHandler(async (req: Request, res: Response) 
   const db = req.db;
   const id = parseId(req.params.id, 'policy ID');
 
-  const existing = await adb.get<AnyRow>('SELECT id FROM sla_policies WHERE id = ? AND is_active = 1', id);
-  if (!existing) throw new AppError('Active SLA policy not found', 404);
-
-  await adb.run('UPDATE sla_policies SET is_active = 0, updated_at = ? WHERE id = ?', now(), id);
+  // BUGHUNT-2026-05-17: AND is_active = 1 on the UPDATE; drop SELECT
+  // precheck; gate audit on changes.
+  const delRes = await adb.run(
+    'UPDATE sla_policies SET is_active = 0, updated_at = ? WHERE id = ? AND is_active = 1',
+    now(), id,
+  );
+  if (delRes.changes === 0) throw new AppError('Active SLA policy not found', 404);
 
   audit(db, 'sla_policy.deactivated', req.user!.id, req.ip || 'unknown', { policy_id: id });
   res.json({ success: true, data: { id } });
