@@ -530,19 +530,34 @@ router.post('/jobs/:id/assign', asyncHandler(async (req: Request, res: Response)
   const ts = now();
   // BUGHUNT-2026-05-16: pair the assignment UPDATE with the history INSERT in
   // one transaction so the audit row can't be lost on partial failure.
-  await adb.transaction([
-    {
-      sql: `UPDATE field_service_jobs
-             SET assigned_technician_id = ?, status = 'assigned', updated_at = ?
-             WHERE id = ?`,
-      params: [techId, ts, id],
-    },
-    {
-      sql: `INSERT INTO dispatch_status_history (job_id, status, actor_user_id, notes, created_at)
-            VALUES (?, 'assigned', ?, ?, ?)`,
-      params: [id, req.user!.id, `Assigned to technician ${techId}`, ts],
-    },
-  ]);
+  // BUGHUNT-2026-05-17: guard the UPDATE WHERE status NOT IN ('completed',
+  // 'canceled') + expectChanges so two concurrent /assign calls (or a
+  // /assign racing /cancel) don't both INSERT a dispatch_status_history
+  // row — the second writer would silently bump assigned_technician_id
+  // and produce a phantom "assigned" audit row over a terminal status.
+  try {
+    await adb.transaction([
+      {
+        sql: `UPDATE field_service_jobs
+               SET assigned_technician_id = ?, status = 'assigned', updated_at = ?
+               WHERE id = ? AND status NOT IN ('completed', 'canceled')`,
+        params: [techId, ts, id],
+        expectChanges: true,
+        expectChangesError: 'JOB_ASSIGN_REJECTED',
+      },
+      {
+        sql: `INSERT INTO dispatch_status_history (job_id, status, actor_user_id, notes, created_at)
+              VALUES (?, 'assigned', ?, ?, ?)`,
+        params: [id, req.user!.id, `Assigned to technician ${techId}`, ts],
+      },
+    ]);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('JOB_ASSIGN_REJECTED')) {
+      throw new AppError('Job status changed concurrently; refresh and retry', 409);
+    }
+    throw err;
+  }
 
   audit(db, 'field_service.job_assigned', req.user!.id, req.ip || 'unknown', {
     job_id: id, technician_id: techId, previous_status: job.status,
@@ -575,19 +590,33 @@ router.post('/jobs/:id/unassign', asyncHandler(async (req: Request, res: Respons
   // BUGHUNT-2026-05-16: pair the unassign UPDATE with the history INSERT in
   // one transaction so a partial failure can't leave a job 'unassigned' with
   // no matching dispatch_status_history row.
-  await adb.transaction([
-    {
-      sql: `UPDATE field_service_jobs
-             SET assigned_technician_id = NULL, status = 'unassigned', updated_at = ?
-             WHERE id = ?`,
-      params: [ts, id],
-    },
-    {
-      sql: `INSERT INTO dispatch_status_history (job_id, status, actor_user_id, notes, created_at)
-            VALUES (?, 'unassigned', ?, 'Unassigned by manager', ?)`,
-      params: [id, req.user!.id, ts],
-    },
-  ]);
+  // BUGHUNT-2026-05-17: guard WHERE status NOT IN ('completed', 'canceled')
+  // + expectChanges so a racing /complete or /cancel isn't silently
+  // overwritten with 'unassigned' (which would mask the terminal state
+  // and drop the customer-visible "job done" signal).
+  try {
+    await adb.transaction([
+      {
+        sql: `UPDATE field_service_jobs
+               SET assigned_technician_id = NULL, status = 'unassigned', updated_at = ?
+               WHERE id = ? AND status NOT IN ('completed', 'canceled')`,
+        params: [ts, id],
+        expectChanges: true,
+        expectChangesError: 'JOB_UNASSIGN_REJECTED',
+      },
+      {
+        sql: `INSERT INTO dispatch_status_history (job_id, status, actor_user_id, notes, created_at)
+              VALUES (?, 'unassigned', ?, 'Unassigned by manager', ?)`,
+        params: [id, req.user!.id, ts],
+      },
+    ]);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('JOB_UNASSIGN_REJECTED')) {
+      throw new AppError('Job status changed concurrently; refresh and retry', 409);
+    }
+    throw err;
+  }
 
   audit(db, 'field_service.job_unassigned', req.user!.id, req.ip || 'unknown', {
     job_id: id, previous_technician_id: job.assigned_technician_id,
@@ -645,18 +674,34 @@ router.post('/jobs/:id/status', asyncHandler(async (req: Request, res: Response)
 
   // BUGHUNT-2026-05-16: bundle the status flip + dispatch_status_history INSERT
   // so a partial failure can't leave a job in the new status with no history.
-  await adb.transaction([
-    {
-      sql: 'UPDATE field_service_jobs SET status = ?, updated_at = ? WHERE id = ?',
-      params: [newStatus, ts, id],
-    },
-    {
-      sql: `INSERT INTO dispatch_status_history
-              (job_id, status, actor_user_id, location_lat, location_lng, notes, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      params: [id, newStatus, req.user!.id, locLatVal, locLngVal, notesVal, ts],
-    },
-  ]);
+  // BUGHUNT-2026-05-17: guard the UPDATE WHERE status = the value we
+  // validated the transition against (CAS). Without this, two technicians
+  // hitting /status with different next-states race: both pass the
+  // transition validator on the pre-image, both UPDATE, both INSERT
+  // history rows, and the job ends up in the wrong terminal state with
+  // a misleading audit trail.
+  try {
+    await adb.transaction([
+      {
+        sql: 'UPDATE field_service_jobs SET status = ?, updated_at = ? WHERE id = ? AND status = ?',
+        params: [newStatus, ts, id, job.status],
+        expectChanges: true,
+        expectChangesError: 'JOB_STATUS_CAS_FAILED',
+      },
+      {
+        sql: `INSERT INTO dispatch_status_history
+                (job_id, status, actor_user_id, location_lat, location_lng, notes, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        params: [id, newStatus, req.user!.id, locLatVal, locLngVal, notesVal, ts],
+      },
+    ]);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('JOB_STATUS_CAS_FAILED')) {
+      throw new AppError('Job status changed concurrently; refresh and retry', 409);
+    }
+    throw err;
+  }
 
   audit(db, 'field_service.job_status_changed', req.user!.id, req.ip || 'unknown', {
     job_id: id, from: job.status, to: newStatus,
