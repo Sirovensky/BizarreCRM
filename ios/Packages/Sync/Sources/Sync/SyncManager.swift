@@ -181,10 +181,34 @@ public final class SyncManager {
                 )
             }
 
+        } catch is CancellationError {
+            // BUGHUNT-2026-05-17: don't dead-letter a valid op just because
+            // the parent task got cancelled (e.g., app backgrounded mid-drain,
+            // user toggled airplane mode, autoStart torn down). markCancelled
+            // resets the row to `queued` WITHOUT bumping attemptCount, so the
+            // next syncNow() picks it up fresh. Same family of bug as Android
+            // OrderedQueueProcessor: a structural cancel is not a payload
+            // failure and shouldn't advance the op toward dead-letter.
+            await markCancelledOrLog(id: id)
         } catch let appError as AppError {
             await handleAppError(appError, id: id, op: op)
         } catch {
+            // CancellationError sometimes surfaces as a plain Error after
+            // crossing the Swift / Obj-C bridge — fall through to the
+            // cancel-aware path when Task.isCancelled is set.
+            if Task.isCancelled {
+                await markCancelledOrLog(id: id)
+                return
+            }
             await handleTransientError(error, id: id, op: op)
+        }
+    }
+
+    private func markCancelledOrLog(id: Int64) async {
+        do {
+            try await SyncQueueStore.shared.markCancelled(id)
+        } catch {
+            AppLog.sync.error("markCancelled threw: \(error, privacy: .public)")
         }
     }
 

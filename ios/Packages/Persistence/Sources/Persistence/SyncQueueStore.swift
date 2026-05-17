@@ -134,6 +134,21 @@ public actor SyncQueueStore {
         }
     }
 
+    /// BUGHUNT-2026-05-17: structural cancellation of the drain coroutine is
+    /// not a payload failure — the op was never executed by the server.
+    /// Resets the row back to `queued` (clears in-flight flag, leaves
+    /// `attemptCount` and `lastError` untouched) so the next `syncNow()`
+    /// picks it up cleanly without artificially advancing toward dead-letter.
+    public func markCancelled(_ id: Int64) async throws {
+        guard let pool = await Database.shared.pool() else { return }
+        try await pool.write { db in
+            guard var row = try SyncQueueRecord.filter(Column("id") == id).fetchOne(db) else { return }
+            row.status = SyncQueueRecord.Status.queued.rawValue
+            row.nextRetryAt = nil
+            try row.update(db)
+        }
+    }
+
     public func markFailed(_ id: Int64, error: String) async throws {
         guard let pool = await Database.shared.pool() else { return }
         try await pool.write { db in
