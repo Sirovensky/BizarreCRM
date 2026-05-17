@@ -837,26 +837,40 @@ router.post(
     // duplicating SMS to every recipient. Look at the last_run_at column
     // (also written below by dispatch) and reject when it's within
     // CAMPAIGN_RUN_LOCK_MS. Server-authoritative — no client coordination.
+    //
+    // BUGHUNT-2026-05-17: convert the read-then-check pattern to an
+    // atomic CAS via guarded UPDATE — two parallel /run-now requests
+    // could both pass the SELECT precheck (each saw "last_run_at was
+    // 35s ago") and both proceed to dispatch, sending duplicate SMS
+    // to every recipient. The guarded UPDATE serialises via SQLite's
+    // writer lock; only one caller flips last_run_at, the loser sees
+    // changes=0 and gets 429 before any dispatch work runs.
     const CAMPAIGN_RUN_LOCK_MS = 30_000;
-    if (campaign.last_run_at) {
-      // BUGHUNT-2026-05-16: last_run_at is SQLite 'YYYY-MM-DD HH:MM:SS'
-      // (UTC, no Z). V8 parses that as local time, shifting the 30s
-      // dedup window by the operator's UTC offset.
-      const rawLast = campaign.last_run_at as string;
-      const normalized = rawLast.includes('T') || rawLast.endsWith('Z') || rawLast.includes('+')
+    const claimResult = await adb.run(
+      `UPDATE marketing_campaigns
+          SET last_run_at = datetime('now')
+        WHERE id = ?
+          AND (last_run_at IS NULL OR datetime(last_run_at) <= datetime('now', '-' || ? || ' seconds'))`,
+      id,
+      Math.ceil(CAMPAIGN_RUN_LOCK_MS / 1000),
+    );
+    if (claimResult.changes === 0) {
+      // Compute a friendly retry-after seconds based on the (newly re-read) last_run_at.
+      const fresh = await adb.get<{ last_run_at: string | null }>(
+        'SELECT last_run_at FROM marketing_campaigns WHERE id = ?',
+        id,
+      );
+      const rawLast = fresh?.last_run_at ?? '';
+      const normalized = rawLast && (rawLast.includes('T') || rawLast.endsWith('Z') || rawLast.includes('+'))
         ? rawLast
-        : `${rawLast.replace(' ', 'T')}Z`;
-      const lastRunMs = new Date(normalized).getTime();
-      if (Number.isFinite(lastRunMs)) {
-        const sinceMs = Date.now() - lastRunMs;
-        if (sinceMs >= 0 && sinceMs < CAMPAIGN_RUN_LOCK_MS) {
-          const waitS = Math.ceil((CAMPAIGN_RUN_LOCK_MS - sinceMs) / 1000);
-          throw new AppError(
-            `This campaign was dispatched ${Math.round(sinceMs / 1000)}s ago. Wait ${waitS}s before running again so recipients don't get duplicate messages.`,
-            429,
-          );
-        }
-      }
+        : rawLast ? `${rawLast.replace(' ', 'T')}Z` : '';
+      const lastRunMs = normalized ? new Date(normalized).getTime() : 0;
+      const sinceMs = Number.isFinite(lastRunMs) && lastRunMs > 0 ? Date.now() - lastRunMs : 0;
+      const waitS = Math.max(1, Math.ceil((CAMPAIGN_RUN_LOCK_MS - sinceMs) / 1000));
+      throw new AppError(
+        `This campaign was dispatched ${Math.round(sinceMs / 1000)}s ago. Wait ${waitS}s before running again so recipients don't get duplicate messages.`,
+        429,
+      );
     }
 
     await refreshCampaignSegment(adb, campaign);
