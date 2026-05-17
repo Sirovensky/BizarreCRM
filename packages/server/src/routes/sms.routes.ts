@@ -1328,17 +1328,60 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
     }
 
     // Store inbound message
-    const result = await adb.run(`
-      INSERT INTO sms_messages (from_number, to_number, conv_phone, message, status, direction, provider,
-                                provider_message_id, message_type, media_urls, media_types, media_local_paths)
-      VALUES (?, ?, ?, ?, 'delivered', 'inbound', ?, ?, ?, ?, ?, ?)
-    `,
-      from, to || '', convPhone, msgBody, provider.name, providerId || null,
-      messageType || 'sms',
-      mediaUrls.length > 0 ? JSON.stringify(mediaUrls) : null,
-      mediaTypes.length > 0 ? JSON.stringify(mediaTypes) : null,
-      mediaLocalPaths.length > 0 ? JSON.stringify(mediaLocalPaths) : null,
-    );
+    // BUGHUNT-2026-05-17: dedupe on provider_message_id when provided.
+    // Without this, a webhook replay (carrier retry, network glitch
+    // that drops our 200 response, or an attacker replaying a captured
+    // webhook within the provider's signature TTL) would INSERT the
+    // same inbound SMS twice — duplicates in the conversation thread,
+    // and the OPT_OUT_KEYWORDS handler below would fire twice in
+    // sequence (audit row duplication for sms_opt_out + auto-responder
+    // dispatching twice). Skip dedup when providerId is null since
+    // some providers don't supply an id.
+    let result: { lastInsertRowid: number | bigint; changes: number };
+    if (providerId) {
+      result = await adb.run(`
+        INSERT INTO sms_messages (from_number, to_number, conv_phone, message, status, direction, provider,
+                                  provider_message_id, message_type, media_urls, media_types, media_local_paths)
+        SELECT ?, ?, ?, ?, 'delivered', 'inbound', ?, ?, ?, ?, ?, ?
+         WHERE NOT EXISTS (
+           SELECT 1 FROM sms_messages
+            WHERE provider = ? AND provider_message_id = ? AND direction = 'inbound'
+         )
+      `,
+        from, to || '', convPhone, msgBody, provider.name, providerId,
+        messageType || 'sms',
+        mediaUrls.length > 0 ? JSON.stringify(mediaUrls) : null,
+        mediaTypes.length > 0 ? JSON.stringify(mediaTypes) : null,
+        mediaLocalPaths.length > 0 ? JSON.stringify(mediaLocalPaths) : null,
+        provider.name, providerId,
+      );
+      if (result.changes === 0) {
+        // Webhook replay — return 200 so the provider stops retrying.
+        const existing = await adb.get<any>(
+          'SELECT * FROM sms_messages WHERE provider = ? AND provider_message_id = ? AND direction = \'inbound\' LIMIT 1',
+          provider.name, providerId,
+        );
+        logger.info('sms_webhook_replay_deduped', {
+          provider: provider.name,
+          provider_message_id: providerId,
+          existing_id: existing?.id,
+        });
+        res.json({ success: true, data: existing });
+        return;
+      }
+    } else {
+      result = await adb.run(`
+        INSERT INTO sms_messages (from_number, to_number, conv_phone, message, status, direction, provider,
+                                  provider_message_id, message_type, media_urls, media_types, media_local_paths)
+        VALUES (?, ?, ?, ?, 'delivered', 'inbound', ?, ?, ?, ?, ?, ?)
+      `,
+        from, to || '', convPhone, msgBody, provider.name, null,
+        messageType || 'sms',
+        mediaUrls.length > 0 ? JSON.stringify(mediaUrls) : null,
+        mediaTypes.length > 0 ? JSON.stringify(mediaTypes) : null,
+        mediaLocalPaths.length > 0 ? JSON.stringify(mediaLocalPaths) : null,
+      );
+    }
 
     const msg = await adb.get<any>('SELECT * FROM sms_messages WHERE id = ?', result.lastInsertRowid);
 
