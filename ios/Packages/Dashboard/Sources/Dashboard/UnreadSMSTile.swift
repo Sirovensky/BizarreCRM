@@ -48,8 +48,11 @@ public final class UnreadSMSViewModel {
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 60_000_000_000)
-                guard !Task.isCancelled else { return }
-                await self?.load()
+                if Task.isCancelled { return }
+                // Break when the VM is gone so the Task doesn't keep
+                // ticking once the dashboard view has been dismissed.
+                guard let strongSelf = self else { return }
+                await strongSelf.load()
             }
         }
     }

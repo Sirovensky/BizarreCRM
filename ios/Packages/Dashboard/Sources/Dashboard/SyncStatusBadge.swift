@@ -33,8 +33,12 @@ public final class SyncStatusViewModel {
         timer = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 30_000_000_000)
-                guard !Task.isCancelled else { return }
-                self?.update()
+                if Task.isCancelled { return }
+                // BUGHUNT-2026-05-17: break when self is nil. `self?.update()`
+                // silently no-op'd, so the Task kept sleeping in 30s ticks
+                // long after the dashboard view tore down.
+                guard let strongSelf = self else { return }
+                strongSelf.update()
             }
         }
     }

@@ -179,8 +179,11 @@ public final class MyQueueViewModel {
         autoRefreshTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
-                guard !Task.isCancelled else { return }
-                await self?.load()
+                if Task.isCancelled { return }
+                // Break when the VM is gone so the Task doesn't sleep
+                // forever in 30s ticks no-oping `self?.load()`.
+                guard let strongSelf = self else { return }
+                await strongSelf.load()
             }
         }
     }
