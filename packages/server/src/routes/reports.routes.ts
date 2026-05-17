@@ -2115,16 +2115,22 @@ router.patch('/profit-hero/thresholds', asyncHandler(async (req, res) => {
   if (greenNum <= amberNum) throw new AppError('green threshold must be higher than amber', 400);
   if (greenNum > 100 || amberNum < 0) throw new AppError('thresholds must be between 0 and 100', 400);
 
-  await adb.run(
-    `INSERT INTO store_config (key, value) VALUES ('profit_threshold_green', ?)
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-    String(greenNum)
-  );
-  await adb.run(
-    `INSERT INTO store_config (key, value) VALUES ('profit_threshold_amber', ?)
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-    String(amberNum)
-  );
+  // BUGHUNT-2026-05-17: bundle both UPSERTs into one tx so a crash between
+  // them can't leave green updated while amber is stale — which would
+  // momentarily violate the green > amber invariant validated above and
+  // mis-color the entire profit-hero dashboard until the next manual edit.
+  await adb.transaction([
+    {
+      sql: `INSERT INTO store_config (key, value) VALUES ('profit_threshold_green', ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      params: [String(greenNum)],
+    },
+    {
+      sql: `INSERT INTO store_config (key, value) VALUES ('profit_threshold_amber', ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      params: [String(amberNum)],
+    },
+  ]);
 
   audit(req.db, 'profit_thresholds_update', req.user?.id ?? null, req.ip || '', { green: greenNum, amber: amberNum });
   biLogger.info('profit thresholds updated', { green: greenNum, amber: amberNum, user_id: req.user?.id });
