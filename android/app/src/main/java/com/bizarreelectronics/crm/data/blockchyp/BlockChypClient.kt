@@ -9,6 +9,7 @@ import com.bizarreelectronics.crm.data.remote.api.BlockChypProcessPaymentRequest
 import com.bizarreelectronics.crm.data.remote.api.BlockChypStatusData
 import com.bizarreelectronics.crm.data.remote.api.BlockChypTestConnectionRequest
 import com.bizarreelectronics.crm.data.remote.api.BlockChypVoidRequest
+import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
 import timber.log.Timber
 import java.io.IOException
@@ -16,6 +17,21 @@ import java.net.SocketTimeoutException
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
+
+/**
+ * Like [runCatching] but lets [CancellationException] propagate so that
+ * coroutine cancellation isn't silently caught and re-mapped to a
+ * domain error. Critical for money-handling flows where a "cancelled"
+ * outcome must not be reported back as a successful or failed charge.
+ */
+private inline fun <T> runCancellableCatching(block: () -> T): Result<T> =
+    try {
+        Result.success(block())
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Throwable) {
+        Result.failure(e)
+    }
 
 // ─── Public data types ────────────────────────────────────────────────────────
 
@@ -130,14 +146,15 @@ class BlockChypClient @Inject constructor(
      * Verify that the server can reach the terminal.
      * Updates [isPaired] to true on success.
      */
-    suspend fun testConnection(terminalId: String): Result<Unit> = runCatching {
+    suspend fun testConnection(terminalId: String): Result<Unit> = runCancellableCatching {
         val resp = api.testConnection(BlockChypTestConnectionRequest(terminalName = terminalId))
         if (!resp.success || resp.data?.success == false) {
             throw ChargeError.TerminalUnavailable(
                 resp.message ?: "Terminal connection test failed",
             )
         }
-    }.mapApiErrors()
+    }
+        .mapApiErrors()
 
     /**
      * Charge the customer's card via the paired terminal.
@@ -152,7 +169,7 @@ class BlockChypClient @Inject constructor(
         orderId: String,
         tipCents: Long = 0L,
         idempotencyKey: String,
-    ): Result<ChargeReceipt> = runCatching {
+    ): Result<ChargeReceipt> = runCancellableCatching {
         val amountDollars = amountCents / 100.0
         val tipDollars = if (tipCents > 0) tipCents / 100.0 else null
 
@@ -194,9 +211,10 @@ class BlockChypClient @Inject constructor(
             amountDollars = amountDollars,
             replayed = data.replayed,
         )
-    }.mapApiErrors()
+    }
+        .mapApiErrors()
 
-    suspend fun voidTransaction(transactionId: String): Result<Unit> = runCatching {
+    suspend fun voidTransaction(transactionId: String): Result<Unit> = runCancellableCatching {
         val resp = api.voidPayment(BlockChypVoidRequest(paymentId = transactionId))
         if (!resp.success) {
             throw ChargeError.ServerError(
@@ -204,9 +222,10 @@ class BlockChypClient @Inject constructor(
                 httpCode = 400,
             )
         }
-    }.mapApiErrors()
+    }
+        .mapApiErrors()
 
-    suspend fun adjustTip(transactionId: String, newTipCents: Long): Result<Unit> = runCatching {
+    suspend fun adjustTip(transactionId: String, newTipCents: Long): Result<Unit> = runCancellableCatching {
         val resp = api.adjustTip(
             BlockChypAdjustTipRequest(
                 transactionId = transactionId,
@@ -220,14 +239,15 @@ class BlockChypClient @Inject constructor(
                 httpCode = 200,
             )
         }
-    }.mapApiErrors()
+    }
+        .mapApiErrors()
 
     /**
      * Capture a signature on the terminal before a ticket is created.
      * Returns a [SignatureCapture] whose [base64DataUrl] is in the
      * `data:image/png;base64,…` format expected by the server signature endpoint.
      */
-    suspend fun captureCheckInSignature(ticketId: Long): Result<SignatureCapture> = runCatching {
+    suspend fun captureCheckInSignature(ticketId: Long): Result<SignatureCapture> = runCancellableCatching {
         val resp = api.captureCheckInSignature()
         val dataUrl = resp.data?.base64DataUrl
         if (!resp.success || dataUrl.isNullOrBlank()) {
@@ -236,12 +256,13 @@ class BlockChypClient @Inject constructor(
             )
         }
         SignatureCapture(base64DataUrl = dataUrl)
-    }.mapApiErrors()
+    }
+        .mapApiErrors()
 
     /**
      * Capture a signature on the terminal for an existing invoice/ticket.
      */
-    suspend fun captureSignature(invoiceId: Long): Result<SignatureCapture> = runCatching {
+    suspend fun captureSignature(invoiceId: Long): Result<SignatureCapture> = runCancellableCatching {
         val resp = api.captureSignature(BlockChypCaptureSignatureRequest(ticketId = invoiceId))
         val dataUrl = resp.data?.base64DataUrl
         if (!resp.success || dataUrl.isNullOrBlank()) {
@@ -250,7 +271,8 @@ class BlockChypClient @Inject constructor(
             )
         }
         SignatureCapture(base64DataUrl = dataUrl)
-    }.mapApiErrors()
+    }
+        .mapApiErrors()
 
     /**
      * Fetch terminal/gateway status from the server.
@@ -267,6 +289,12 @@ class BlockChypClient @Inject constructor(
                 tcEnabled = d.tcEnabled,
                 firmwareVersion = d.firmwareVersion,
             )
+        } catch (e: CancellationException) {
+            // Honour coroutine cancellation — caller torn down before status
+            // arrived. Don't swallow into a fake offline status (would paint
+            // a misleading "terminal offline" tile on a screen that's already
+            // being dismissed).
+            throw e
         } catch (e: Exception) {
             Timber.w(e, "BlockChyp status check failed")
             offlineStatus()
@@ -312,7 +340,7 @@ private fun <T> Result<T>.mapApiErrors(): Result<T> = onFailure { e ->
         is ChargeError -> return this // already typed — pass through
         is SocketTimeoutException -> return Result.failure(ChargeError.Timeout())
         is HttpException -> {
-            val body = runCatching { e.response()?.errorBody()?.string() }.getOrNull()
+            val body = runCancellableCatching { e.response()?.errorBody()?.string() }.getOrNull()
             return when (e.code()) {
                 401 -> Result.failure(ChargeError.NotPaired())
                 409 -> Result.failure(ChargeError.Conflict(body ?: "Idempotency conflict"))
