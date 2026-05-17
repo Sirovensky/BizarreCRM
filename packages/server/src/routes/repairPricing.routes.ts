@@ -1437,30 +1437,43 @@ router.put('/prices/:id', adminOrManager, asyncHandler(async (req, res) => {
   const nextAutoMargin = auto_margin_enabled !== undefined
     ? (auto_margin_enabled ? 1 : 0)
     : null;
-  await adb.run(`
-    UPDATE repair_prices SET
-      labor_price = COALESCE(?, labor_price), default_grade = COALESCE(?, default_grade),
-      is_active = COALESCE(?, is_active), is_custom = COALESCE(?, is_custom),
-      auto_margin_enabled = COALESCE(?, auto_margin_enabled), updated_at = datetime('now')
-    WHERE id = ?
-  `, validatedLabor, default_grade ?? null, is_active ?? null, nextIsCustom, nextAutoMargin, req.params.id);
+  // BUGHUNT-2026-05-17: the price UPDATE and the audit INSERT must commit
+  // together. Previously a crash between them landed a price change with no
+  // audit row — compliance / "who changed this part price" investigations
+  // lose the actor + before/after values, and the operator can't roll back
+  // by re-applying the prior labor_price.
+  const priceChanged = validatedLabor !== null || nextIsCustom !== existing.is_custom;
+  const priceUpdateTx: TxQuery[] = [
+    {
+      sql: `UPDATE repair_prices SET
+              labor_price = COALESCE(?, labor_price), default_grade = COALESCE(?, default_grade),
+              is_active = COALESCE(?, is_active), is_custom = COALESCE(?, is_custom),
+              auto_margin_enabled = COALESCE(?, auto_margin_enabled), updated_at = datetime('now')
+            WHERE id = ?`,
+      params: [validatedLabor, default_grade ?? null, is_active ?? null, nextIsCustom, nextAutoMargin, req.params.id],
+    },
+  ];
+  if (priceChanged) {
+    priceUpdateTx.push({
+      sql: `INSERT INTO repair_prices_audit (
+              repair_price_id, device_model_id, repair_service_id,
+              old_labor_price, new_labor_price, old_is_custom, new_is_custom,
+              old_tier_label, new_tier_label, source, changed_by_user_id, note
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', ?, ?)`,
+      params: [
+        req.params.id, existing.device_model_id, existing.repair_service_id,
+        existing.labor_price, validatedLabor ?? existing.labor_price,
+        existing.is_custom ?? 0, nextIsCustom,
+        existing.tier_label ?? null, existing.tier_label ?? null,
+        req.user!.id, 'Manual repair price updated',
+      ],
+    });
+  }
+  await adb.transaction(priceUpdateTx);
 
   const price = await adb.get('SELECT * FROM repair_prices WHERE id = ?', req.params.id);
   audit(req.db, 'repair_price_updated', req.user!.id, req.ip || 'unknown', { price_id: Number(req.params.id) });
-  if (validatedLabor !== null || nextIsCustom !== existing.is_custom) {
-    await adb.run(`
-      INSERT INTO repair_prices_audit (
-        repair_price_id, device_model_id, repair_service_id,
-        old_labor_price, new_labor_price, old_is_custom, new_is_custom,
-        old_tier_label, new_tier_label, source, changed_by_user_id, note
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', ?, ?)
-    `, req.params.id, existing.device_model_id, existing.repair_service_id,
-      existing.labor_price, validatedLabor ?? existing.labor_price,
-      existing.is_custom ?? 0, nextIsCustom,
-      existing.tier_label ?? null, existing.tier_label ?? null,
-      req.user!.id, 'Manual repair price updated');
-  }
   res.json({ success: true, data: price });
 }));
 
