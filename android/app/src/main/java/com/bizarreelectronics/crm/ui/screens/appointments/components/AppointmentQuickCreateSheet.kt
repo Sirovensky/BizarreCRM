@@ -17,9 +17,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.R
-import java.text.SimpleDateFormat
 import java.util.Calendar
-import java.util.Date
 import java.util.Locale
 
 // ─── Callback data class ──────────────────────────────────────────────────────
@@ -272,11 +270,25 @@ fun AppointmentQuickCreateSheet(
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-private val DISPLAY_DATE_FMT = SimpleDateFormat("MMM d, yyyy", Locale.US)
-private val DISPLAY_TIME_FMT = SimpleDateFormat("h:mm a", Locale.US)
+// BUGHUNT-2026-05-17: SimpleDateFormat is not thread-safe. Two
+// recompositions formatting in parallel on different worker threads
+// could collide on the shared mutable Calendar inside SDF and produce
+// garbled output. Switch to java.time.DateTimeFormatter (immutable +
+// thread-safe).
+private val DISPLAY_DATE_FMT: java.time.format.DateTimeFormatter =
+    java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US)
+private val DISPLAY_TIME_FMT: java.time.format.DateTimeFormatter =
+    java.time.format.DateTimeFormatter.ofPattern("h:mm a", Locale.US)
 
-private fun formatDisplayDate(millis: Long): String = DISPLAY_DATE_FMT.format(Date(millis))
-private fun formatDisplayTime(millis: Long): String = DISPLAY_TIME_FMT.format(Date(millis))
+private fun formatDisplayDate(millis: Long): String =
+    java.time.Instant.ofEpochMilli(millis)
+        .atZone(java.time.ZoneId.systemDefault())
+        .format(DISPLAY_DATE_FMT)
+
+private fun formatDisplayTime(millis: Long): String =
+    java.time.Instant.ofEpochMilli(millis)
+        .atZone(java.time.ZoneId.systemDefault())
+        .format(DISPLAY_TIME_FMT)
 
 // ─── Date picker dialog ───────────────────────────────────────────────────────
 
