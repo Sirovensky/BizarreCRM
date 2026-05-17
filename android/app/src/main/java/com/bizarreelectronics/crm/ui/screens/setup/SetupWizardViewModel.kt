@@ -6,6 +6,7 @@ import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.SetupApi
 import com.bizarreelectronics.crm.data.remote.dto.SetupProgressRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -305,6 +306,10 @@ class SetupWizardViewModel @Inject constructor(
             } catch (e: retrofit2.HttpException) {
                 val msg = if (e.code() == 404) null else "Could not load sample data (${e.code()})"
                 _uiState.update { it.copy(isSampleDataBusy = false, error = msg) }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation so leaving the
+                // wizard mid-load doesn't paint "Could not load sample data".
+                throw e
             } catch (e: Exception) {
                 _uiState.update { it.copy(isSampleDataBusy = false, error = "Could not load sample data: ${e.message}") }
             }
@@ -326,6 +331,8 @@ class SetupWizardViewModel @Inject constructor(
             } catch (e: retrofit2.HttpException) {
                 // 404 = already cleared; treat as success
                 _uiState.update { it.copy(sampleDataLoaded = false, isSampleDataBusy = false) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _uiState.update { it.copy(isSampleDataBusy = false, error = "Could not clear sample data: ${e.message}") }
             }
