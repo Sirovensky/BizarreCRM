@@ -64,8 +64,17 @@ public final class DeviceIdentity: @unchecked Sendable {
 
     private static func seedIdentifier() -> String {
         #if canImport(UIKit)
-        if let idfv = MainActor.assumeIsolated({ UIDevice.current.identifierForVendor?.uuidString }) {
-            return idfv
+        // BUGHUNT-2026-05-17: gate MainActor.assumeIsolated on Thread.isMainThread.
+        // The `deviceId` accessor is reachable from non-main threads (Sync uses
+        // actors and the sync queue's NWPathMonitor callback queue), so on
+        // first launch — before any UserDefaults value exists — assumeIsolated
+        // would trip the runtime isolation check and crash the app. Falling
+        // back to a fresh UUID on non-main is acceptable: the value is then
+        // cached in UserDefaults and reused for the install's lifetime.
+        if Thread.isMainThread {
+            if let idfv = MainActor.assumeIsolated({ UIDevice.current.identifierForVendor?.uuidString }) {
+                return idfv
+            }
         }
         #endif
         return UUID().uuidString
