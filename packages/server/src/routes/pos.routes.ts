@@ -2566,12 +2566,21 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
     // double-charged customer). The whole batch goes through one tx
     // so a rolled-back UPDATE here unwinds the DELETE + the INSERTs
     // below, too.
+    //
+    // BUGHUNT-2026-05-17: pin amount_paid via CAS so a concurrent
+    // online payment (payment link, ACH, etc.) that landed between
+    // our pre-tx SELECT (existingInvoicePaidCents) and this UPDATE
+    // can't be silently clobbered. The JS-computed cappedPaid was
+    // based on the stale snapshot; without the CAS we'd overwrite
+    // the other writer's increment. On race the whole POS tx rolls
+    // back so the cashier sees the new balance and retries.
     txQueries.push({
       sql: `
         UPDATE invoices SET
           customer_id = ?, subtotal = ?, discount = ?, total_tax = ?, total = ?,
           amount_paid = ?, amount_due = ?, status = ?, updated_at = ?
         WHERE id = ? AND status NOT IN ('void', 'refunded')
+          AND ROUND(COALESCE(amount_paid, 0) * 100) = ?
       `,
       params: [
         customerId,
@@ -2584,6 +2593,7 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
         nextStatus,
         now(),
         existingInvoiceId,
+        Math.round(existingInvoicePaidCents * 100),
       ],
       expectChanges: true,
       expectChangesError: 'POS_INVOICE_TERMINAL_RACE',
