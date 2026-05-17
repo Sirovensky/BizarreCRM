@@ -119,23 +119,36 @@ router.put(
       throw new AppError('category must be a string of 64 characters or less', 400);
     }
 
-    // Check shortcode uniqueness if changing
+    // Check shortcode uniqueness if changing.
+    // BUGHUNT-2026-05-17: pre-check is TOCTOU — two concurrent PUTs both
+    // pass the SELECT and the second UPDATE hits the UNIQUE(shortcode)
+    // constraint (migration 001), surfacing as a 500. Translate the
+    // UNIQUE violation around the UPDATE to the same 409 the pre-check
+    // returns on the no-race path.
     if (shortcode && shortcode !== existing.shortcode) {
       const dup = await adb.get('SELECT id FROM snippets WHERE shortcode = ? AND id != ?', shortcode, id);
       if (dup) throw new AppError('A snippet with this shortcode already exists', 409);
     }
 
-    await adb.run(`
-      UPDATE snippets SET
-        shortcode = ?, title = ?, content = ?, category = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `,
-      shortcode !== undefined ? shortcode : existing.shortcode,
-      title !== undefined ? title : existing.title,
-      content !== undefined ? content : existing.content,
-      category !== undefined ? category : existing.category,
-      id,
-    );
+    try {
+      await adb.run(`
+        UPDATE snippets SET
+          shortcode = ?, title = ?, content = ?, category = ?, updated_at = datetime('now')
+        WHERE id = ?
+      `,
+        shortcode !== undefined ? shortcode : existing.shortcode,
+        title !== undefined ? title : existing.title,
+        content !== undefined ? content : existing.content,
+        category !== undefined ? category : existing.category,
+        id,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/UNIQUE constraint.*snippets.*shortcode/i.test(msg)) {
+        throw new AppError('A snippet with this shortcode already exists', 409);
+      }
+      throw err;
+    }
 
     const updated = await adb.get('SELECT * FROM snippets WHERE id = ?', id);
     audit(req.db, 'snippet_updated', req.user!.id, req.ip || 'unknown', { snippet_id: id });

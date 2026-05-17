@@ -122,18 +122,21 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
   const sort_order  = req.body.sort_order !== undefined ? Number(req.body.sort_order) : 0;
   if (!Number.isInteger(sort_order)) throw new AppError('sort_order must be an integer', 400);
 
-  // Unique-name collision → 409
-  const existing = await adb.get<{ id: number }>(
-    'SELECT id FROM ticket_labels WHERE name = ?', name
-  );
-  if (existing) throw new AppError(`Label name '${name}' already exists`, 409);
-
+  // BUGHUNT-2026-05-17: atomic insert-if-no-name-conflict. Pre-check + bare
+  // INSERT raced — two concurrent creates with the same name both passed the
+  // SELECT and the second hit the UNIQUE(name) constraint as a generic 500.
+  // INSERT...WHERE NOT EXISTS makes the dedupe single-statement; changes===0
+  // surfaces as the same friendly 409 the pre-check returned.
   const ts = now();
   const result = await adb.run(
     `INSERT INTO ticket_labels (name, color_hex, description, sort_order, is_active, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 1, ?, ?)`,
-    name, color_hex, description, sort_order, ts, ts
+       SELECT ?, ?, ?, ?, 1, ?, ?
+        WHERE NOT EXISTS (SELECT 1 FROM ticket_labels WHERE name = ?)`,
+    name, color_hex, description, sort_order, ts, ts, name
   );
+  if (result.changes === 0) {
+    throw new AppError(`Label name '${name}' already exists`, 409);
+  }
 
   const created = await adb.get('SELECT * FROM ticket_labels WHERE id = ?', result.lastInsertRowid);
   audit(db, 'ticket_label.created', req.user!.id, req.ip || 'unknown', {
@@ -185,21 +188,32 @@ router.patch('/:id', asyncHandler(async (req: Request, res: Response) => {
     if (collision) throw new AppError(`Label name '${name}' already exists`, 409);
   }
 
-  await adb.run(
-    `UPDATE ticket_labels SET
-       name        = COALESCE(?, name),
-       color_hex   = COALESCE(?, color_hex),
-       description = CASE WHEN ? IS NOT NULL THEN ? ELSE description END,
-       sort_order  = COALESCE(?, sort_order),
-       is_active   = COALESCE(?, is_active),
-       updated_at  = ?
-     WHERE id = ?`,
-    name, color_hex,
-    description !== undefined ? description : null,
-    description !== undefined ? description : null,
-    sort_order, is_active,
-    now(), id
-  );
+  // BUGHUNT-2026-05-17: catch the UNIQUE(name) violation around the UPDATE
+  // so a concurrent rename to the same name (TOCTOU past the pre-check)
+  // surfaces as 409 instead of a generic 500.
+  try {
+    await adb.run(
+      `UPDATE ticket_labels SET
+         name        = COALESCE(?, name),
+         color_hex   = COALESCE(?, color_hex),
+         description = CASE WHEN ? IS NOT NULL THEN ? ELSE description END,
+         sort_order  = COALESCE(?, sort_order),
+         is_active   = COALESCE(?, is_active),
+         updated_at  = ?
+       WHERE id = ?`,
+      name, color_hex,
+      description !== undefined ? description : null,
+      description !== undefined ? description : null,
+      sort_order, is_active,
+      now(), id
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/UNIQUE constraint.*ticket_labels.*name/i.test(msg)) {
+      throw new AppError(`Label name '${name}' already exists`, 409);
+    }
+    throw err;
+  }
 
   const updated = await adb.get('SELECT * FROM ticket_labels WHERE id = ?', id);
   audit(db, 'ticket_label.updated', req.user!.id, req.ip || 'unknown', {
