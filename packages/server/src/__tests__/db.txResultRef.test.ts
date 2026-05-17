@@ -18,8 +18,9 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-// Note: the worker is .mjs and lives next to async-db.ts. Importing it as a
-// module gives us its default export (the `execute` function).
+// The worker is .mjs with a sibling .d.mts stub (db-worker.d.mts) so it can
+// be imported statically here for direct unit-test coverage of its query
+// dispatch + cross-statement result-ref resolution.
 import execute from '../db/db-worker.mjs';
 
 describe('db-worker: cross-statement result refs', () => {
@@ -50,8 +51,10 @@ describe('db-worker: cross-statement result refs', () => {
     try { fs.unlinkSync(dbPath); } catch { /* gone */ }
   });
 
-  it('substitutes lastInsertRowidFrom(0) into every child INSERT', async () => {
-    await execute({
+  // execute() is synchronous (Piscina wraps it in a Promise at the pool level);
+  // testing direct, we have to call it as-is and use synchronous matchers.
+  it('substitutes lastInsertRowidFrom(0) into every child INSERT', () => {
+    execute({
       dbPath,
       op: 'transaction',
       queries: [
@@ -81,11 +84,11 @@ describe('db-worker: cross-statement result refs', () => {
     expect(children.map((c) => c.label)).toEqual(['a', 'b', 'c']);
   });
 
-  it('demonstrates SQL last_insert_rowid() is wrong for chained children (regression guard)', async () => {
+  it('demonstrates SQL last_insert_rowid() is wrong for chained children (regression guard)', () => {
     // Same shape WITHOUT the marker — uses bare last_insert_rowid() and is
     // expected to fail with FK violation because child[1+] resolve to the
     // prior child's rowid instead of the parent.
-    await expect(
+    expect(() => {
       execute({
         dbPath,
         op: 'transaction',
@@ -100,16 +103,16 @@ describe('db-worker: cross-statement result refs', () => {
             params: ['b'],
           },
         ],
-      }),
-    ).rejects.toThrow(/FOREIGN KEY/i);
+      });
+    }).toThrow(/FOREIGN KEY/i);
 
     // Whole tx rolled back — no parent or child rows leaked.
     const parentCount = setupDb.prepare('SELECT COUNT(*) AS c FROM parent').get() as { c: number };
     expect(parentCount.c).toBe(0);
   });
 
-  it('rejects an out-of-range fromIndex', async () => {
-    await expect(
+  it('rejects an out-of-range fromIndex', () => {
+    expect(() => {
       execute({
         dbPath,
         op: 'transaction',
@@ -121,8 +124,8 @@ describe('db-worker: cross-statement result refs', () => {
             params: [{ __txResultRef: 'lastInsertRowid', fromIndex: 5 }, 'oops'],
           },
         ],
-      }),
-    ).rejects.toThrow(/fromIndex/i);
+      });
+    }).toThrow(/fromIndex/i);
 
     // The whole tx rolled back — parent insert must not persist.
     const parentCount = setupDb.prepare('SELECT COUNT(*) AS c FROM parent').get() as { c: number };
