@@ -448,12 +448,19 @@ router.post(
     const ph = ids.map(() => '?').join(',');
 
     if (action === 'delete') {
-      await adb.run(
+      // BUGHUNT-2026-05-17: report `affected: result.changes` instead of
+      // `ids.length`. The UPDATE's WHERE is_deleted = 0 silently skips
+      // already-deleted rows; reporting the requested count overstates
+      // the result and leaves the operator believing more was changed
+      // than the row count would show.
+      const delRes = await adb.run(
         `UPDATE leads SET is_deleted = 1, updated_at = datetime('now') WHERE id IN (${ph}) AND is_deleted = 0`,
         ...ids,
       );
-      audit(db, 'leads_bulk_deleted', req.user!.id, req.ip || 'unknown', { lead_ids: ids });
-      res.json({ success: true, data: { affected: ids.length } });
+      audit(db, 'leads_bulk_deleted', req.user!.id, req.ip || 'unknown', {
+        lead_ids: ids, affected: delRes.changes,
+      });
+      res.json({ success: true, data: { affected: delRes.changes } });
       return;
     }
 
@@ -468,12 +475,14 @@ router.post(
       // Bulk status change skips per-row state-machine enforcement intentionally —
       // this is an admin-level batch op. Single-row state machine still applies
       // when updating individual leads via PUT /:id.
-      await adb.run(
+      const statusRes = await adb.run(
         `UPDATE leads SET status = ?, updated_at = datetime('now') WHERE id IN (${ph}) AND is_deleted = 0`,
         value, ...ids,
       );
-      audit(db, 'leads_bulk_status_changed', req.user!.id, req.ip || 'unknown', { lead_ids: ids, status: value });
-      res.json({ success: true, data: { affected: ids.length } });
+      audit(db, 'leads_bulk_status_changed', req.user!.id, req.ip || 'unknown', {
+        lead_ids: ids, status: value, affected: statusRes.changes,
+      });
+      res.json({ success: true, data: { affected: statusRes.changes } });
       return;
     }
 
