@@ -975,30 +975,47 @@ router.post(
     // WEB-UIUX-1147: refuse duplicate names + overlapping ranges. Without this
     // two periods covering the same calendar days both include the overlap
     // rows in their CSVs (SUM-by-range, not dedup'd), double-counting payroll.
-    const nameClash = await adb.get<{ id: number; name: string }>(
-      'SELECT id, name FROM payroll_periods WHERE name = ?',
+    //
+    // BUGHUNT-2026-05-17: payroll_periods has no UNIQUE on name and no
+    // range-exclusion constraint (migration 096), so two concurrent admin
+    // POSTs both passed the SELECT pre-checks and both INSERTed — the
+    // exact double-count the dedupe was supposed to prevent. Fold both
+    // dup checks into the INSERT via WHERE NOT EXISTS so SQLite's writer
+    // lock serialises the race; loser sees changes=0 -> 409.
+    const notes = req.body?.notes ? validateTextLength(req.body.notes, 500, 'notes') : null;
+    const result = await adb.run(
+      `INSERT INTO payroll_periods (name, start_date, end_date, notes)
+       SELECT ?, ?, ?, ?
+        WHERE NOT EXISTS (SELECT 1 FROM payroll_periods WHERE name = ?)
+          AND NOT EXISTS (
+            SELECT 1 FROM payroll_periods
+             WHERE start_date <= ? AND end_date >= ?
+          )`,
+      name, startDate, endDate, notes,
       name,
-    );
-    if (nameClash) {
-      throw new AppError(`A payroll period named "${name}" already exists.`, 409);
-    }
-    const overlap = await adb.get<{ id: number; name: string; start_date: string; end_date: string }>(
-      `SELECT id, name, start_date, end_date FROM payroll_periods
-        WHERE start_date <= ? AND end_date >= ?
-        LIMIT 1`,
       endDate, startDate,
     );
-    if (overlap) {
+    if (result.changes === 0) {
+      const nameClash = await adb.get<{ id: number; name: string }>(
+        'SELECT id, name FROM payroll_periods WHERE name = ?',
+        name,
+      );
+      if (nameClash) {
+        throw new AppError(`A payroll period named "${name}" already exists.`, 409);
+      }
+      const overlap = await adb.get<{ id: number; name: string; start_date: string; end_date: string }>(
+        `SELECT id, name, start_date, end_date FROM payroll_periods
+          WHERE start_date <= ? AND end_date >= ?
+          LIMIT 1`,
+        endDate, startDate,
+      );
       throw new AppError(
-        `Date range overlaps existing period "${overlap.name}" (${overlap.start_date} to ${overlap.end_date}). Periods must not overlap — payroll CSVs would double-count rows in the overlap.`,
+        overlap
+          ? `Date range overlaps existing period "${overlap.name}" (${overlap.start_date} to ${overlap.end_date}). Periods must not overlap — payroll CSVs would double-count rows in the overlap.`
+          : 'A concurrent request created a conflicting period. Refresh and try again.',
         409,
       );
     }
-    const notes = req.body?.notes ? validateTextLength(req.body.notes, 500, 'notes') : null;
-    const result = await adb.run(
-      `INSERT INTO payroll_periods (name, start_date, end_date, notes) VALUES (?, ?, ?, ?)`,
-      name, startDate, endDate, notes,
-    );
     audit(req.db, 'payroll_period_created', requireUserId(req), req.ip || 'unknown', {
       period_id: Number(result.lastInsertRowid),
     });

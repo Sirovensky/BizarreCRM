@@ -565,10 +565,24 @@ router.patch('/exceptions/:id', asyncHandler(async (req, res) => {
 
   params.push(id);
 
-  await adb.run(
-    `UPDATE booking_exceptions SET ${fields.join(', ')} WHERE id = ?`,
-    ...params,
-  );
+  // BUGHUNT-2026-05-17: the date-dupe pre-check above is TOCTOU vs the
+  // UNIQUE INDEX on booking_exceptions.date (migration 133). Two concurrent
+  // PATCHs that both move different rows to the same date both pass the
+  // SELECT and the second UPDATE surfaces as a generic 500. Translate the
+  // UNIQUE violation to the same 409 the pre-check returns on the no-race
+  // path.
+  try {
+    await adb.run(
+      `UPDATE booking_exceptions SET ${fields.join(', ')} WHERE id = ?`,
+      ...params,
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/UNIQUE constraint.*booking_exceptions/i.test(msg)) {
+      throw new AppError('An exception for that date already exists', 409);
+    }
+    throw err;
+  }
 
   const updated = await adb.get('SELECT * FROM booking_exceptions WHERE id = ?', id);
 
