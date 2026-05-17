@@ -388,21 +388,47 @@ router.post(
     // version already tried to retry on error but kept the value of `code`
     // inside the `try` scope unreachable on the final iteration. Regenerate
     // on every failure so the caller sees a distinct code on retry.
+    // BUGHUNT-2026-05-17: also guard against same-customer racing. Without
+    // INSERT...WHERE NOT EXISTS, two concurrent requests for the same
+    // customer both passed the existing-row SELECT and both INSERTed —
+    // either succeeded (no per-customer unique constraint = two referral
+    // codes for one customer; subsequent reads pick the newest, orphaning
+    // the older one in the analytics ledger) or both hit the per-code
+    // UNIQUE retry loop fruitlessly. The guarded insert + post-check
+    // returns whichever code won the race so the second caller still gets
+    // a usable code in their response.
     let code = '';
     for (let i = 0; i < 5; i += 1) {
       const candidate = mintReferralCode(customer.first_name);
       try {
-        await adb.run(
-          `INSERT INTO referrals (referrer_customer_id, referral_code) VALUES (?, ?)`,
-          id,
-          candidate,
+        const ins = await adb.run(
+          `INSERT INTO referrals (referrer_customer_id, referral_code)
+             SELECT ?, ?
+              WHERE NOT EXISTS (SELECT 1 FROM referrals WHERE referrer_customer_id = ?)`,
+          id, candidate, id,
         );
+        if (ins.changes === 0) {
+          // Concurrent insert won — read back its code and return that.
+          const winner = await adb.get<{ referral_code: string }>(
+            `SELECT referral_code FROM referrals
+               WHERE referrer_customer_id = ?
+               ORDER BY created_at DESC LIMIT 1`,
+            id,
+          );
+          if (winner) {
+            res.json({ success: true, data: { referral_code: winner.referral_code, reused: true } });
+            return;
+          }
+          // Highly unlikely: NOT EXISTS said skip but follow-up SELECT
+          // found nothing (row deleted between). Fall through to retry.
+          continue;
+        }
         code = candidate;
         break;
       } catch (err) {
         const msg = err instanceof Error ? err.message.toLowerCase() : '';
         if (!(msg.includes('unique') || msg.includes('constraint'))) throw err;
-        // else retry with a freshly-minted code
+        // else retry with a freshly-minted code (referral_code collision)
       }
     }
     if (!code) {
