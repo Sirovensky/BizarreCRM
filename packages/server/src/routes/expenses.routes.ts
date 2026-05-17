@@ -604,11 +604,18 @@ router.post('/:id/approve', asyncHandler(async (req: Request, res: Response) => 
   if (existing.status === 'approved') throw new AppError('Expense is already approved', 409);
 
   const approvedAt = now();
-  await adb.run(`
+  // BUGHUNT-2026-05-17: guard WHERE status != 'approved' so two concurrent
+  // approve calls don't both pass the precheck and both overwrite
+  // approved_by_user_id + approved_at. changes === 0 → another manager
+  // approved between the SELECT and the UPDATE; surface 409.
+  const apprRes = await adb.run(`
     UPDATE expenses
     SET status = 'approved', approved_by_user_id = ?, approved_at = ?, updated_at = ?
-    WHERE id = ?
+    WHERE id = ? AND status != 'approved'
   `, req.user!.id, approvedAt, approvedAt, id);
+  if (apprRes.changes === 0) {
+    throw new AppError('Expense was approved by another user; refresh and retry', 409);
+  }
 
   audit(db, 'expense.approved', req.user!.id, req.ip || 'unknown', {
     expense_id: id, previous_status: existing.status,
@@ -634,11 +641,18 @@ router.post('/:id/deny', asyncHandler(async (req: Request, res: Response) => {
 
   const reason = validateStringField(req.body.reason, 'reason', MAX_REASON_LEN);
 
-  await adb.run(`
+  // BUGHUNT-2026-05-17: guard WHERE status != 'denied' so two concurrent
+  // deny calls don't both pass the precheck and both overwrite
+  // denial_reason. Also blocks a stale /deny from clobbering a just-
+  // approved expense back into the denied state.
+  const denyRes = await adb.run(`
     UPDATE expenses
     SET status = 'denied', denial_reason = ?, updated_at = ?
-    WHERE id = ?
+    WHERE id = ? AND status != 'denied'
   `, reason, now(), id);
+  if (denyRes.changes === 0) {
+    throw new AppError('Expense was denied by another user; refresh and retry', 409);
+  }
 
   audit(db, 'expense.denied', req.user!.id, req.ip || 'unknown', {
     expense_id: id, previous_status: existing.status, reason,

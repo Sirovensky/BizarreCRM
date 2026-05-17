@@ -308,10 +308,16 @@ router.patch(
     const existing = await adb.get('SELECT * FROM automations WHERE id = ?', id) as any;
     if (!existing) throw new AppError('Automation not found', 404);
 
-    const newActive = existing.is_active ? 0 : 1;
-    await adb.run("UPDATE automations SET is_active = ?, updated_at = datetime('now') WHERE id = ?",
-      newActive, id);
-    audit(req.db, 'automation_toggled', req.user!.id, req.ip || 'unknown', { automation_id: id, is_active: newActive });
+    // BUGHUNT-2026-05-17: atomic flip via CASE so two concurrent /toggle
+    // calls don't both read the same is_active value and both write the
+    // opposite — which cancels out (net zero flips) instead of applying.
+    // The DB does the flip in one statement so the second writer reads
+    // the just-flipped value and toggles back as expected.
+    await adb.run(
+      "UPDATE automations SET is_active = CASE WHEN COALESCE(is_active, 1) = 1 THEN 0 ELSE 1 END, updated_at = datetime('now') WHERE id = ?",
+      id,
+    );
+    audit(req.db, 'automation_toggled', req.user!.id, req.ip || 'unknown', { automation_id: id });
 
     const updated = await adb.get('SELECT * FROM automations WHERE id = ?', id) as any;
 
