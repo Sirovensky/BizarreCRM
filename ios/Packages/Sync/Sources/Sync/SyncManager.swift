@@ -143,6 +143,21 @@ public final class SyncManager {
     /// Subscribe to NWPathMonitor. Call once from AppServices.
     /// Re-triggers `syncNow()` whenever connectivity is restored.
     public func autoStart() {
+        // BUGHUNT-2026-05-17: clean up rows orphaned at `inFlight` by a
+        // previous process that was force-killed mid-drain. Without this
+        // sweep, `due(...)` skips them forever (it filters to queued/failed)
+        // so the user's mutation silently never reaches the server.
+        Task { @MainActor in
+            do {
+                let resetCount = try await SyncQueueStore.shared.resetStaleInFlight()
+                if resetCount > 0 {
+                    AppLog.sync.info("SyncManager autoStart: reset \(resetCount, privacy: .public) orphaned inFlight rows")
+                }
+            } catch {
+                AppLog.sync.error("SyncManager autoStart: resetStaleInFlight threw: \(error, privacy: .public)")
+            }
+        }
+
         pathMonitor.pathUpdateHandler = { [weak self] path in
             guard let self else { return }
             if path.status == .satisfied {

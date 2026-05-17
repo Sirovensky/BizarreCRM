@@ -149,6 +149,50 @@ public actor SyncQueueStore {
         }
     }
 
+    /// BUGHUNT-2026-05-17: reset rows that were marked `inFlight` but never
+    /// reached a terminal status — caused when the process is force-killed
+    /// or the device powers off mid-drain. Without this sweep those rows
+    /// stick at `inFlight` forever: `due(...)` only returns queued/failed,
+    /// so the user's mutation is silently abandoned (it never tombstones
+    /// to dead_letter either because attemptCount never advances).
+    ///
+    /// Call once from SyncManager at app cold-start before the first
+    /// `syncNow()`. The 60s freshness window protects against racing a
+    /// drain that's legitimately in flight on the very same launch.
+    @discardableResult
+    public func resetStaleInFlight(olderThan seconds: TimeInterval = 60) async throws -> Int {
+        guard let pool = await Database.shared.pool() else { return 0 }
+        let cutoff = Date().addingTimeInterval(-seconds)
+        return try await pool.write { db in
+            let count = try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COUNT(*) FROM sync_queue
+                    WHERE status = ?
+                      AND (last_attempt IS NULL OR last_attempt <= ?)
+                    """,
+                arguments: [SyncQueueRecord.Status.inFlight.rawValue, cutoff]
+            ) ?? 0
+            try db.execute(
+                sql: """
+                    UPDATE sync_queue
+                    SET status = ?, next_retry_at = NULL
+                    WHERE status = ?
+                      AND (last_attempt IS NULL OR last_attempt <= ?)
+                    """,
+                arguments: [
+                    SyncQueueRecord.Status.queued.rawValue,
+                    SyncQueueRecord.Status.inFlight.rawValue,
+                    cutoff,
+                ]
+            )
+            if count > 0 {
+                AppLog.sync.warning("sync_queue: reset \(count, privacy: .public) stale inFlight rows on cold start")
+            }
+            return count
+        }
+    }
+
     public func markFailed(_ id: Int64, error: String) async throws {
         guard let pool = await Database.shared.pool() else { return }
         try await pool.write { db in
