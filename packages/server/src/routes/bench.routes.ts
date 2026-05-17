@@ -282,6 +282,11 @@ router.post(
     if (!ticketExists) throw new AppError('Ticket not found', 404);
 
     // Only one active timer per user. Close any existing one politely.
+    // BUGHUNT-2026-05-17: guard the auto-stop UPDATE WHERE ended_at IS
+    // NULL so two concurrent /start calls don't both overwrite the
+    // stop time + computed totals on the same already-closed timer.
+    // The INSERT below also gets an NOT EXISTS guard so we don't create
+    // two active timers for the same user.
     const existing = (await adb.get(
       'SELECT * FROM bench_timers WHERE user_id = ? AND ended_at IS NULL',
       userId,
@@ -293,7 +298,7 @@ router.post(
       await adb.run(
         `UPDATE bench_timers SET ended_at = datetime('now'), total_seconds = ?, labor_cost_cents = ?,
            notes = COALESCE(notes || ' | ', '') || 'Auto-stopped when new timer started'
-         WHERE id = ?`,
+         WHERE id = ? AND ended_at IS NULL`,
         elapsed,
         cost,
         existing.id,
@@ -330,14 +335,28 @@ router.post(
       if (!deviceExists) throw new AppError('ticket_device_id not found on this ticket', 404);
     }
 
+    // BUGHUNT-2026-05-17: NOT EXISTS guard prevents two concurrent /start
+    // calls from both succeeding when the user already has an active
+    // timer (or another /start raced ours and inserted just before us).
+    // Without this guard, both calls bypass the auto-stop branch (each
+    // one ran their own SELECT before either INSERT landed) and both
+    // INSERTs succeed — violating "one active timer per user" with no
+    // schema-level UNIQUE partial index to catch it.
     const result = await adb.run(
       `INSERT INTO bench_timers (ticket_id, ticket_device_id, user_id, labor_rate_cents)
-       VALUES (?, ?, ?, ?)`,
+       SELECT ?, ?, ?, ?
+       WHERE NOT EXISTS (
+         SELECT 1 FROM bench_timers WHERE user_id = ? AND ended_at IS NULL
+       )`,
       ticketId,
       ticketDeviceId,
       userId,
       rateCents,
+      userId,
     );
+    if (result.changes === 0) {
+      throw new AppError('A timer is already active for you — refresh and retry', 409);
+    }
 
     const newId = Number(result.lastInsertRowid);
     const row = (await adb.get('SELECT * FROM bench_timers WHERE id = ?', newId)) as BenchTimerRow;
