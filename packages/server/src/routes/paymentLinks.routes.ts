@@ -438,8 +438,12 @@ publicRouter.post('/:token/pay', asyncHandler(async (req: Request, res: Response
     return;
   }
   // SEC-M60: reject pay attempt on active-but-expired row.
+  // BUGHUNT-2026-05-17: guard the UPDATE WHERE status='active' so a webhook
+  // that just marked the link 'paid' isn't silently clobbered back to
+  // 'expired' by an expired-but-active pay attempt arriving in the same
+  // window. changes === 0 → another writer flipped the row first.
   if (isLinkExpired(row.expires_at)) {
-    await adb.run(`UPDATE payment_links SET status = 'expired' WHERE id = ?`, row.id);
+    await adb.run(`UPDATE payment_links SET status = 'expired' WHERE id = ? AND status = 'active'`, row.id);
     throw new AppError('Payment link has expired', 410);
   }
 

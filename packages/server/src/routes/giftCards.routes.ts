@@ -1021,10 +1021,17 @@ router.post('/:id/disable', requirePermission('gift_cards.reload'), asyncHandler
   }
 
   // BUGHUNT-2026-05-10-24: bump version on disable.
-  await adb.run(
-    "UPDATE gift_cards SET status = 'disabled', version = version + 1, updated_at = datetime('now') WHERE id = ?",
+  // BUGHUNT-2026-05-17: guard WHERE status NOT IN ('disabled','used') so a
+  // concurrent redemption that flips status to 'used' isn't silently
+  // overwritten to 'disabled' (which would also lose the redemption's
+  // version bump). changes === 0 → status changed under us; surface 409.
+  const disableRes = await adb.run(
+    "UPDATE gift_cards SET status = 'disabled', version = version + 1, updated_at = datetime('now') WHERE id = ? AND status NOT IN ('disabled', 'used')",
     cardId,
   );
+  if (disableRes.changes === 0) {
+    throw new AppError('Card status changed concurrently; refresh and retry', 409);
+  }
 
   // Audit entry — capture who, when, why, and the prior status so a
   // mis-clicked disable can be reverted via /enable with full context.
@@ -1060,11 +1067,17 @@ router.post('/:id/enable', requirePermission('gift_cards.reload'), asyncHandler(
   // redemption attempt fail explicitly on the balance check.
   const restoredStatus = Number(card.current_balance) > 0 ? 'active' : 'used';
   // BUGHUNT-2026-05-10-24: bump version on enable.
-  await adb.run(
-    "UPDATE gift_cards SET status = ?, version = version + 1, updated_at = datetime('now') WHERE id = ?",
+  // BUGHUNT-2026-05-17: guard WHERE status='disabled' so two concurrent
+  // /enable calls don't both bump version + audit, and so a racing /disable
+  // can't be silently overwritten by a stale /enable.
+  const enableRes = await adb.run(
+    "UPDATE gift_cards SET status = ?, version = version + 1, updated_at = datetime('now') WHERE id = ? AND status = 'disabled'",
     restoredStatus,
     cardId,
   );
+  if (enableRes.changes === 0) {
+    throw new AppError('Card status changed concurrently; refresh and retry', 409);
+  }
 
   audit(db, 'gift_card_enabled', req.user!.id, req.ip || 'unknown', {
     gift_card_id: cardId,
