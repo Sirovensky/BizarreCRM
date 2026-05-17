@@ -110,35 +110,57 @@ public final class BackgroundTaskScheduler {
         scheduleRefresh()
 
         // Budget: 30s max.
+        // BUGHUNT-2026-05-17: track whether the task expired so we report the
+        // accurate completion state. Previously this always called
+        // setTaskCompleted(success: true) — even when iOS cut the task short
+        // via expirationHandler — which discouraged iOS from retrying the
+        // sync soon. Reporting success=false on expiry lets iOS schedule the
+        // next BGAppRefreshTask sooner.
+        let expired = ExpirationFlag()
+
         let sync = Task { @MainActor [weak self] in
             await self?.onRefreshSync?()
         }
 
         task.expirationHandler = {
+            expired.markExpired()
             sync.cancel()
             AppLog.sync.warning("BackgroundTaskScheduler: refresh task expired")
         }
 
         await sync.value
-        task.setTaskCompleted(success: true)
-        AppLog.sync.info("BackgroundTaskScheduler: refresh task completed")
+        let didExpire = expired.isExpired
+        task.setTaskCompleted(success: !didExpire)
+        if didExpire {
+            AppLog.sync.warning("BackgroundTaskScheduler: refresh task completed with expiry — reported failure")
+        } else {
+            AppLog.sync.info("BackgroundTaskScheduler: refresh task completed")
+        }
     }
 
     private func handleNightlyTask(_ task: BGProcessingTask) async {
         scheduleNightly()
+
+        let expired = ExpirationFlag()
 
         let maintenance = Task { @MainActor [weak self] in
             await self?.onNightlyMaintenance?()
         }
 
         task.expirationHandler = {
+            expired.markExpired()
             maintenance.cancel()
             AppLog.sync.warning("BackgroundTaskScheduler: nightly task expired early")
         }
 
         await maintenance.value
-        task.setTaskCompleted(success: true)
-        AppLog.sync.info("BackgroundTaskScheduler: nightly task completed")
+        let didExpire = expired.isExpired
+        task.setTaskCompleted(success: !didExpire)
+        if didExpire {
+            AppLog.sync.warning("BackgroundTaskScheduler: nightly task completed with expiry — reported failure")
+        } else {
+            AppLog.sync.info("BackgroundTaskScheduler: nightly task completed")
+        }
     }
     #endif
 
@@ -151,5 +173,22 @@ public final class BackgroundTaskScheduler {
         AppLog.sync.debug("BackgroundTaskScheduler: debug simulated refresh start")
         await onRefreshSync?()
         AppLog.sync.debug("BackgroundTaskScheduler: debug simulated refresh done")
+    }
+}
+
+/// Thread-safe flag flipped by BGTaskScheduler.expirationHandler (called off
+/// the main thread) and read back on the main actor after `await task.value`.
+private final class ExpirationFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var expired = false
+
+    func markExpired() {
+        lock.lock(); defer { lock.unlock() }
+        expired = true
+    }
+
+    var isExpired: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return expired
     }
 }
