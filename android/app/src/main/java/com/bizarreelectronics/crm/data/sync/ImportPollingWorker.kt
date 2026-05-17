@@ -124,6 +124,16 @@ class ImportPollingWorker @AssistedInject constructor(
                     notifyCompletion("Import status unknown", "Could not reach server — check import history.", isError = true)
                     return Result.failure()
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation so WorkManager
+                // honors the cancel signal. Previously the catch (e: Exception)
+                // below caught it, incremented `consecutiveErrors`, and after
+                // 5 fast iterations (delay() throws immediately when cancelled)
+                // posted a misleading "Import status unknown — network error"
+                // completion notification + a Result.failure() that triggered
+                // WorkManager backoff retry. The correct semantics for a
+                // cancelled worker are: terminate quietly, no notification.
+                throw e
             } catch (e: Exception) {
                 consecutiveErrors++
                 Log.w(TAG, "Error polling import status: ${e.message} (errors=$consecutiveErrors)")
