@@ -780,29 +780,45 @@ router.post('/order-queue/add', asyncHandler(async (req, res) => {
   const quantity_needed = Number.isFinite(qtyNum) && qtyNum >= 1 ? Math.floor(qtyNum) : 1;
 
   // Upsert — if same catalog_item_id already pending, increment quantity
+  // BUGHUNT-2026-05-17: previous SELECT-then-(UPDATE-or-INSERT) raced —
+  // two parallel /add calls with the same catalog_item_id both saw "no
+  // pending row" and both INSERTed duplicate rows for the same part.
+  // Operator then placed two POs to the supplier for the same item.
+  // Replace with an atomic INSERT...WHERE NOT EXISTS; if the insert
+  // produces zero rows, an existing pending row already exists and we
+  // increment its quantity_needed in a single follow-up UPDATE.
   let queueId: number | bigint;
   if (catalog_item_id) {
-    const existing = await adb.get<{ id: number }>(
-      `SELECT id FROM parts_order_queue WHERE catalog_item_id = ? AND status = 'pending'`,
+    const insRes = await adb.run(
+      `INSERT INTO parts_order_queue (source,catalog_item_id,inventory_item_id,name,sku,supplier_url,image_url,unit_price,quantity_needed,notes)
+         SELECT ?,?,?,?,?,?,?,?,?,?
+          WHERE NOT EXISTS (
+            SELECT 1 FROM parts_order_queue WHERE catalog_item_id = ? AND status = 'pending'
+          )`,
+      source || 'manual', catalog_item_id, inventory_item_id || null,
+      name, sku || null, supplier_url || null, image_url || null,
+      unit_price || 0, quantity_needed, notes || null,
       catalog_item_id,
     );
-
-    if (existing) {
-      await adb.run(
-        `UPDATE parts_order_queue SET quantity_needed = quantity_needed + ?, updated_at = datetime('now') WHERE id = ?`,
-        quantity_needed, existing.id,
-      );
-      queueId = existing.id;
+    if (insRes.changes > 0) {
+      queueId = insRes.lastInsertRowid;
     } else {
-      const r = await adb.run(`
-        INSERT INTO parts_order_queue (source,catalog_item_id,inventory_item_id,name,sku,supplier_url,image_url,unit_price,quantity_needed,notes)
-        VALUES (?,?,?,?,?,?,?,?,?,?)
-      `,
-        source || 'manual', catalog_item_id || null, inventory_item_id || null,
-        name, sku || null, supplier_url || null, image_url || null,
-        unit_price || 0, quantity_needed, notes || null,
+      // Concurrent INSERT won OR a pending row already existed before us.
+      // Increment quantity on the existing pending row atomically.
+      await adb.run(
+        `UPDATE parts_order_queue
+            SET quantity_needed = quantity_needed + ?, updated_at = datetime('now')
+          WHERE catalog_item_id = ? AND status = 'pending'`,
+        quantity_needed, catalog_item_id,
       );
-      queueId = r.lastInsertRowid;
+      const existing = await adb.get<{ id: number }>(
+        `SELECT id FROM parts_order_queue WHERE catalog_item_id = ? AND status = 'pending' ORDER BY id ASC LIMIT 1`,
+        catalog_item_id,
+      );
+      if (!existing) {
+        throw new AppError('parts_order_queue row vanished mid-upsert; retry', 409);
+      }
+      queueId = existing.id;
     }
   } else {
     const r = await adb.run(`
