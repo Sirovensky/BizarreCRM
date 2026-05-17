@@ -13,6 +13,7 @@ import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
@@ -29,6 +30,12 @@ class SmsRepository @Inject constructor(
     private val gson: Gson,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // BUGHUNT-2026-05-17: dedup background refresh jobs to prevent Flow
+    // re-subscription fan-out. Conversation refresh is a single global slot;
+    // thread refresh is per-phone-number (String key).
+    @Volatile private var conversationsRefreshJob: Job? = null
+    private val threadRefreshJobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
 
     /** Returns cached conversations from Room, refreshes in background. */
     fun getConversations(): Flow<List<SmsMessageEntity>> {
@@ -201,7 +208,8 @@ class SmsRepository @Inject constructor(
     }
 
     private fun refreshConversationsInBackground() {
-        scope.launch {
+        if (conversationsRefreshJob?.isActive == true) return
+        conversationsRefreshJob = scope.launch {
             if (!serverMonitor.isEffectivelyOnline.value) return@launch
             try {
                 val response = smsApi.getConversations(null)
@@ -223,10 +231,20 @@ class SmsRepository @Inject constructor(
     }
 
     private fun refreshThreadInBackground(phone: String) {
-        scope.launch {
-            if (!serverMonitor.isEffectivelyOnline.value) return@launch
-            refreshThreadDirect(phone)
+        val existing = threadRefreshJobs[phone]
+        if (existing?.isActive == true) return
+        val job = scope.launch {
+            if (!serverMonitor.isEffectivelyOnline.value) {
+                threadRefreshJobs.remove(phone)
+                return@launch
+            }
+            try {
+                refreshThreadDirect(phone)
+            } finally {
+                threadRefreshJobs.remove(phone)
+            }
         }
+        threadRefreshJobs[phone] = job
     }
 
     private suspend fun refreshThreadDirect(phone: String) {

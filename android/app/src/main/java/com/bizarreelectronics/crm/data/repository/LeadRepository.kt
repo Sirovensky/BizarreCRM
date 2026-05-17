@@ -15,6 +15,7 @@ import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
@@ -31,6 +32,11 @@ class LeadRepository @Inject constructor(
     private val gson: Gson,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // BUGHUNT-2026-05-17: dedup background refresh jobs to prevent Flow
+    // re-subscription fan-out. Matches CustomerRepository pattern.
+    @Volatile private var listRefreshJob: Job? = null
+    private val detailRefreshJobs = java.util.concurrent.ConcurrentHashMap<Long, Job>()
 
     /** Returns cached leads immediately, refreshes from API in background. */
     fun getLeads(): Flow<List<LeadEntity>> {
@@ -177,7 +183,8 @@ class LeadRepository @Inject constructor(
     }
 
     private fun refreshLeadsInBackground() {
-        scope.launch {
+        if (listRefreshJob?.isActive == true) return
+        listRefreshJob = scope.launch {
             if (!serverMonitor.isEffectivelyOnline.value) return@launch
             try {
                 val response = leadApi.getLeads(mapOf("pagesize" to "200"))
@@ -190,16 +197,24 @@ class LeadRepository @Inject constructor(
     }
 
     private fun refreshLeadDetailInBackground(id: Long) {
-        scope.launch {
-            if (!serverMonitor.isEffectivelyOnline.value) return@launch
+        val existing = detailRefreshJobs[id]
+        if (existing?.isActive == true) return
+        val job = scope.launch {
+            if (!serverMonitor.isEffectivelyOnline.value) {
+                detailRefreshJobs.remove(id)
+                return@launch
+            }
             try {
                 val response = leadApi.getLead(id)
                 val detail = response.data ?: return@launch
                 leadDao.insert(detail.toEntity())
             } catch (e: Exception) {
                 Log.d(TAG, "Background lead detail refresh failed: ${e.message}")
+            } finally {
+                detailRefreshJobs.remove(id)
             }
         }
+        detailRefreshJobs[id] = job
     }
 
     companion object {
