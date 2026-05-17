@@ -17,6 +17,7 @@ import com.bizarreelectronics.crm.data.repository.TicketRepository
 import com.bizarreelectronics.crm.data.repository.toEntity
 import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.google.gson.Gson
+import kotlinx.coroutines.CancellationException
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
@@ -187,6 +188,13 @@ class DeltaSyncer @Inject constructor(
                 }
                 else -> Log.w(TAG, "Unknown entity type in delta upsert: '${upsert.entityType}' id=${upsert.id}")
             }
+        } catch (e: CancellationException) {
+            // BUGHUNT-2026-05-17: re-throw cancellation so WorkManager-driven
+            // cancellation of the sync coroutine propagates up to runDelta's
+            // outer catch (which re-throws) instead of being swallowed and
+            // letting the for-loop in sync() keep applying more rows after
+            // cancellation. Same pattern as OrderedQueueProcessor.
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to apply delta upsert ${upsert.entityType}#${upsert.id}: ${e.message}")
             // Continue — one bad row must not abort the rest of the page.
@@ -206,6 +214,8 @@ class DeltaSyncer @Inject constructor(
                 "invoice"   -> Log.d(TAG, "Invoice tombstone id=${tombstone.id} skipped — deleteById not yet on InvoiceDao")
                 else -> Log.w(TAG, "Unknown entity type in tombstone: '${tombstone.entityType}' id=${tombstone.id}")
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to apply tombstone ${tombstone.entityType}#${tombstone.id}: ${e.message}")
         }
