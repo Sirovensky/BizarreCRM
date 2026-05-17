@@ -1795,7 +1795,14 @@ router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_n
       ],
     },
     {
-      sql: `UPDATE invoices SET amount_credited = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?`,
+      // BUGHUNT-2026-05-17: guard the invoice UPDATE against a void that
+      // landed between the pre-tx SELECT (line ~1556) and this write.
+      // Otherwise a credit-note issued while the parent invoice is being
+      // voided silently flips the void back to a paid/partial status —
+      // re-opening a closed-out ledger entry. The credit-note INSERT
+      // still lands so the audit reflects the operator's intent; the
+      // original invoice stays in its terminal state.
+      sql: `UPDATE invoices SET amount_credited = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ? AND status NOT IN ('void', 'refunded')`,
       params: [newAmountCredited, newAmountDue, newStatus, invoiceId],
     },
   ]);
