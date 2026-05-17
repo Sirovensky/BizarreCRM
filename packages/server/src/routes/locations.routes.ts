@@ -458,10 +458,21 @@ router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
     throw new AppError('Cannot deactivate the only active location', 409);
   }
 
-  await adb.run(
-    'UPDATE locations SET is_active = 0, updated_at = ? WHERE id = ?',
-    now(), id,
+  // BUGHUNT-2026-05-17: pre-check above is TOCTOU. Two admins concurrently
+  // deactivating two different active locations could both pass count>1
+  // and both UPDATE, leaving zero active. Atomic guard: only deactivate
+  // if at least one OTHER active location exists at UPDATE time.
+  const result = await adb.run(
+    `UPDATE locations
+        SET is_active = 0, updated_at = ?
+      WHERE id = ?
+        AND is_active = 1
+        AND (SELECT COUNT(*) FROM locations WHERE is_active = 1 AND id != ?) >= 1`,
+    now(), id, id,
   );
+  if (result.changes === 0) {
+    throw new AppError('Cannot deactivate the only remaining active location', 409);
+  }
 
   audit(db, 'location.deactivated', req.user!.id, req.ip || 'unknown', {
     location_id: id,
