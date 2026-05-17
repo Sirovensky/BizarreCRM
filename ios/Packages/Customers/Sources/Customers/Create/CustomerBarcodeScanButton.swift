@@ -122,6 +122,16 @@ struct BarcodeCameraView: UIViewRepresentable {
         return v
     }
     func updateUIView(_ uiView: BarcodeCameraUIView, context: Context) {}
+
+    // BUGHUNT-2026-05-17: stop the AVCaptureSession when SwiftUI tears the
+    // scanner down. Previously the view was held only by the SwiftUI host
+    // and ARC eventually released it, but the capture session kept
+    // running on its internal queue for ~seconds after dismissal — long
+    // enough to spike battery and CPU when users opened and closed the
+    // scanner repeatedly without scanning.
+    static func dismantleUIView(_ uiView: BarcodeCameraUIView, coordinator: ()) {
+        uiView.teardown()
+    }
 }
 
 @MainActor
@@ -173,6 +183,17 @@ final class BarcodeCameraUIView: UIView, AVCaptureMetadataOutputObjectsDelegate 
         Task { @MainActor [weak self] in
             self?.session.stopRunning()
             self?.onCodeDetected?(value)
+        }
+    }
+
+    /// Called from `BarcodeCameraView.dismantleUIView` when SwiftUI removes
+    /// the host. Stops the AVCaptureSession promptly so battery doesn't keep
+    /// draining if the user dismisses without scanning.
+    func teardown() {
+        // stopRunning is documented as blocking; hop off the main thread.
+        let session = self.session
+        DispatchQueue.global(qos: .userInitiated).async {
+            if session.isRunning { session.stopRunning() }
         }
     }
 }
