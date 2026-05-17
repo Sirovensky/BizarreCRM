@@ -7,6 +7,7 @@ import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.ConsentStatusResponse
 import com.bizarreelectronics.crm.data.remote.api.PrivacyApi
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -100,6 +101,8 @@ class DataPrivacyViewModel @Inject constructor(
                     Timber.e(e, "exportMyData failed")
                     _state.value = DataPrivacyState.Error("Network error: ${e.code()}")
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Timber.e(e, "exportMyData failed")
                 _state.value = DataPrivacyState.Error(e.message ?: "Unknown error")
@@ -133,6 +136,8 @@ class DataPrivacyViewModel @Inject constructor(
                     Timber.e(e, "deleteMyAccount failed")
                     _state.value = DataPrivacyState.Error("Network error: ${e.code()}")
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Timber.e(e, "deleteMyAccount failed")
                 _state.value = DataPrivacyState.Error(e.message ?: "Unknown error")
@@ -159,6 +164,8 @@ class DataPrivacyViewModel @Inject constructor(
                     Timber.w(e, "consentStatus returned %d", e.code())
                 }
                 // 404 → feature not available; leave consentStatus null
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Timber.w(e, "consentStatus failed")
             }
