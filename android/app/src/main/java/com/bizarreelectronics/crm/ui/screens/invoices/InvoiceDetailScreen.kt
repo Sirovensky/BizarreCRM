@@ -56,6 +56,7 @@ import com.bizarreelectronics.crm.util.DateFormatter
 import com.bizarreelectronics.crm.util.formatAsMoney
 import com.bizarreelectronics.crm.util.toDollars
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
@@ -183,6 +184,14 @@ class InvoiceDetailViewModel @Inject constructor(
                 // cache stayed stale and the badge/bottom bar lied.
                 runCatching { invoiceRepository.refreshInvoiceDetail(invoiceId) }
                 loadOnlineDetails()
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation. Painting
+                // "Failed to record payment" on cancellation tempts the user
+                // to retry — risking a duplicate payment if the server in
+                // fact received the first POST. Server-side idempotency on
+                // /invoices/:id/pay varies by version, so safest to keep the
+                // action state pending and let the user back out cleanly.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
@@ -205,6 +214,8 @@ class InvoiceDetailViewModel @Inject constructor(
                 // Voided status lands on the Room flow before the user sees stale UI.
                 runCatching { invoiceRepository.refreshInvoiceDetail(invoiceId) }
                 loadOnlineDetails()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
@@ -227,6 +238,10 @@ class InvoiceDetailViewModel @Inject constructor(
                 )
                 runCatching { invoiceRepository.refreshInvoiceDetail(invoiceId) }
                 loadOnlineDetails()
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw — refund is a money write,
+                // double-issuing is bad.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
@@ -247,6 +262,8 @@ class InvoiceDetailViewModel @Inject constructor(
                     isActionInProgress = false,
                     actionMessage = "Invoice cloned as a new Draft.",
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
@@ -275,6 +292,10 @@ class InvoiceDetailViewModel @Inject constructor(
                 )
                 runCatching { invoiceRepository.refreshInvoiceDetail(invoiceId) }
                 loadOnlineDetails()
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw — credit notes are money
+                // writes, double-creation is bad.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
@@ -304,6 +325,8 @@ class InvoiceDetailViewModel @Inject constructor(
                 )
                 runCatching { invoiceRepository.refreshInvoiceDetail(invoiceId) }
                 loadOnlineDetails()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
