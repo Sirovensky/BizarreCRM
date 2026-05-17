@@ -230,10 +230,19 @@ router.delete(
       throw new AppError('Access denied', 403);
     }
 
-    await adb.run(
-      "UPDATE held_carts SET discarded_at = strftime('%Y-%m-%d %H:%M:%S', 'now') WHERE id = ?",
+    // BUGHUNT-2026-05-17: guard the UPDATE WHERE discarded_at IS NULL AND
+    // recalled_at IS NULL so a concurrent /recall that's already handing
+    // the cart_json to a cashier doesn't get silently discarded behind
+    // their back. The recalling cashier is mid-checkout when this discard
+    // would otherwise land — leading to a cart that's "discarded" but
+    // also actively being rung up. changes === 0 → 409.
+    const discardRes = await adb.run(
+      "UPDATE held_carts SET discarded_at = strftime('%Y-%m-%d %H:%M:%S', 'now') WHERE id = ? AND discarded_at IS NULL AND recalled_at IS NULL",
       id,
     );
+    if (discardRes.changes === 0) {
+      throw new AppError('Cart was just recalled or discarded by another cashier — refresh the held-carts list.', 409);
+    }
 
     // Audit held-cart deletion — required per spec
     audit(db, 'held_cart_discarded', user.id, req.ip || 'unknown', {
