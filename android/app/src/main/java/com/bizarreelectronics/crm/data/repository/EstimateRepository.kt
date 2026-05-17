@@ -14,6 +14,7 @@ import com.bizarreelectronics.crm.data.remote.dto.UpdateEstimateRequest
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.bizarreelectronics.crm.util.toCentsOrZero
 import com.google.gson.Gson
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -58,6 +59,8 @@ class EstimateRepository @Inject constructor(
                 val response = estimateApi.getEstimates(mapOf("search" to query, "pagesize" to "50"))
                 val estimates = response.data?.estimates ?: return@launch
                 estimateDao.insertAll(estimates.map { it.toEntity() })
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "API search failed: ${e.message}")
             }
@@ -75,6 +78,8 @@ class EstimateRepository @Inject constructor(
                 val entity = detail.toEntity()
                 estimateDao.insert(entity)
                 return entity.id
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Online create failed, falling back to offline queue: ${e.message}")
             }
@@ -119,6 +124,8 @@ class EstimateRepository @Inject constructor(
                 val entity = detail.toEntity()
                 estimateDao.insert(entity)
                 return entity
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Online update failed, falling back to offline queue: ${e.message}")
             }
@@ -219,6 +226,8 @@ class EstimateRepository @Inject constructor(
                 }
                 // server returned empty or null data — treat as end of list
                 return Pair(emptyList(), null)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "Cursor page fetch failed, falling back to Room: ${e.message}")
             }
@@ -247,6 +256,8 @@ class EstimateRepository @Inject constructor(
                 if (pagination == null || page >= pagination.totalPages) break
                 page++
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "refreshFromServer failed: ${e.message}")
         }
@@ -260,6 +271,8 @@ class EstimateRepository @Inject constructor(
                 val response = estimateApi.getEstimates(mapOf("pagesize" to "200"))
                 val estimates = response.data?.estimates ?: return@launch
                 estimateDao.insertAll(estimates.map { it.toEntity() })
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "Background estimate refresh failed: ${e.message}")
             }
@@ -278,6 +291,8 @@ class EstimateRepository @Inject constructor(
                 val response = estimateApi.getEstimate(id)
                 val detail = response.data ?: return@launch
                 estimateDao.insert(detail.toEntity())
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "Background estimate detail refresh failed: ${e.message}")
             } finally {

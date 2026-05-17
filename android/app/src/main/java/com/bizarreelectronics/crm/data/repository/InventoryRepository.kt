@@ -15,6 +15,7 @@ import com.bizarreelectronics.crm.data.remote.dto.InventoryListItem
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.bizarreelectronics.crm.util.toCentsOrZero
 import com.google.gson.Gson
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -66,6 +67,8 @@ class InventoryRepository @Inject constructor(
                 val response = inventoryApi.getItems(mapOf("search" to query, "pagesize" to "50"))
                 val items = response.data?.items ?: return@launch
                 inventoryDao.insertAll(items.map { it.toEntity() })
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "API inventory search failed: ${e.message}")
             }
@@ -81,6 +84,8 @@ class InventoryRepository @Inject constructor(
                 // Refresh the item from server to get updated stock
                 refreshItemDetailInBackground(id)
                 return
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Online adjustStock failed, falling back to offline queue: ${e.message}")
             }
@@ -108,6 +113,8 @@ class InventoryRepository @Inject constructor(
                 val entity = detail.toEntity()
                 inventoryDao.insert(entity)
                 return entity.id
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Online create failed, falling back to offline queue: ${e.message}")
             }
@@ -184,6 +191,8 @@ class InventoryRepository @Inject constructor(
                 val entity = detail.toEntity()
                 inventoryDao.insert(entity)
                 return entity
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Online update failed, falling back to offline queue: ${e.message}")
             }
@@ -195,7 +204,17 @@ class InventoryRepository @Inject constructor(
         // the TicketRepository pattern: snapshot the existing row, apply the
         // request's fields, mark dirty, and insert. The sync queue carries the
         // canonical payload so the server still receives the full request.
-        val snapshot = runCatching { inventoryDao.getById(id).first() }.getOrNull()
+        //
+        // BUGHUNT-2026-05-17: runCatching wraps CancellationException via
+        // kotlin.Result/Throwable — replaced with explicit try/catch so a
+        // cancelled flow read doesn't proceed to enqueue on a dead coroutine.
+        val snapshot = try {
+            inventoryDao.getById(id).first()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
         if (snapshot != null) {
             val now = java.time.Instant.now().toString().take(19).replace("T", " ")
             val locallyDirty = snapshot.copy(
@@ -237,6 +256,8 @@ class InventoryRepository @Inject constructor(
                 val entity = item.toEntity()
                 inventoryDao.insert(entity)
                 return entity
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "Barcode API lookup failed: ${e.message}")
             }
@@ -269,6 +290,8 @@ class InventoryRepository @Inject constructor(
             if (page > MAX_PAGINATION_PAGES) {
                 Log.w(TAG, "Inventory pagination hit safety cap of $MAX_PAGINATION_PAGES pages — aborting refresh")
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "refreshFromServer failed: ${e.message}")
         }
@@ -282,6 +305,8 @@ class InventoryRepository @Inject constructor(
                 val response = inventoryApi.getItems(mapOf("pagesize" to "200"))
                 val items = response.data?.items ?: return@launch
                 inventoryDao.insertAll(items.map { it.toEntity() })
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "Background inventory refresh failed: ${e.message}")
             }
@@ -300,6 +325,8 @@ class InventoryRepository @Inject constructor(
                 val response = inventoryApi.getItem(id)
                 val detail = response.data?.item ?: return@launch
                 inventoryDao.insert(detail.toEntity())
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "Background inventory detail refresh failed: ${e.message}")
             } finally {
