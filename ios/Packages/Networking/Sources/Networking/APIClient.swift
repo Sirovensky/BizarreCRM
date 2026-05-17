@@ -305,8 +305,12 @@ public actor APIClientImpl: APIClient {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         let hadAuth = req.value(forHTTPHeaderField: "Authorization") != nil
+        // BUGHUNT-2026-05-17: same /auth/refresh guard as performOnce — never
+        // recurse refresh-and-retry on the refresh endpoint itself or the
+        // inner refreshSessionOnce() would deadlock awaiting its own Task.
+        let isRefreshEndpoint = req.url?.path.hasSuffix("/auth/refresh") == true
         let (data, response) = try await session.data(for: req)
-        if let http = response as? HTTPURLResponse, http.statusCode == 401, hadAuth {
+        if let http = response as? HTTPURLResponse, http.statusCode == 401, hadAuth, !isRefreshEndpoint {
             if allowRetryAfterRefresh, refresher != nil {
                 let refreshed = await refreshSessionOnce()
                 if refreshed, let newToken = authToken {
@@ -403,6 +407,13 @@ public actor APIClientImpl: APIClient {
         allowRetryAfterRefresh: Bool
     ) async throws -> APIResponse<T> {
         let hadAuth = req.value(forHTTPHeaderField: "Authorization") != nil
+        // BUGHUNT-2026-05-17: the /auth/refresh endpoint itself must never
+        // trigger refresh-and-retry — if it did, the inner refreshSessionOnce()
+        // call would see the outer refresh Task as in-flight and `await
+        // inFlight.value` from within that same Task, deadlocking the actor.
+        // A failed refresh must surface its 401 to the caller (AuthRefresher)
+        // unchanged so the session is correctly revoked.
+        let isRefreshEndpoint = req.url?.path.hasSuffix("/auth/refresh") == true
         let (data, resp) = try await session.data(for: req)
         guard let http = resp as? HTTPURLResponse else { throw APITransportError.invalidResponse }
 
@@ -410,7 +421,7 @@ public actor APIClientImpl: APIClient {
         // refresher once, update the Authorization header, replay the
         // original request. Only on refresh failure do we post
         // SessionEvents.sessionRevoked and drop the user to Login.
-        if http.statusCode == 401, hadAuth {
+        if http.statusCode == 401, hadAuth, !isRefreshEndpoint {
             if allowRetryAfterRefresh, refresher != nil {
                 let refreshed = await refreshSessionOnce()
                 if refreshed, let newToken = authToken {
