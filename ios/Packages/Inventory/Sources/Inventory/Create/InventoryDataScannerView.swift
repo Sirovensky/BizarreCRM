@@ -34,6 +34,16 @@ struct InventoryDataScannerView: UIViewControllerRepresentable {
 
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
 
+    // BUGHUNT-2026-05-17: stop scanning when SwiftUI tears the host down.
+    // Without this, dismissing the scanner without scanning leaves
+    // DataScannerViewController scanning in the background (it's still
+    // alive while ARC sorts out the reference), burning CPU + camera.
+    static func dismantleUIViewController(_ uiViewController: UIViewController, coordinator: Coordinator) {
+        if let scanner = uiViewController as? DataScannerViewController, scanner.isScanning {
+            scanner.stopScanning()
+        }
+    }
+
     func makeCoordinator() -> Coordinator { Coordinator(onScan: onScan) }
 
     @MainActor
