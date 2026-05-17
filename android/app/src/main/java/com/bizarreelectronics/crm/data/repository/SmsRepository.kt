@@ -11,6 +11,7 @@ import com.bizarreelectronics.crm.data.remote.dto.SmsConversationItem
 import com.bizarreelectronics.crm.data.remote.dto.SmsMessageItem
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.google.gson.Gson
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -111,6 +112,11 @@ class SmsRepository @Inject constructor(
             smsDao.insert(sentEntity)
             refreshThreadInBackground(to)
             sentEntity
+        } catch (e: CancellationException) {
+            // BUGHUNT-2026-05-17: re-throw cancellation. Without this the caller
+            // sees a "queued" entity and a queue row was inserted for a request
+            // it cancelled — duplicate-send risk if the user retries.
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "Online SMS send failed [${e.javaClass.simpleName}], queuing for retry: ${e.message}")
             // Keep the local row but move it to "queued" and push a queue entry so the
@@ -164,6 +170,8 @@ class SmsRepository @Inject constructor(
             if (!serverMonitor.isEffectivelyOnline.value) return@launch
             try {
                 smsApi.markRead(phone)
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {}
         }
     }
@@ -173,6 +181,8 @@ class SmsRepository @Inject constructor(
             if (!serverMonitor.isEffectivelyOnline.value) return@launch
             try {
                 smsApi.toggleFlag(phone)
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {}
         }
     }
@@ -182,6 +192,8 @@ class SmsRepository @Inject constructor(
             if (!serverMonitor.isEffectivelyOnline.value) return@launch
             try {
                 smsApi.togglePin(phone)
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {}
         }
     }
@@ -197,11 +209,15 @@ class SmsRepository @Inject constructor(
             for (conv in recent) {
                 try {
                     refreshThreadDirect(conv.convPhone)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Log.d(TAG, "Failed to sync thread ${conv.convPhone} [${e.javaClass.simpleName}]: ${e.message}")
                 }
             }
             Log.d(TAG, "Synced ${recent.size} SMS conversations")
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "SMS refreshFromServer failed [${e.javaClass.simpleName}]: ${e.message}")
         }
@@ -224,6 +240,8 @@ class SmsRepository @Inject constructor(
                 for (conv in recent) {
                     refreshThreadDirect(conv.convPhone)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "Background conversation refresh failed [${e.javaClass.simpleName}]: ${e.message}")
             }
@@ -252,6 +270,8 @@ class SmsRepository @Inject constructor(
             val response = smsApi.getThread(phone)
             val messages = response.data?.messages ?: return
             smsDao.insertAll(messages.map { it.toEntity(phone) })
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.d(TAG, "Thread refresh failed for $phone [${e.javaClass.simpleName}]: ${e.message}")
         }

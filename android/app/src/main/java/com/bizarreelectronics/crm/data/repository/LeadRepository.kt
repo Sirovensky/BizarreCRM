@@ -13,6 +13,7 @@ import com.bizarreelectronics.crm.data.remote.dto.LeadListItem
 import com.bizarreelectronics.crm.data.remote.dto.UpdateLeadRequest
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.google.gson.Gson
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -62,6 +63,8 @@ class LeadRepository @Inject constructor(
                 val response = leadApi.getLeads(mapOf("search" to query, "pagesize" to "50"))
                 val leads = response.data?.leads ?: return@launch
                 leadDao.insertAll(leads.map { it.toEntity() })
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "API search failed: ${e.message}")
             }
@@ -78,6 +81,8 @@ class LeadRepository @Inject constructor(
                 val entity = detail.toEntity()
                 leadDao.insert(entity)
                 return entity.id
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Online create failed, falling back to offline queue: ${e.message}")
             }
@@ -122,6 +127,8 @@ class LeadRepository @Inject constructor(
                 val entity = detail.toEntity()
                 leadDao.insert(entity)
                 return entity
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Online update failed, falling back to offline queue: ${e.message}")
             }
@@ -177,6 +184,8 @@ class LeadRepository @Inject constructor(
                 if (pagination == null || page >= pagination.totalPages) break
                 page++
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "refreshFromServer failed: ${e.message}")
         }
@@ -190,6 +199,8 @@ class LeadRepository @Inject constructor(
                 val response = leadApi.getLeads(mapOf("pagesize" to "200"))
                 val leads = response.data?.leads ?: return@launch
                 leadDao.insertAll(leads.map { it.toEntity() })
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "Background lead refresh failed: ${e.message}")
             }
@@ -208,6 +219,8 @@ class LeadRepository @Inject constructor(
                 val response = leadApi.getLead(id)
                 val detail = response.data ?: return@launch
                 leadDao.insert(detail.toEntity())
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "Background lead detail refresh failed: ${e.message}")
             } finally {
