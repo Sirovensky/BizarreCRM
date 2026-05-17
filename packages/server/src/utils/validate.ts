@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import { AppError } from '../middleware/errorHandler.js';
 
 export function validatePrice(value: unknown, fieldName = 'price'): number {
@@ -249,7 +250,15 @@ export function validateJsonPayload(value: unknown, fieldName = 'payload', maxBy
     throw new AppError(`${fieldName} is not serializable`, 400);
   }
   if (!serialized) throw new AppError(`${fieldName} is empty`, 400);
-  if (serialized.length > maxBytes) throw new AppError(`${fieldName} exceeds ${maxBytes} bytes`, 400);
+  // BUGHUNT-2026-05-17: cap on serialized UTF-8 BYTES, not JS char count.
+  // The parameter is named `maxBytes`; comparing to serialized.length
+  // measured the JS char length (UTF-16 code units), so payloads of
+  // emoji or non-Latin text could pass the check while occupying up to
+  // 4x the intended on-disk size. Every caller of this helper now gets
+  // accurate byte-bounded validation.
+  if (Buffer.byteLength(serialized, 'utf8') > maxBytes) {
+    throw new AppError(`${fieldName} exceeds ${maxBytes} bytes`, 400);
+  }
   return serialized;
 }
 
