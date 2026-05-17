@@ -63,6 +63,14 @@ public final class WebSocketClient {
 
     public func disconnect() {
         intentionallyClosed = true
+        // BUGHUNT-2026-05-17: cancel any pending reconnect Task. The inner
+        // `intentionallyClosed` check inside the Task already prevented it
+        // from calling `socket?.connect()` after disconnect — but if connect()
+        // was called again before that pending Task fired, `intentionallyClosed`
+        // was flipped back to false, and the stale Task then doubled the
+        // connect on the new socket.
+        reconnectTask?.cancel()
+        reconnectTask = nil
         socket?.disconnect()
         connectionState = .disconnected
     }
