@@ -411,31 +411,64 @@ router.post('/subscribe', asyncHandler(async (req: Request, res: Response) => {
   }
 
   const activationStamp = now();
-  await adb.transaction([
-    {
-      sql: `UPDATE customer_subscriptions
-               SET last_charge_at = ?,
-                   last_charge_amount = ?,
-                   updated_at = ?
-             WHERE id = ?`,
-      params: [activationStamp, monthlyPrice, activationStamp, subscriptionId],
-    },
-    {
-      sql: 'UPDATE customers SET active_subscription_id = ? WHERE id = ?',
-      params: [subscriptionId, customer_id],
-    },
-    {
-      sql: 'INSERT INTO subscription_payments (subscription_id, amount, status, blockchyp_transaction_id, payment_provider, processor_transaction_id) VALUES (?, ?, ?, ?, ?, ?)',
-      params: [
-        subscriptionId,
-        monthlyPrice,
-        'success',
-        isPaidTier ? initialTransactionId : null,
-        isPaidTier ? 'blockchyp' : 'none',
-        initialTransactionId,
-      ],
-    },
-  ]);
+  // BUGHUNT-2026-05-17: CAS on status='active'. If the customer cancelled
+  // the subscription between our chargeToken call (above, network) and
+  // this UPDATE, the cancel landed first and status is now 'cancelled'.
+  // We MUST NOT silently overwrite last_charge_at to make a cancelled
+  // sub look fresh, AND we MUST NOT point customers.active_subscription_id
+  // at a cancelled row — both desync the membership state model and
+  // make the rejoin path (line 285) refuse the customer a future
+  // resubscribe. Card already moved at this point; surface as
+  // orphan_charge so ops can issue the refund manually.
+  const activationUpdate = await adb.run(
+    `UPDATE customer_subscriptions
+        SET last_charge_at = ?,
+            last_charge_amount = ?,
+            updated_at = ?
+      WHERE id = ? AND status = 'active'`,
+    activationStamp, monthlyPrice, activationStamp, subscriptionId,
+  );
+  // Always record the payment row — the card moved, so the
+  // subscription_payments ledger must show it whether the
+  // subscription was cancelled mid-charge or not. Only the
+  // customers.active_subscription_id pointer is conditional on
+  // the activation CAS having matched.
+  if (activationUpdate.changes === 0) {
+    audit(db, 'membership_orphan_charge', req.user!.id, req.ip || 'unknown', {
+      subscription_id: subscriptionId,
+      customer_id,
+      tier_id,
+      amount: monthlyPrice,
+      transaction_id: initialTransactionId,
+      reason: 'subscription_cancelled_during_charge',
+      action_required: 'manual_refund',
+    });
+    await adb.run(
+      'INSERT INTO subscription_payments (subscription_id, amount, status, blockchyp_transaction_id, payment_provider, processor_transaction_id) VALUES (?, ?, ?, ?, ?, ?)',
+      subscriptionId, monthlyPrice, 'success',
+      isPaidTier ? initialTransactionId : null,
+      isPaidTier ? 'blockchyp' : 'none',
+      initialTransactionId,
+    );
+  } else {
+    await adb.transaction([
+      {
+        sql: 'UPDATE customers SET active_subscription_id = ? WHERE id = ?',
+        params: [subscriptionId, customer_id],
+      },
+      {
+        sql: 'INSERT INTO subscription_payments (subscription_id, amount, status, blockchyp_transaction_id, payment_provider, processor_transaction_id) VALUES (?, ?, ?, ?, ?, ?)',
+        params: [
+          subscriptionId,
+          monthlyPrice,
+          'success',
+          isPaidTier ? initialTransactionId : null,
+          isPaidTier ? 'blockchyp' : 'none',
+          initialTransactionId,
+        ],
+      },
+    ]);
+  }
 
   if (isPaidTier) {
     audit(db, 'membership_initial_charge_success', req.user!.id, req.ip || 'unknown', {
