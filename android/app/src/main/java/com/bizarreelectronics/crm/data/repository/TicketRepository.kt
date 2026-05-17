@@ -22,6 +22,7 @@ import com.bizarreelectronics.crm.util.toCentsOrZero
 import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -42,6 +43,14 @@ class TicketRepository @Inject constructor(
     private val gson: Gson,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // BUGHUNT-2026-05-17: dedup background refresh jobs — getTickets() /
+    // searchTickets() / Flow re-subscription all call refreshTicketsInBackground,
+    // which previously fanned out into N concurrent /tickets requests on
+    // recomposition. Same pattern as CustomerRepository's listRefreshJob /
+    // detailRefreshJobs and WebSocketService.scheduleReconnect.
+    @Volatile private var listRefreshJob: Job? = null
+    private val detailRefreshJobs = java.util.concurrent.ConcurrentHashMap<Long, Job>()
 
     // -----------------------------------------------------------------------
     // Paging3 — cursor-based paged stream (plan:L632–L635)
@@ -269,7 +278,8 @@ class TicketRepository @Inject constructor(
     }
 
     private fun refreshTicketsInBackground() {
-        scope.launch {
+        if (listRefreshJob?.isActive == true) return
+        listRefreshJob = scope.launch {
             if (!serverMonitor.isEffectivelyOnline.value) return@launch
             try {
                 val response = ticketApi.getTickets(mapOf("pagesize" to "200"))
@@ -282,16 +292,24 @@ class TicketRepository @Inject constructor(
     }
 
     private fun refreshTicketDetailInBackground(id: Long) {
-        scope.launch {
-            if (!serverMonitor.isEffectivelyOnline.value) return@launch
+        val existing = detailRefreshJobs[id]
+        if (existing?.isActive == true) return
+        val job = scope.launch {
+            if (!serverMonitor.isEffectivelyOnline.value) {
+                detailRefreshJobs.remove(id)
+                return@launch
+            }
             try {
                 val response = ticketApi.getTicket(id)
                 val detail = response.data ?: return@launch
                 ticketDao.insert(detail.toEntity())
             } catch (e: Exception) {
                 Log.d(TAG, "Background ticket detail refresh failed [${e.javaClass.simpleName}]: ${e.message}")
+            } finally {
+                detailRefreshJobs.remove(id)
             }
         }
+        detailRefreshJobs[id] = job
     }
 
     /**

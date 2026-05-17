@@ -21,6 +21,7 @@ import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -41,6 +42,15 @@ class CustomerRepository @Inject constructor(
     private val gson: Gson,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // BUGHUNT-2026-05-17: dedup background refresh jobs so rapid Flow
+    // re-subscription (recomposition, screen toggling, theme change, etc)
+    // doesn't fan out into N concurrent /customers requests. Same pattern
+    // as WebSocketService.scheduleReconnect — check `isActive` before
+    // launching a fresh refresh. The list refresh is a single global slot;
+    // detail refresh is per-customer-id.
+    @Volatile private var listRefreshJob: Job? = null
+    private val detailRefreshJobs = java.util.concurrent.ConcurrentHashMap<Long, Job>()
 
     // -----------------------------------------------------------------------
     // Paging3 — cursor-based paged stream (plan:L874)
@@ -276,7 +286,8 @@ class CustomerRepository @Inject constructor(
     }
 
     private fun refreshCustomersInBackground() {
-        scope.launch {
+        if (listRefreshJob?.isActive == true) return
+        listRefreshJob = scope.launch {
             if (!serverMonitor.isEffectivelyOnline.value) return@launch
             try {
                 val response = customerApi.getCustomers(mapOf("pagesize" to "500"))
@@ -289,16 +300,24 @@ class CustomerRepository @Inject constructor(
     }
 
     private fun refreshCustomerDetailInBackground(id: Long) {
-        scope.launch {
-            if (!serverMonitor.isEffectivelyOnline.value) return@launch
+        val existing = detailRefreshJobs[id]
+        if (existing?.isActive == true) return
+        val job = scope.launch {
+            if (!serverMonitor.isEffectivelyOnline.value) {
+                detailRefreshJobs.remove(id)
+                return@launch
+            }
             try {
                 val response = customerApi.getCustomer(id)
                 val detail = response.data ?: return@launch
                 customerDao.insert(detail.toEntity())
             } catch (e: Exception) {
                 Log.d(TAG, "Background customer detail refresh failed [${e.javaClass.simpleName}]: ${e.message}")
+            } finally {
+                detailRefreshJobs.remove(id)
             }
         }
+        detailRefreshJobs[id] = job
     }
 
     companion object {

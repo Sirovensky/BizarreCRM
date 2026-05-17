@@ -17,6 +17,7 @@ import com.bizarreelectronics.crm.util.toDollars
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
@@ -72,6 +73,11 @@ class InvoiceRepository @Inject constructor(
         ).flow
     }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // BUGHUNT-2026-05-17: dedup background refresh jobs to prevent fan-out on
+    // Flow re-subscription. Same pattern as CustomerRepository.
+    @Volatile private var listRefreshJob: Job? = null
+    private val detailRefreshJobs = java.util.concurrent.ConcurrentHashMap<Long, Job>()
 
     fun getInvoices(): Flow<List<InvoiceEntity>> {
         refreshInvoicesInBackground()
@@ -168,7 +174,8 @@ class InvoiceRepository @Inject constructor(
     }
 
     private fun refreshInvoicesInBackground() {
-        scope.launch {
+        if (listRefreshJob?.isActive == true) return
+        listRefreshJob = scope.launch {
             if (!serverMonitor.isEffectivelyOnline.value) return@launch
             try {
                 val response = invoiceApi.getInvoices(mapOf("pagesize" to "200"))
@@ -181,10 +188,17 @@ class InvoiceRepository @Inject constructor(
     }
 
     private fun refreshInvoiceDetailInBackground(id: Long) {
-        scope.launch {
-            runCatching { refreshInvoiceDetail(id) }
-                .onFailure { Log.d(TAG, "Background invoice detail refresh failed: ${it.message}") }
+        val existing = detailRefreshJobs[id]
+        if (existing?.isActive == true) return
+        val job = scope.launch {
+            try {
+                runCatching { refreshInvoiceDetail(id) }
+                    .onFailure { Log.d(TAG, "Background invoice detail refresh failed: ${it.message}") }
+            } finally {
+                detailRefreshJobs.remove(id)
+            }
         }
+        detailRefreshJobs[id] = job
     }
 
     /**
