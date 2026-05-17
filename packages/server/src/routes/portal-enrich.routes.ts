@@ -752,18 +752,12 @@ router.post(
     // Without this, a customer could walk a 5 star rating up and down to
     // game the Google-review redirect threshold. The rate limiter catches
     // the attack volume; this check enforces the business rule.
-    const existingReview = await adb.get<AnyRow>(
-      `SELECT id FROM customer_reviews WHERE ticket_id = ? AND customer_id = ? LIMIT 1`,
-      ticketId,
-      ticket.customer_id,
-    );
-    if (existingReview) {
-      res.status(409).json({
-        success: false,
-        message: 'A review has already been submitted for this ticket',
-      });
-      return;
-    }
+    // BUGHUNT-2026-05-17: customer_reviews (mig 089) has no UNIQUE on
+    // (ticket_id, customer_id), so the SELECT-precheck-then-INSERT was
+    // TOCTOU racy — two concurrent rating submissions both passed the
+    // precheck and both INSERTed, doubling the review count and letting
+    // the higher rating game the Google-review threshold. Replace with
+    // atomic conditional INSERT.
 
     const config = await getConfig(adb, [
       'portal_review_threshold',
@@ -774,12 +768,24 @@ router.post(
 
     const reviewResult = await adb.run(
       `INSERT INTO customer_reviews (ticket_id, customer_id, rating, comment)
-          VALUES (?, ?, ?, ?)`,
+       SELECT ?, ?, ?, ?
+       WHERE NOT EXISTS (
+         SELECT 1 FROM customer_reviews WHERE ticket_id = ? AND customer_id = ?
+       )`,
       ticketId,
       ticket.customer_id,
       rating,
       comment || null,
+      ticketId,
+      ticket.customer_id,
     );
+    if (reviewResult.changes === 0) {
+      res.status(409).json({
+        success: false,
+        message: 'A review has already been submitted for this ticket',
+      });
+      return;
+    }
 
     // Portal session — userId is null, customer_id in details so admins
     // can cross-check against the forward_url redirect for 4-5 star ratings.
