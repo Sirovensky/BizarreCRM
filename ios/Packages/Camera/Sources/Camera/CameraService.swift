@@ -141,6 +141,17 @@ public actor CameraService: NSObject {
         guard let output = photoOutput else {
             throw CameraError.captureFailed("Session not started")
         }
+        // BUGHUNT-2026-05-17: serialise concurrent captures. The actor only
+        // serialises method calls up to the first `await`; a second
+        // capturePhoto() entering while the first is suspended on
+        // withCheckedThrowingContinuation would OVERWRITE captureContinuation
+        // — the first caller's continuation leaks (hangs forever), and the
+        // AVF delegate callback for the first capture incorrectly resumes
+        // the second caller with the first capture's photo data. Reject the
+        // second call so the caller can choose to retry / debounce.
+        guard captureContinuation == nil else {
+            throw CameraError.captureFailed("Another capture is already in progress")
+        }
 
         let settings = makeSettings(for: format, output: output)
 
