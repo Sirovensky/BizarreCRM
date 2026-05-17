@@ -171,7 +171,11 @@ router.put('/:id', requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK), asyncH
   const { name, serial, imei, condition, notes } = req.body;
   if (name !== undefined && !name) throw new AppError('Name cannot be empty', 400);
 
-  await adb.run(`
+  // BUGHUNT-2026-05-17: AND is_deleted = 0 on the UPDATE — a racing
+  // /DELETE landing between the SELECT precheck and this UPDATE would
+  // otherwise revive a soft-deleted loaner by overwriting every field.
+  // changes === 0 → 409.
+  const updRes = await adb.run(`
     UPDATE loaner_devices SET
       name = COALESCE(?, name),
       serial = COALESCE(?, serial),
@@ -179,8 +183,11 @@ router.put('/:id', requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK), asyncH
       condition = COALESCE(?, condition),
       notes = COALESCE(?, notes),
       updated_at = ?
-    WHERE id = ?
+    WHERE id = ? AND is_deleted = 0
   `, name ?? null, serial ?? null, imei ?? null, condition ?? null, notes ?? null, now(), id);
+  if (updRes.changes === 0) {
+    throw new AppError('Loaner device was just deleted; refresh and retry', 409);
+  }
   audit(req.db, 'loaner_device_updated', req.user!.id, req.ip || 'unknown', { loaner_id: id });
 
   res.json({ success: true, data: { id } });
@@ -594,12 +601,20 @@ router.delete('/:id', requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK), asy
     throw new AppError('Cannot delete a device that is currently loaned out. Return it or mark it lost first.', 400);
   }
 
-  await adb.run(
+  // BUGHUNT-2026-05-17: also AND status != 'loaned' so a racing /loan
+  // between the SELECT precheck (status check at line 600) and this
+  // UPDATE can't be silently followed by a soft-delete — the customer
+  // would still have the physical device but the loaner_devices row
+  // would be tombstoned, leaving the active loaner_history dangling.
+  const delRes = await adb.run(
     `UPDATE loaner_devices
         SET is_deleted = 1, deleted_at = datetime('now'), deleted_by_user_id = ?
-      WHERE id = ? AND is_deleted = 0`,
+      WHERE id = ? AND is_deleted = 0 AND status != 'loaned'`,
     req.user!.id, id,
   );
+  if (delRes.changes === 0) {
+    throw new AppError('Loaner state changed; refresh and retry', 409);
+  }
   audit(req.db, 'loaner_device_soft_deleted', req.user!.id, req.ip || 'unknown', {
     loaner_id: id,
     name: device.name,
