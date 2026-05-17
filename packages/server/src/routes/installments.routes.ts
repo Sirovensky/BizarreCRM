@@ -280,16 +280,34 @@ router.post('/:id/cancel', asyncHandler(async (req: Request, res: Response) => {
   // installments that belong to a cancelled plan. Wrap in adb.transaction
   // so a mid-cancel failure leaves the plan in its prior state instead of
   // a half-cancelled mix.
-  const cancelResult = await adb.transaction([
-    {
-      sql: `UPDATE installment_plans SET status = 'cancelled' WHERE id = ?`,
-      params: [id],
-    },
-    {
-      sql: `UPDATE installment_schedule SET status = 'cancelled' WHERE plan_id = ? AND status = 'pending'`,
-      params: [id],
-    },
-  ]);
+  //
+  // BUGHUNT-2026-05-17: guarded UPDATE WHERE status NOT IN (completed,
+  // cancelled) + expectChanges. The SELECT precheck above is TOCTOU —
+  // an auto-charge cron could flip status to 'completed' between the
+  // SELECT and the UPDATE, and the unguarded UPDATE would silently
+  // overwrite the completed state back to 'cancelled' (losing the fact
+  // that the customer already finished paying).
+  let cancelResult: Awaited<ReturnType<typeof adb.transaction>>;
+  try {
+    cancelResult = await adb.transaction([
+      {
+        sql: `UPDATE installment_plans SET status = 'cancelled' WHERE id = ? AND status NOT IN ('completed', 'cancelled')`,
+        params: [id],
+        expectChanges: true,
+        expectChangesError: 'INSTALLMENT_PLAN_NOT_CANCELLABLE',
+      },
+      {
+        sql: `UPDATE installment_schedule SET status = 'cancelled' WHERE plan_id = ? AND status = 'pending'`,
+        params: [id],
+      },
+    ]);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('INSTALLMENT_PLAN_NOT_CANCELLABLE')) {
+      throw new AppError('Plan status changed concurrently; refresh and retry', 409);
+    }
+    throw err;
+  }
   const schedRowsCancelled = Array.isArray(cancelResult) ? cancelResult[1]?.changes ?? 0 : 0;
 
   audit(db, 'installment_plan.cancel', req.user!.id, req.ip ?? '', {
