@@ -350,13 +350,23 @@ router.post(
         continue;
       }
       try {
-        await adb.run(
+        // BUGHUNT-2026-05-17: INSERT OR IGNORE silently no-ops on the
+        // (group_id, customer_id) UNIQUE conflict, so the prior `added++`
+        // overcounted by treating already-members as new adds. Track the
+        // actual changes count and report only fresh inserts in `added`;
+        // already-member rows roll into `skipped` so the response message
+        // matches reality.
+        const insRes = await adb.run(
           `INSERT OR IGNORE INTO sms_customer_group_members
              (group_id, customer_id, added_at)
            VALUES (?, ?, datetime('now'))`,
           id, custId,
         );
-        added++;
+        if (insRes.changes > 0) {
+          added++;
+        } else {
+          skipped++;
+        }
       } catch {
         skipped++;
       }
