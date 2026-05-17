@@ -179,13 +179,22 @@ router.post('/:id/approve', asyncHandler(async (req: any, res: any) => {
   }
 
   const decidedAt = new Date().toISOString();
-  await adb.run(
+  // BUGHUNT-2026-05-17: guard the UPDATE WHERE status='pending'. Without
+  // this, a race between approve and deny (two managers acting at the
+  // same time) lets both pass the SELECT precheck and the second blind
+  // UPDATE silently overrides the first decision — the employee receives
+  // the losing decision but the winning manager's audit + notification
+  // already fired.
+  const result = await adb.run(
     `UPDATE time_off_requests
      SET status = 'approved', approver_user_id = ?, decided_at = ?,
          approved_by_user_id = ?, approved_at = ?
-     WHERE id = ?`,
+     WHERE id = ? AND status = 'pending'`,
     callerId, decidedAt, callerId, decidedAt, id,
   );
+  if (result.changes === 0) {
+    throw new AppError('Request status changed; refresh and retry', 409);
+  }
 
   audit(db, 'time_off_approved', callerId, req.ip || 'unknown', {
     id, user_id: existing.user_id,
@@ -224,13 +233,18 @@ router.post('/:id/deny', asyncHandler(async (req: any, res: any) => {
     : null;
   const decidedAt = new Date().toISOString();
 
-  await adb.run(
+  // BUGHUNT-2026-05-17: guard the UPDATE WHERE status='pending' so a
+  // racing approve doesn't get clobbered by a deny (or vice versa).
+  const result = await adb.run(
     `UPDATE time_off_requests
      SET status = 'denied', approver_user_id = ?, decided_at = ?,
          denial_reason = ?, approved_by_user_id = ?, approved_at = ?
-     WHERE id = ?`,
+     WHERE id = ? AND status = 'pending'`,
     callerId, decidedAt, denialReason, callerId, decidedAt, id,
   );
+  if (result.changes === 0) {
+    throw new AppError('Request status changed; refresh and retry', 409);
+  }
 
   audit(db, 'time_off_denied', callerId, req.ip || 'unknown', {
     id, user_id: existing.user_id,
