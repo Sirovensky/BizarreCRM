@@ -274,10 +274,18 @@ router.post(
       throw new AppError('Access denied', 403);
     }
 
-    await adb.run(
-      "UPDATE held_carts SET recalled_at = strftime('%Y-%m-%d %H:%M:%S', 'now') WHERE id = ?",
+    // BUGHUNT-2026-05-17: guard the UPDATE so two concurrent recalls can't
+    // both succeed. Without `AND recalled_at IS NULL`, both cashiers receive
+    // the cart_json and can both proceed to checkout, creating duplicate
+    // invoices for the same items. WHERE clause limits to the "still
+    // unclaimed" state; changes === 0 → another cashier won the race.
+    const recallResult = await adb.run(
+      "UPDATE held_carts SET recalled_at = strftime('%Y-%m-%d %H:%M:%S', 'now') WHERE id = ? AND recalled_at IS NULL AND discarded_at IS NULL",
       id,
     );
+    if (recallResult.changes === 0) {
+      throw new AppError('Cart was just recalled or discarded by another cashier — refresh the held-carts list.', 409);
+    }
 
     logger.info('held_cart: recalled', { id, user_id: user.id });
 
