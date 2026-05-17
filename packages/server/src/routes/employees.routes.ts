@@ -423,9 +423,23 @@ router.post(
       resolvedLocationId = parsed;
     }
 
+    // BUGHUNT-2026-05-17: the openEntry precheck above is a TOCTOU. Two
+    // near-simultaneous clock-in calls for the same user both saw no open
+    // entry, both INSERTed, and the employee ended up with two open clock
+    // entries — payroll would compound the hours on whichever clock-out
+    // matched. Conditional INSERT ... SELECT ... WHERE NOT EXISTS is atomic
+    // under SQLite's writer lock, so the loser sees changes === 0.
     const result = await adb.run(
-      'INSERT INTO clock_entries (user_id, clock_in, location_id) VALUES (?, ?, ?)', id, now, resolvedLocationId
+      `INSERT INTO clock_entries (user_id, clock_in, location_id)
+       SELECT ?, ?, ?
+        WHERE NOT EXISTS (
+          SELECT 1 FROM clock_entries WHERE user_id = ? AND clock_out IS NULL
+        )`,
+      id, now, resolvedLocationId, id,
     );
+    if (result.changes === 0) {
+      throw new AppError('Already clocked in (concurrent clock-in detected)', 409);
+    }
 
     const entry = await adb.get('SELECT * FROM clock_entries WHERE id = ?', result.lastInsertRowid);
     audit(req.db, 'employee_clocked_in', req.user!.id, req.ip || 'unknown', { employee_id: id, entry_id: Number(result.lastInsertRowid) });
