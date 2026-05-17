@@ -179,6 +179,14 @@ class MultipartUploadWorker @AssistedInject constructor(
         } catch (e: IOException) {
             Log.w(TAG, "Network error during upload (attempt=$runAttemptCount): ${e.message}")
             Result.retry()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // BUGHUNT-2026-05-17: re-throw cancellation. Previously the broad
+            // `catch (e: Exception)` below caught CancellationException and
+            // returned Result.failure() — telling WorkManager the upload
+            // permanently failed when in fact the user / OS cancelled it
+            // (Doze, replacement enqueue, manual cancel). Files would be
+            // permanently dead-lettered for transient cancellation.
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Unexpected error during upload: ${e.message}")
             Result.failure()

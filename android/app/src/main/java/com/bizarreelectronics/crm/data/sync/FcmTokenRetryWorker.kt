@@ -92,6 +92,15 @@ class FcmTokenRetryWorker @AssistedInject constructor(
             } else {
                 handleFailure(attempt)
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // BUGHUNT-2026-05-17: re-throw cancellation so WorkManager honors
+            // the cancel signal. Previously the broad Exception catch ran
+            // handleFailure(), which incremented fcmRetryAttemptCount and —
+            // at the MAX_ATTEMPTS boundary — flipped to Result.failure(),
+            // permanently giving up on FCM registration after the user / OS
+            // cancelled the worker for unrelated reasons. The next foreground
+            // cycle would not retry until the attempt counter is reset.
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "FcmTokenRetryWorker exception on attempt $attempt: ${e.message}")
             handleFailure(attempt)
