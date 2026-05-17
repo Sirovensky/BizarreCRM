@@ -359,10 +359,17 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   updates.push("updated_at = datetime('now')");
   vals.push(id);
 
-  await adb.run(
-    `UPDATE invoice_templates SET ${updates.join(', ')} WHERE id = ?`,
+  // BUGHUNT-2026-05-17: guard the UPDATE WHERE status != 'canceled' so a
+  // racing /cancel between the SELECT precheck and this UPDATE can't be
+  // silently overwritten — line-item edits or status='active' applied
+  // after a cancel would revive the template and resume billing.
+  const updResult = await adb.run(
+    `UPDATE invoice_templates SET ${updates.join(', ')} WHERE id = ? AND status != 'canceled'`,
     ...vals,
   );
+  if (updResult.changes === 0) {
+    throw new AppError('Template was canceled concurrently; refresh and retry', 409);
+  }
 
   audit(req.db, 'invoice_template.updated', req.user!.id, req.ip ?? '', {
     template_id: id,
