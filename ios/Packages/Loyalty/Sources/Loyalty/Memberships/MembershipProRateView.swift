@@ -44,7 +44,12 @@ public struct MembershipProRateCalculator {
         guard periodDays > 0, unusedDays > 0 else { return 0 }
         let clamped = min(unusedDays, periodDays)
         let dailyRate = Double(pricePerPeriodCents) / Double(periodDays)
-        return Int(dailyRate * Double(clamped))
+        // BUGHUNT-2026-05-17: was `Int(dailyRate * clamped)` — IEEE-754
+        // truncation toward zero. For a $100/30-day plan with 29 unused
+        // days, dailyRate * clamped = 9666.666… → Int = $96.66 instead of
+        // the correct $96.67. Use .rounded() so the on-device estimate
+        // matches the server's rounded refund credit.
+        return Int((dailyRate * Double(clamped)).rounded())
     }
 }
 
