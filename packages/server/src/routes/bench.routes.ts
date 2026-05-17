@@ -707,7 +707,11 @@ router.delete(
     const adb = req.asyncDb;
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) throw new AppError('Invalid id', 400);
-    await adb.run('DELETE FROM qc_checklist_items WHERE id = ?', id);
+    // BUGHUNT-2026-05-17: gate audit on actual delete + return 404 when
+    // the row didn't exist. Previously a stale UI re-click silently
+    // fired the audit event with no row change.
+    const delRes = await adb.run('DELETE FROM qc_checklist_items WHERE id = ?', id);
+    if (delRes.changes === 0) throw new AppError('Not found', 404);
     audit(req.db, 'qc_checklist_item_deleted', req.user?.id ?? null, req.ip ?? 'unknown', { id });
     res.json({ success: true, data: { message: 'Deleted' } });
   }),
