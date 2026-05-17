@@ -8,6 +8,7 @@ import androidx.work.WorkerParameters
 import com.bizarreelectronics.crm.data.repository.SmsRepository
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.CancellationException
 
 /**
  * WorkManager worker that fires a scheduled SMS when the system wakes it up.
@@ -29,6 +30,11 @@ class ScheduledSmsWorker @AssistedInject constructor(
             smsRepository.sendMessage(to, message)
             Log.d(TAG, "Scheduled SMS sent to $to")
             Result.success()
+        } catch (e: CancellationException) {
+            // BUGHUNT-2026-05-17: re-throw cancellation so WorkManager-driven
+            // stop doesn't keep retrying — Result.retry() on a cancelled
+            // coroutine reschedules a worker the user no longer wants.
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Scheduled SMS failed for $to: ${e.message}")
             Result.retry()

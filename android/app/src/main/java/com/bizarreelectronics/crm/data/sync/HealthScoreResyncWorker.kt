@@ -15,6 +15,7 @@ import com.bizarreelectronics.crm.data.local.db.dao.CustomerDao
 import com.bizarreelectronics.crm.data.remote.api.CustomerApi
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
 import java.util.concurrent.TimeUnit
 
@@ -54,6 +55,12 @@ class HealthScoreResyncWorker @AssistedInject constructor(
             rescoreAll()
             Log.d(TAG, "HealthScoreResyncWorker completed")
             Result.success()
+        } catch (e: CancellationException) {
+            // BUGHUNT-2026-05-17: re-throw so WorkManager-driven cancellation
+            // (constraints lost mid-run, app uninstalled) lets the worker stop
+            // cleanly instead of being reported as a failure and retried.
+            Log.d(TAG, "HealthScoreResyncWorker cancelled — honoring WorkManager signal")
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "HealthScoreResyncWorker failed [${e.javaClass.simpleName}]: ${e.message}")
             if (runAttemptCount < MAX_ATTEMPTS) Result.retry() else Result.failure()
@@ -82,6 +89,12 @@ class HealthScoreResyncWorker @AssistedInject constructor(
                 }
                 skipped++
                 Log.d(TAG, "recalculate failed for customer $id (${e.code()}): ${e.message}")
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw so cancellation propagates out
+                // of the for-loop. Without this, WorkManager cancel was
+                // swallowed and the loop kept hitting the server for each of
+                // potentially thousands of remaining customer IDs.
+                throw e
             } catch (e: Exception) {
                 skipped++
                 Log.d(TAG, "recalculate failed for customer $id [${e.javaClass.simpleName}]: ${e.message}")

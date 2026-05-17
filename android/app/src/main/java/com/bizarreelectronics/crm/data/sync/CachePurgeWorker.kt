@@ -7,6 +7,7 @@ import androidx.work.*
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.CancellationException
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -47,6 +48,11 @@ class CachePurgeWorker @AssistedInject constructor(
             evictAttachmentStagingIfOverCap()
             Log.d(TAG, "CachePurgeWorker completed")
             Result.success()
+        } catch (e: CancellationException) {
+            // BUGHUNT-2026-05-17: re-throw cancellation so WorkManager stop
+            // doesn't report a "failure" and reschedule a worker the system
+            // wanted to halt.
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "CachePurgeWorker failed [${e.javaClass.simpleName}]: ${e.message}")
             if (runAttemptCount < 2) Result.retry() else Result.failure()
