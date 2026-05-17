@@ -178,6 +178,13 @@ variantsRouter.patch(
     if (body.cost_price_cents !== undefined) {
       sets.push('cost_price_cents = ?'); vals.push(parseCents(body.cost_price_cents, 'cost_price_cents'));
     }
+    // BUGHUNT-2026-05-17: gate on a stable updated_at snapshot to make the
+    // PATCH a CAS write. Without this, a /variants/:id PATCH landing
+    // between a concurrent /DELETE (sets is_active=0) and our UPDATE
+    // would silently revive the deactivated variant by overwriting every
+    // field including is_active. Two concurrent PATCHes also produce
+    // last-write-wins instead of a clean 409. Snapshot the row's
+    // updated_at and pin it on the WHERE.
     if (body.is_active !== undefined) {
       const flag = body.is_active ? 1 : 0;
       sets.push('is_active = ?'); vals.push(flag);
@@ -187,8 +194,15 @@ variantsRouter.patch(
 
     sets.push('updated_at = ?'); vals.push(nowIso());
     vals.push(id);
+    vals.push(existing.updated_at ?? null);
 
-    await adb.run(`UPDATE inventory_variants SET ${sets.join(', ')} WHERE id = ?`, ...vals);
+    const updResult = await adb.run(
+      `UPDATE inventory_variants SET ${sets.join(', ')} WHERE id = ? AND COALESCE(updated_at, '') = COALESCE(?, '')`,
+      ...vals,
+    );
+    if (updResult.changes === 0) {
+      throw new AppError('Variant changed concurrently; refresh and retry', 409);
+    }
 
     const updated = await adb.get<AnyRow>('SELECT * FROM inventory_variants WHERE id = ?', id);
     audit(db, 'inventory_variant_updated', userId, ip, { variant_id: id, fields: sets.filter(s => !s.startsWith('updated_at')) });
