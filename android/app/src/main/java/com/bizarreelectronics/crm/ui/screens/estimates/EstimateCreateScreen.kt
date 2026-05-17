@@ -101,7 +101,10 @@ data class EstimateCreateUiState(
 private fun EstimateCreateUiState.subtotalCents(): Long =
     lineItems.sumOf { row ->
         val qty = row.qty.toLongOrNull() ?: 0L
-        val cents = (row.unitPrice.toDoubleOrNull() ?: 0.0).let { d -> (d * 100).toLong() }
+        // BUGHUNT-2026-05-17: Math.round on user-typed unit price. `(9.99 * 100).toLong()`
+        // becomes 998 in IEEE-754 — estimate stored a cent less than the user typed.
+        // Same fix as InvoiceCreateScreen.subtotalCents.
+        val cents = (row.unitPrice.toDoubleOrNull() ?: 0.0).let { d -> Math.round(d * 100) }
         qty * cents
     }
 

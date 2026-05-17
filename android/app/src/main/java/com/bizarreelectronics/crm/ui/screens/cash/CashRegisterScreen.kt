@@ -541,7 +541,7 @@ private fun OpenShiftDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    val cents = ((startingCashText.toDoubleOrNull() ?: 0.0) * 100).toLong()
+                    val cents = Math.round((startingCashText.toDoubleOrNull() ?: 0.0) * 100)
                     onConfirm(registerId.trim(), cents)
                 },
                 enabled = !isLoading,
@@ -570,7 +570,10 @@ private fun CloseShiftDialog(
 ) {
     var closingCashText by remember { mutableStateOf("") }
     var overShortReason by remember { mutableStateOf("") }
-    val closingCents = ((closingCashText.toDoubleOrNull() ?: 0.0) * 100).toLong()
+    // BUGHUNT-2026-05-17: Math.round on user-typed cash count. `(9.99 * 100).toLong()`
+    // truncates to 998 in JVM IEEE-754, so a cashier closing on $9.99 reported
+    // $9.98 to the server — a one-cent variance phantom in every reconciliation.
+    val closingCents = Math.round((closingCashText.toDoubleOrNull() ?: 0.0) * 100)
     val diff = closingCents - expectedCashCents
     val showReason = kotlin.math.abs(diff) > 200   // > $2
 
@@ -672,7 +675,7 @@ private fun PayInOutDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    val cents = ((amountText.toDoubleOrNull() ?: 0.0) * 100).toLong()
+                    val cents = Math.round((amountText.toDoubleOrNull() ?: 0.0) * 100)
                     onConfirm(cents, reason.trim())
                 },
                 enabled = amountText.isNotBlank() && reason.isNotBlank(),

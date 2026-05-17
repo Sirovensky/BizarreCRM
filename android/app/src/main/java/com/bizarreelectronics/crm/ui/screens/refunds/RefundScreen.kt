@@ -127,7 +127,11 @@ private fun NewRefundTab(
     val types = listOf("refund" to "Original Tender", "store_credit" to "Store Credit", "credit_note" to "Credit Note")
     val methods = listOf("" to "Auto-detect", "cash" to "Cash", "card" to "Card (BlockChyp)", "gift_card" to "Gift Card reload", "store_credit" to "Store Credit")
 
-    val amountCents = ((amountText.toDoubleOrNull() ?: 0.0) * 100).toLong()
+    // BUGHUNT-2026-05-17: Math.round on user-typed refund amount. `(9.99 * 100).toLong()`
+    // becomes 998 in IEEE-754, so a $9.99 refund was sent to the server as
+    // $9.98. Worse, the manager-PIN threshold check was off-by-one too —
+    // refund of exactly the threshold sometimes skipped the PIN prompt.
+    val amountCents = Math.round((amountText.toDoubleOrNull() ?: 0.0) * 100)
     val requiresPin = amountCents >= MANAGER_PIN_THRESHOLD_CENTS
 
     if (showPinDialog) {

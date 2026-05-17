@@ -155,7 +155,11 @@ private fun IssueTab(
 
         Button(
             onClick = {
-                val cents = ((amountText.toDoubleOrNull() ?: 0.0) * 100).toLong()
+                // BUGHUNT-2026-05-17: Math.round on user-typed gift card amount.
+                // `(9.99 * 100).toLong()` becomes 998 in IEEE-754, so a $9.99
+                // gift card was issued with 998 cents of value — the recipient
+                // received one cent less than the buyer paid for.
+                val cents = Math.round((amountText.toDoubleOrNull() ?: 0.0) * 100)
                 viewModel.issueGiftCard(
                     amountCents = cents,
                     code = codeText.takeIf { it.isNotBlank() },
@@ -240,7 +244,9 @@ private fun ScanRedeemTab(
                 )
                 Button(
                     onClick = {
-                        val cents = ((redeemAmountText.toDoubleOrNull() ?: 0.0) * 100).toLong()
+                        // BUGHUNT-2026-05-17: Math.round on redemption amount —
+                        // same IEEE-754 truncation as gift-card issuance above.
+                        val cents = Math.round((redeemAmountText.toDoubleOrNull() ?: 0.0) * 100)
                         viewModel.redeemGiftCard(uiState.card.code, cents)
                     },
                     enabled = redeemAmountText.isNotBlank(),
