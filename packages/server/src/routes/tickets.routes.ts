@@ -4648,20 +4648,49 @@ router.delete('/devices/:deviceId/loaner', requirePermission('tickets.edit'), as
   if (!device) throw new AppError('Device not found', 404);
   if (!device.loaner_device_id) throw new AppError('No loaner device assigned', 400);
 
-  // Mark loaner as available
-  await adb.run("UPDATE loaner_devices SET status = 'available', updated_at = ? WHERE id = ?", now(), device.loaner_device_id);
-
-  // Update loaner history
-  await adb.run(`
-    UPDATE loaner_history SET returned_at = ?, condition_in = ?
-    WHERE loaner_device_id = ? AND ticket_device_id = ? AND returned_at IS NULL
-  `, now(), req.body.condition_in ?? null, device.loaner_device_id, deviceId);
-
-  // Unlink from ticket device
-  await adb.run('UPDATE ticket_devices SET loaner_device_id = NULL, updated_at = ? WHERE id = ?', now(), deviceId);
+  // BUGHUNT-2026-05-17: bundle the loaner state flip + history close +
+  // ticket unlink into one tx. Previously these were four sequential
+  // adb.run calls — a crash between step 1 (loaner_devices status =
+  // 'available') and step 3 (ticket_devices unlink) left the loaner
+  // marked available while the ticket still pointed at it, and the
+  // open loaner_history row was abandoned. Two concurrent /loaner
+  // DELETEs for the same deviceId could also both pass the SELECT and
+  // both flip a re-loaned loaner back to 'available'. Claim the unlink
+  // first (CAS on loaner_device_id matches our snapshot); if it loses
+  // the race, the loaner status flip rolls back too.
+  const returnTime = now();
+  const conditionIn = req.body.condition_in ?? null;
+  try {
+    await adb.transaction([
+      {
+        sql: 'UPDATE ticket_devices SET loaner_device_id = NULL, updated_at = ? WHERE id = ? AND loaner_device_id = ?',
+        params: [returnTime, deviceId, device.loaner_device_id],
+        expectChanges: true,
+        expectChangesError: 'LOANER_RETURN_RACE',
+      },
+      {
+        sql: `UPDATE loaner_history SET returned_at = ?, condition_in = ?
+              WHERE loaner_device_id = ? AND ticket_device_id = ? AND returned_at IS NULL`,
+        params: [returnTime, conditionIn, device.loaner_device_id, deviceId],
+      },
+      {
+        sql: "UPDATE loaner_devices SET status = 'available', updated_at = ? WHERE id = ? AND status = 'loaned'",
+        params: [returnTime, device.loaner_device_id],
+      },
+      {
+        sql: 'UPDATE tickets SET updated_at = ? WHERE id = ?',
+        params: [returnTime, device.ticket_id],
+      },
+    ]);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('LOANER_RETURN_RACE')) {
+      throw new AppError('Loaner state changed concurrently; refresh and retry', 409);
+    }
+    throw err;
+  }
 
   await insertHistoryAsync(adb, device.ticket_id, userId, 'loaner_returned', 'Loaner device returned');
-  await adb.run('UPDATE tickets SET updated_at = ? WHERE id = ?', now(), device.ticket_id);
 
   res.json({ success: true, data: { device_id: deviceId } });
 }));
