@@ -87,6 +87,12 @@ public final class TicketDetailViewModel {
         do {
             try await repo.delete(id: ticketId)
             wasDeleted = true
+        } catch is CancellationError {
+            // BUGHUNT-2026-05-17: don't paint "cancelled" as an action error.
+            // A cancellation here is structural (view dismissed during the
+            // delete round-trip); the server may have already accepted the
+            // DELETE. Surfacing a "failed" toast tempts the user to retry,
+            // which is a no-op if it actually succeeded but confuses them.
         } catch {
             AppLog.ui.error("Delete ticket \(self.ticketId) failed: \(error.localizedDescription, privacy: .public)")
             actionErrorMessage = error.localizedDescription
@@ -99,6 +105,11 @@ public final class TicketDetailViewModel {
         do {
             let response = try await repo.convertToInvoice(id: ticketId)
             convertedInvoiceId = response.resolvedInvoiceId
+        } catch is CancellationError {
+            // BUGHUNT-2026-05-17: convertToInvoice is a money write — if the
+            // server accepted before the cancel, retrying creates a duplicate
+            // invoice. Suppress the cancel-as-error toast so the user doesn't
+            // re-tap. Real success is signalled by convertedInvoiceId.
         } catch {
             AppLog.ui.error("Convert ticket \(self.ticketId) to invoice failed: \(error.localizedDescription, privacy: .public)")
             actionErrorMessage = error.localizedDescription
@@ -111,6 +122,10 @@ public final class TicketDetailViewModel {
         do {
             let response = try await repo.duplicate(id: ticketId)
             duplicatedTicketId = response.resolvedId
+        } catch is CancellationError {
+            // BUGHUNT-2026-05-17: same as convertToInvoice — duplicate is a
+            // server-side row create; a cancellation-as-failure toast tempts
+            // a retry that would create two duplicates.
         } catch {
             AppLog.ui.error("Duplicate ticket \(self.ticketId) failed: \(error.localizedDescription, privacy: .public)")
             actionErrorMessage = error.localizedDescription
