@@ -2282,7 +2282,13 @@ router.post('/security-alerts/:id/acknowledge', (req, res) => {
     return res.status(404).json({ success: false, message: 'Alert not found' });
   }
 
-  masterDb.prepare('UPDATE security_alerts SET acknowledged = 1 WHERE id = ?').run(alertId);
+  // BUGHUNT-2026-05-17: AND acknowledged = 0 + use result.changes — two
+  // concurrent acks (or a stale UI re-click) previously both wrote an
+  // audit row even though only one actually transitioned the alert.
+  const ackRes = masterDb.prepare('UPDATE security_alerts SET acknowledged = 1 WHERE id = ? AND acknowledged = 0').run(alertId);
+  if (ackRes.changes === 0) {
+    return res.status(409).json({ success: false, message: 'Alert was already acknowledged' });
+  }
   auditLog('security_alert_acknowledged', req.superAdmin!.superAdminId, req.ip || 'unknown', { alert_id: alertId });
   res.json({ success: true, data: { message: 'Alert acknowledged' } });
 });
