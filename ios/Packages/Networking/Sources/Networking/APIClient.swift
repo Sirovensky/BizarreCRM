@@ -240,11 +240,37 @@ public actor APIClientImpl: APIClient {
     }
 
     public func authedDataRequest(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        try await authedDataRequestInner(request, allowRetryAfterRefresh: true)
+    }
+
+    // BUGHUNT-2026-05-17: §2.11 refresh-and-retry parity with `perform` /
+    // `performOnce`. Previously authedDataRequest skipped the refresh path
+    // entirely, so any 401 on a token-expired file download (pkpass,
+    // /uploads/* recording/customer-file) threw an httpStatus(401) instead
+    // of refreshing the session and retrying. The user saw "Server returned
+    // status 401" and had to manually sign back in even though the refresh
+    // token was still valid. Same single-flight refresh as performOnce.
+    private func authedDataRequestInner(
+        _ request: URLRequest,
+        allowRetryAfterRefresh: Bool
+    ) async throws -> (Data, URLResponse) {
         var req = request
         if let token = authToken {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
+        let hadAuth = req.value(forHTTPHeaderField: "Authorization") != nil
         let (data, response) = try await session.data(for: req)
+        if let http = response as? HTTPURLResponse, http.statusCode == 401, hadAuth {
+            if allowRetryAfterRefresh, refresher != nil {
+                let refreshed = await refreshSessionOnce()
+                if refreshed, let newToken = authToken {
+                    var retry = request
+                    retry.setValue("Bearer \(newToken)", forHTTPHeaderField: "Authorization")
+                    return try await authedDataRequestInner(retry, allowRetryAfterRefresh: false)
+                }
+            }
+            SessionEvents.post(.sessionRevoked)
+        }
         if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
             let message = String(data: data, encoding: .utf8)
             throw APITransportError.httpStatus(http.statusCode, message: message)
