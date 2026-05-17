@@ -57,14 +57,22 @@ function withCounterLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const prev = _counterLocks.get(key) ?? Promise.resolve();
   let release!: () => void;
   const next = new Promise<void>((resolve) => { release = resolve; });
-  _counterLocks.set(key, prev.then(() => next));
+  // BUGHUNT-2026-05-17: store the chained tail promise in a single binding
+  // and compare by reference. Previously this called `prev.then(() => next)`
+  // twice (once for the .set(), once for the cleanup `===` check) which
+  // produces two distinct Promise objects, so the equality check ALWAYS
+  // failed and the .delete() never ran. Each unique tenant key therefore
+  // leaked one Map entry for the process lifetime — bounded by tenant
+  // count but never reclaimed for tenants that uploaded once and stopped.
+  const tail = prev.then(() => next);
+  _counterLocks.set(key, tail);
   return prev.then(async () => {
     try {
       return await fn();
     } finally {
       release();
       // Prune the map entry once this is the tail promise — avoids unbounded growth.
-      if (_counterLocks.get(key) === prev.then(() => next)) {
+      if (_counterLocks.get(key) === tail) {
         _counterLocks.delete(key);
       }
     }
