@@ -64,6 +64,9 @@ public struct TicketCreateView: View {
 
                     Section("Device") {
                         TextField("Device (e.g. iPhone 14 Pro)", text: $vm.deviceName)
+                            #if canImport(UIKit)
+                            .textInputAutocapitalization(.words)
+                            #endif
                             .focused($focus, equals: .device)
                             .submitLabel(.next)
                             .onSubmit { focus = .imei }
@@ -71,6 +74,10 @@ public struct TicketCreateView: View {
                         HStack(spacing: BrandSpacing.sm) {
                             TextField("IMEI", text: $vm.imei)
                                 .keyboardType(.numbersAndPunctuation)
+                                #if canImport(UIKit)
+                                .textInputAutocapitalization(.characters)
+                                #endif
+                                .autocorrectionDisabled()
                                 .focused($focus, equals: .imei)
                                 .submitLabel(.next)
                                 .onSubmit { focus = .serial }
@@ -85,6 +92,9 @@ public struct TicketCreateView: View {
                             .accessibilityLabel("Scan IMEI barcode")
                         }
                         TextField("Serial", text: $vm.serial)
+                            #if canImport(UIKit)
+                            .textInputAutocapitalization(.characters)
+                            #endif
                             .autocorrectionDisabled()
                             .focused($focus, equals: .serial)
                             .submitLabel(.next)
@@ -100,6 +110,9 @@ public struct TicketCreateView: View {
 
                     Section("Notes") {
                         TextField("What's wrong / customer said…", text: $vm.additionalNotes, axis: .vertical)
+                            #if canImport(UIKit)
+                            .textInputAutocapitalization(.sentences)
+                            #endif
                             .lineLimit(3...6)
                             .focused($focus, equals: .notes)
                             .submitLabel(.done)

@@ -78,6 +78,9 @@ struct InventoryFormView: View {
 
             Section("Description") {
                 TextField("Description", text: $description, axis: .vertical)
+                    #if canImport(UIKit)
+                    .textInputAutocapitalization(.sentences)
+                    #endif
                     .lineLimit(3...6)
                     .focused($focus, equals: .description)
             }
@@ -113,17 +116,20 @@ struct LabeledInventoryField: View {
     var keyboard: UIKeyboardType = .default
     var monospace: Bool = false
     var prefix: String? = nil
+    var autocapitalize: TextInputAutocapitalization = .words
 
     init(_ label: String,
          text: Binding<String>,
          keyboard: UIKeyboardType = .default,
          monospace: Bool = false,
-         prefix: String? = nil) {
+         prefix: String? = nil,
+         autocapitalize: TextInputAutocapitalization = .words) {
         self.label = label
         self._text = text
         self.keyboard = keyboard
         self.monospace = monospace
         self.prefix = prefix
+        self.autocapitalize = autocapitalize
     }
 
     var body: some View {
@@ -140,14 +146,20 @@ struct LabeledInventoryField: View {
     @ViewBuilder
     private var field: some View {
         if monospace {
+            // SKU/UPC: case-insensitive lookups + barcode scans benefit from
+            // .never + autocorrect off.
             TextField(label, text: $text)
                 .keyboardType(keyboard)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .font(.brandMono(size: 15))
         } else {
+            // Default to .words: product / category / manufacturer reads as
+            // proper nouns, matching the Android KeyboardCapitalization.Words
+            // pass.
             TextField(label, text: $text)
                 .keyboardType(keyboard)
+                .textInputAutocapitalization(autocapitalize)
         }
     }
 }
