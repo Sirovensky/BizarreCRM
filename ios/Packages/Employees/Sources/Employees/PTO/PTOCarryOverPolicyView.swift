@@ -72,10 +72,18 @@ public final class PTOCarryOverPolicyViewModel {
     }
 
     public func save() async {
+        // BUGHUNT-2026-05-17: re-entry guard against rapid Save taps.
+        guard !isSaving else { return }
         isSaving = true
         defer { isSaving = false }
         do {
             policy = try await api.updatePTOCarryOverPolicy(policy)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PATCH may have landed. Suppress the
+            // cancellation error so the admin doesn't see "cancelled"
+            // under a policy that may have actually saved (and which
+            // affects upcoming PTO carry-over payroll calculations).
+            errorMessage = nil
         } catch {
             AppLog.ui.error("PTOCarryOverPolicy save failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
