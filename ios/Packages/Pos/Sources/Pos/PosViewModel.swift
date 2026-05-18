@@ -365,6 +365,10 @@ public final class PosViewModel {
         do {
             repairServices = try await api.listRepairServices()
             AppLog.pos.info("PosVM: loaded \(self.repairServices.count, privacy: .public) repair services")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: POS nav cancels prior service catalog
+            // fetch; no error to surface — guard re-entry handles retry.
+            return
         } catch {
             AppLog.pos.error("PosVM: repair services load failed — \(error.localizedDescription, privacy: .public)")
         }

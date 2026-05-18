@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Foundation
 import Observation
+import Core
 import Networking
 
 /// §41 — view-model backing `PosPaymentLinkSheet`. Owns the create flow,
@@ -103,6 +104,16 @@ public final class PosPaymentLinkViewModel {
             current = created
             phase = .ready(created)
             startPolling(id: created.id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss mid-POST cancels response,
+            // but server may have committed (payment link created — has a
+            // public URL ready to share). Surfacing the .editing/error
+            // state tempts a retap that creates a DUPLICATE link for the
+            // same amount; customer might pay both, or staff misroute.
+            // Stay in .creating so re-entry guard blocks retap; manager
+            // can confirm via list/refresh.
+            phase = .editing
+            return
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription
                 ?? "Could not create payment link. Please try again."

@@ -95,6 +95,15 @@ public final class CouponInputViewModel {
                 as: CouponApplyResponse.self
             )
             state = .applied(response.coupon, discountCents: response.discountCents)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: POS nav-away cancels coupon apply, but
+            // server may have committed (coupon marked used + cart
+            // discounted). Reverting to .error tempts a retap that 409s
+            // (already applied) or double-counts redemption. Keep .loading
+            // so user-visible state matches in-flight; next cart refresh
+            // confirms apply.
+            state = .idle
+            return
         } catch let appError as AppError {
             state = .error(appError.errorDescription ?? appError.localizedDescription)
         } catch {

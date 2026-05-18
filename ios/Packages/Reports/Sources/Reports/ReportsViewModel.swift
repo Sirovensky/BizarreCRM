@@ -334,6 +334,10 @@ public final class ReportsViewModel {
             revenue = report.rows
             salesTotals = report.totals
             revenueByMethod = report.byMethod
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: date-range swap cancels prior load; keep
+            // prior series visible so newer fetch sets it.
+            return
         } catch {
             errorMessage = "Revenue: \(error.localizedDescription)"
         }
@@ -377,6 +381,8 @@ public final class ReportsViewModel {
             ticketsByStatus = try await repository.getTicketsByStatus(
                 from: fromDateString, to: toDateString
             )
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: date-range swap cancel
         } catch {
             errorMessage = "Tickets: \(error.localizedDescription)"
         }
@@ -387,6 +393,8 @@ public final class ReportsViewModel {
             avgTicketValue = try await repository.getAvgTicketValue(
                 from: fromDateString, to: toDateString
             )
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: date-range swap cancel
         } catch {
             errorMessage = "Avg value: \(error.localizedDescription)"
         }
@@ -397,6 +405,8 @@ public final class ReportsViewModel {
             employeePerf = try await repository.getEmployeesPerformance(
                 from: fromDateString, to: toDateString
             )
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: date-range swap cancel
         } catch {
             errorMessage = "Employees: \(error.localizedDescription)"
         }
@@ -407,6 +417,8 @@ public final class ReportsViewModel {
             inventoryTurnover = try await repository.getInventoryTurnover(
                 from: fromDateString, to: toDateString
             )
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: date-range swap cancel
         } catch {
             errorMessage = "Inventory turnover: \(error.localizedDescription)"
         }
@@ -417,6 +429,8 @@ public final class ReportsViewModel {
             inventoryReport = try await repository.getInventoryReport(
                 from: fromDateString, to: toDateString
             )
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: date-range swap cancel
         } catch {
             errorMessage = "Inventory: \(error.localizedDescription)"
         }
@@ -427,6 +441,8 @@ public final class ReportsViewModel {
             expensesReport = try await repository.getExpensesReport(
                 from: fromDateString, to: toDateString
             )
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: date-range swap cancel
         } catch {
             errorMessage = "Expenses: \(error.localizedDescription)"
         }
@@ -446,6 +462,8 @@ public final class ReportsViewModel {
     private func loadNPS() async {
         do {
             npsScore = try await repository.getNPS(from: fromDateString, to: toDateString)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: date-range swap cancel
         } catch {
             errorMessage = "NPS: \(error.localizedDescription)"
         }
