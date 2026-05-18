@@ -109,6 +109,15 @@ public final class TenantSwitcherViewModel {
 
     /// User confirmed the switch in the alert.
     public func confirmSwitch() async {
+        // BUGHUNT-2026-05-17: re-entry guard. Without this, an alert-button
+        // double-fire (rare but possible under SwiftUI confirmation-dialog
+        // glitches when the user double-taps before isPresented propagates)
+        // would run two store.switchTo() calls in parallel, each touching
+        // TokenStore + active-tenant Keychain. The second call resolves
+        // against the *new* tenant's session, racing the activeTenantId
+        // write — observably leaves the app on the *first* tenant but with
+        // the second tenant's access token (mismatched headers → 403 storm).
+        guard !isSwitching else { return }
         guard let tenant = pendingTenant else { return }
         showConfirmation = false
         pendingTenant = nil
