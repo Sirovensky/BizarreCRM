@@ -374,14 +374,36 @@ export async function runDunningOnce(
           continue;
         }
 
-        // BUGHUNT-2026-05-17: dispatchStep can throw if loadCustomer /
-        // loadTemplate / isEmailConfigured hit a poisoned row or sync
-        // DB error. An unhandled throw here kills the whole tick AND
-        // skips writing the dunning_runs row, so the same invoice will
-        // be picked up next tick and retried forever. Convert any
-        // unexpected throw into a 'failed' outcome so the run row is
-        // still written and the rate-limit / next-step machinery moves
-        // forward.
+        // BUGHUNT-2026-05-17 [duplicate-send race]: claim the
+        // dunning_runs row BEFORE dispatching. Previous flow was
+        // dispatch-then-INSERT, which let two concurrent ticks (or two
+        // tenants sharing a DB handle, or a /run-now manual call racing
+        // the cron) both pass the LEFT JOIN eligibility scan with
+        // r.id IS NULL, both call dispatchStep — sending the SMS/email
+        // twice — and only afterward race on the INSERT, where one
+        // would hit a UNIQUE collision and be "safely ignored". The
+        // ignored side had already burned a TCPA-counted send. Claim
+        // first via INSERT OR IGNORE; if changes===0 the row already
+        // exists and we MUST NOT dispatch. Then dispatch and UPDATE
+        // the outcome in place.
+        const claimResult = db
+          .prepare(
+            `INSERT OR IGNORE INTO dunning_runs (invoice_id, sequence_id, step_index, outcome)
+             VALUES (?, ?, ?, 'in_progress')`,
+          )
+          .run(invoice.id, seq.id, stepIndex) as { changes: number };
+        if (claimResult.changes === 0) {
+          // Another worker already claimed this step — skip without
+          // dispatching. The other worker will write the outcome.
+          summary.steps_skipped += 1;
+          logger.warn('dunning step already claimed — skipping dispatch', {
+            invoice_id: invoice.id,
+            sequence_id: seq.id,
+            step_index: stepIndex,
+          });
+          continue;
+        }
+
         let dispatchResult: DispatchResult;
         try {
           dispatchResult = await dispatchStep(db, step, invoice, storeConfig);
@@ -400,10 +422,14 @@ export async function runDunningOnce(
         }
 
         try {
+          // BUGHUNT-2026-05-17: replace the claim 'in_progress' row with
+          // the final outcome. The UPDATE always finds the row we just
+          // claimed (atomic INSERT OR IGNORE above), so this never races.
           db.prepare(
-            `INSERT INTO dunning_runs (invoice_id, sequence_id, step_index, outcome)
-             VALUES (?, ?, ?, ?)`,
-          ).run(invoice.id, seq.id, stepIndex, dispatchResult.outcome);
+            `UPDATE dunning_runs
+                SET outcome = ?
+              WHERE invoice_id = ? AND sequence_id = ? AND step_index = ?`,
+          ).run(dispatchResult.outcome, invoice.id, seq.id, stepIndex);
 
           switch (dispatchResult.outcome) {
             case 'sent':
@@ -439,9 +465,14 @@ export async function runDunningOnce(
               summary.failures += 1;
           }
         } catch (err) {
-          // UNIQUE collision = another process got there first; safe to ignore.
-          summary.steps_skipped += 1;
-          logger.warn('dunning insert collision', {
+          // UPDATE of an existing claimed row should not fail — if it
+          // does (disk full, lock), log loudly. The 'in_progress' row
+          // will stay in the DB; the UNIQUE constraint still blocks
+          // any future redispatch of this same step, which is the
+          // critical TCPA invariant.
+          summary.steps_failed += 1;
+          summary.failures += 1;
+          logger.error('dunning outcome update failed (claim row stays in_progress)', {
             invoice_id: invoice.id,
             sequence_id: seq.id,
             step_index: stepIndex,
