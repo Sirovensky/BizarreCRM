@@ -230,6 +230,17 @@ export function InvoiceDetailPage() {
       ? 'No recent ping — terminal may be unplugged'
       : null;
   const [terminalProcessing, setTerminalProcessing] = useState(false);
+  // BUGHUNT-2026-05-17: synchronous double-tap guard for handlePay. The
+  // existing `disabled={payMutation.isPending}` only flips AFTER `mutate`
+  // fires, but handlePay awaits a `confirm(...)` dialog for overpayments
+  // BEFORE calling mutate. During that ~hundred-ms gap (or longer on a
+  // touch device) a second Pay-now tap re-enters handlePay, re-evaluates
+  // the same form, and queues a duplicate payment — server's
+  // ERR_PAYMENT_DUPLICATE catches identical amounts but not when the
+  // operator changes the amount between taps or pays via different
+  // tenders. Set a ref synchronously inside the handler so the second
+  // entry returns immediately.
+  const payInFlightRef = useRef(false);
 
   // Server: res.json({ success: true, data: <flat invoice> }) — no extra .invoice nesting.
   const invoice: InvoiceDetail | undefined = data?.data?.data;
@@ -741,6 +752,22 @@ export function InvoiceDetailPage() {
   const canCreateCreditNote = invoice.status !== 'void' && (Number(invoice.total) > 0 || Number(invoice.amount_paid) > 0) && maxCreditNoteAmount > 0;
 
   const handlePay = async () => {
+    // BUGHUNT-2026-05-17: synchronous re-entry guard. The `await confirm`
+    // below opens a dialog before payMutation.mutate fires, so the button's
+    // payMutation.isPending stays false during the operator's read of the
+    // overpayment warning. A second tap (or pressing Enter inside the
+    // confirm) would re-enter handlePay and queue a duplicate.
+    if (payInFlightRef.current) return;
+    payInFlightRef.current = true;
+    try {
+      await handlePayInner();
+    } finally {
+      // Released after mutate is queued — payMutation.isPending then takes
+      // over the button gating until the network round-trip resolves.
+      payInFlightRef.current = false;
+    }
+  };
+  const handlePayInner = async () => {
     // BUGHUNT-2026-05-10-22: parseFloat('abc') is NaN; `NaN <= 0` is false,
     // so the prior guard let non-numeric strings through and posted a
     // NaN amount. Number.isFinite + >0 rejects NaN/Inf/empty/negative.
