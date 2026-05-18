@@ -40,6 +40,7 @@ public struct LocationListView: View {
                 }
             }
             .task { await vm.load() }
+            .refreshable { await vm.load() }
     }
 
     @ViewBuilder
