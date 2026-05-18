@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import DesignSystem
 
 /// §18 — Settings → Saved Searches. CRUD list. Tap runs the search;
@@ -166,6 +167,12 @@ public struct SavedSearchListView: View {
             await loadSearches()
         } catch SavedSearchStore.SavedSearchStoreError.duplicateName(let existing) {
             errorMessage = "A saved search named \"\(existing)\" already exists."
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: rename PATCH cancelled mid-flight; server
+            // may have applied. Reload reconciles state.
+            renameTarget = nil
+            await loadSearches()
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
