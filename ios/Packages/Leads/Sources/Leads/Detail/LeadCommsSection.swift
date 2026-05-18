@@ -111,6 +111,8 @@ public struct LeadCommsSection: View {
         defer { isLoading = false }
         do {
             entries = try await api.leadCommunications(id: leadId)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             self.error = error.localizedDescription
         }
@@ -214,6 +216,10 @@ private struct LeadQuickSMSSheet: View {
         do {
             _ = try await api.sendSms(to: phone, message: messageText)
             dismiss()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: SMS to a lead — TCPA-class double-text. If
+            // server accepted before cancel, retry double-texts the prospect.
+            return
         } catch {
             self.error = error.localizedDescription
         }
@@ -270,6 +276,10 @@ private struct LeadQuickEmailSheet: View {
         do {
             try await api.sendLeadEmail(to: email, subject: subject, body: bodyText)
             dismiss()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: email send to a lead — duplicate-email risk
+            // if server dispatched before cancel. Stay silent.
+            return
         } catch {
             self.error = error.localizedDescription
         }

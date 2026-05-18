@@ -85,6 +85,8 @@ public struct LeadNotesSection: View {
         defer { isLoading = false }
         do {
             notes = try await api.leadNotes(id: leadId)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             self.error = error.localizedDescription
         }
@@ -94,6 +96,11 @@ public struct LeadNotesSection: View {
         do {
             try await api.deleteLeadNote(leadId: leadId, noteId: id)
             notes.removeAll { $0.id == id }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: optimistic — server may have deleted before
+            // cancel. Skip local-remove since we don't know; next load() refresh
+            // will reconcile.
+            return
         } catch {
             self.error = error.localizedDescription
         }
