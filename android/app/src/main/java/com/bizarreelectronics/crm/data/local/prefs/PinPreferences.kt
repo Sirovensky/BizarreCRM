@@ -171,9 +171,16 @@ class PinPreferences @Inject constructor(
      * Forces an immediate lock by resetting [lastUnlockAtMillis] to 0.
      * The next call to [shouldLock] will return true (when a PIN is set),
      * causing MainActivity to show the PIN lock screen on resume.
+     *
+     * BUGHUNT-2026-05-17: use `commit()` rather than the property setter's
+     * `apply()`. "Lock now" is a deliberate security action — if the user
+     * hands the phone over and the attacker force-quits + relaunches before
+     * the async flush lands, the next `shouldLock()` would read the stale
+     * `lastUnlockAtMillis` and skip the lock screen. Sync write closes that
+     * window. The user-visible latency is a single short write.
      */
     fun lockNow() {
-        lastUnlockAtMillis = 0L
+        prefs.edit().putLong(KEY_LAST_UNLOCK, 0L).commit()
     }
 
     fun recordSuccess() {
