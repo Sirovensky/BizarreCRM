@@ -47,6 +47,7 @@ struct PosResumeHoldsSheet: View {
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
+                    .keyboardShortcut("r", modifiers: .command)
                     .accessibilityLabel("Refresh holds")
                     .accessibilityIdentifier("pos.resumeHolds.refresh")
                 }

@@ -250,6 +250,7 @@ public struct LeadsThreeColumnView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button { showingCreate = true } label: { Image(systemName: "plus") }
+                    .keyboardShortcut("n", modifiers: .command)
                     .accessibilityLabel("New lead")
                     .accessibilityIdentifier("leads.new")
             }

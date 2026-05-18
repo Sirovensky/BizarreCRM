@@ -76,6 +76,7 @@ public struct CampaignAudiencePreviewView: View {
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
+                    .keyboardShortcut("r", modifiers: .command)
                     .accessibilityLabel("Refresh preview")
                     .disabled(vm.isLoading)
                 }

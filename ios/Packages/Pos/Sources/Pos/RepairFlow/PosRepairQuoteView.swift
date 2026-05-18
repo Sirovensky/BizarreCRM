@@ -180,6 +180,7 @@ public struct PosRepairQuoteView: View {
                 } label: {
                     Label("Add line", systemImage: "plus")
                 }
+                .keyboardShortcut("n", modifiers: .command)
                 .accessibilityLabel("Add parts/labor line")
                 .accessibilityIdentifier("repairFlow.quote.addLine")
             }

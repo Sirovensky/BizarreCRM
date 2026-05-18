@@ -110,6 +110,7 @@ public struct SubscriptionPaymentHistoryView: View {
                 Button { Task { await vm.refresh() } } label: {
                     Image(systemName: "arrow.clockwise")
                 }
+                .keyboardShortcut("r", modifiers: .command)
                 .accessibilityLabel("Refresh payment history")
             }
         }

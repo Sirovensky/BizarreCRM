@@ -3,6 +3,7 @@ package com.bizarreelectronics.crm.ui.screens.exportdata
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +30,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
@@ -46,12 +49,15 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -250,23 +256,22 @@ private fun ExportConfigContent(
         HorizontalDivider()
 
         // Date range
+        // BUGHUNT-2026-05-18: replaced free-text date fields with DatePickers;
+        // typos in the YYYY-MM-DD string previously got silently passed to
+        // the export endpoint and produced empty archives.
         SectionHeader("Date Range (optional)")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
+            ExportDateField(
                 value = state.dateFrom,
-                onValueChange = onSetDateFrom,
-                label = { Text("From (YYYY-MM-DD)") },
+                onChange = onSetDateFrom,
+                label = "From",
                 modifier = Modifier.weight(1f),
-                singleLine = true,
-                placeholder = { Text("e.g. 2025-01-01") },
             )
-            OutlinedTextField(
+            ExportDateField(
                 value = state.dateTo,
-                onValueChange = onSetDateTo,
-                label = { Text("To (YYYY-MM-DD)") },
+                onChange = onSetDateTo,
+                label = "To",
                 modifier = Modifier.weight(1f),
-                singleLine = true,
-                placeholder = { Text("e.g. 2025-12-31") },
             )
         }
 
@@ -539,4 +544,58 @@ private fun ToggleRow(
         Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExportDateField(
+    value: String,
+    onChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+) {
+    var showPicker by remember { mutableStateOf(false) }
+    if (showPicker) {
+        val initialMillis = value.takeIf { it.isNotBlank() }?.let {
+            runCatching {
+                java.time.LocalDate.parse(it)
+                    .atStartOfDay(java.time.ZoneId.systemDefault())
+                    .toInstant().toEpochMilli()
+            }.getOrNull()
+        } ?: System.currentTimeMillis()
+        val pickerState = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
+        DatePickerDialog(
+            onDismissRequest = { showPicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { ms ->
+                        val iso = java.time.Instant.ofEpochMilli(ms)
+                            .atZone(java.time.ZoneId.systemDefault())
+                            .toLocalDate().toString()
+                        onChange(iso)
+                    }
+                    showPicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPicker = false }) { Text("Cancel") }
+            },
+        ) { DatePicker(state = pickerState) }
+    }
+    OutlinedTextField(
+        value = value,
+        onValueChange = {},
+        readOnly = true,
+        label = { Text(label) },
+        placeholder = { Text("Any") },
+        singleLine = true,
+        modifier = modifier.clickable { showPicker = true },
+        trailingIcon = {
+            if (value.isNotBlank()) {
+                IconButton(onClick = { onChange("") }) {
+                    Icon(Icons.Default.Cancel, contentDescription = "Clear $label")
+                }
+            }
+        },
+    )
 }

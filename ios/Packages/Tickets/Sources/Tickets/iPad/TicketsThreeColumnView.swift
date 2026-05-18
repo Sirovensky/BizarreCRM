@@ -294,6 +294,7 @@ public struct TicketsThreeColumnView: View {
             } label: {
                 Image(systemName: "plus")
             }
+            .keyboardShortcut("n", modifiers: .command)
             .accessibilityLabel("New ticket")
             .disabled(api == nil || customerRepo == nil)
             .brandGlass(.clear, in: Circle())

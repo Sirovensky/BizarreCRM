@@ -169,6 +169,7 @@ public struct CustomersThreeColumnView: View {
                     Button { showingCreate = true } label: {
                         Image(systemName: "plus")
                     }
+                    .keyboardShortcut("n", modifiers: .command)
                     .accessibilityLabel("New customer (⌘N)")
                 }
             }
@@ -176,6 +177,7 @@ public struct CustomersThreeColumnView: View {
                 Button { Task { await vm.refresh() } } label: {
                     Image(systemName: "arrow.clockwise")
                 }
+                .keyboardShortcut("r", modifiers: .command)
                 .accessibilityLabel("Refresh customers (⌘R)")
                 .disabled(vm.isLoading)
             }
