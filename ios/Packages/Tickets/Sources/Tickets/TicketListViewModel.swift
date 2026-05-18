@@ -195,6 +195,17 @@ public final class TicketListViewModel {
         tickets = tickets.filter { $0.id != ticket.id }
         do {
             try await repo.delete(id: ticket.id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: previously the broad `catch` swallowed
+            // CancellationError and then fired `refresh()` — which restored
+            // the optimistically-removed ticket even though the server-side
+            // DELETE may have already succeeded. The cancellation paths here
+            // (view torn down, swipe-action superseded) are structural; leave
+            // the optimistic removal in place and let the next user-initiated
+            // refresh reconcile with the server. Re-painting the row "back in"
+            // tempts a second delete tap which on a successful first call is
+            // a confusing 404.
+            return
         } catch {
             AppLog.ui.error("Delete ticket failed: \(error.localizedDescription, privacy: .public)")
             // Restore on failure.
