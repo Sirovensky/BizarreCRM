@@ -110,6 +110,12 @@ public actor StarPrinterBridge: NSObject, StarPrinterBridgeProtocol {
     public func connect() async throws {
         guard writeCharacteristic == nil else { return } // already connected
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            // BUGHUNT-2026-05-17: parallel connect() callers would overwrite
+            // connectionContinuation here, leaking the prior suspended Task.
+            // (Checked continuations crash at deinit when never resumed.)
+            if let prior = self.connectionContinuation {
+                prior.resume(throwing: StarPrinterBridgeError.notConnected)
+            }
             self.connectionContinuation = continuation
             // Trigger service discovery. The peripheral must already be in .connected
             // state (BluetoothManager handles CBCentralManager.connect).
@@ -129,6 +135,12 @@ public actor StarPrinterBridge: NSObject, StarPrinterBridgeProtocol {
             let end = min(offset + Self.maxChunkBytes, bytes.count)
             let chunk = Data(bytes[offset..<end])
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                // BUGHUNT-2026-05-17: parallel send() callers would overwrite
+                // writeContinuation; fail the prior chunk explicitly so its
+                // task unwinds rather than leaks.
+                if let prior = self.writeContinuation {
+                    prior.resume(throwing: StarPrinterBridgeError.notConnected)
+                }
                 self.writeContinuation = continuation
                 peripheral.writeValue(chunk, for: characteristic, type: .withResponse)
             }
