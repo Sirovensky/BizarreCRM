@@ -120,10 +120,18 @@ export const webhookHandler = async (req: Request, res: Response) => {
     return;
   }
 
+  // BUGHUNT-2026-05-17: split signature-verification failure from event-handler
+  // failure. Previously a single try/catch around both `verifyWebhook` and
+  // `handleWebhookEvent` returned 400 for ANY error, with the misleading log
+  // line "Stripe webhook verification failed" — even when the actual cause was
+  // a transient DB lock, a tenant_id collision, or a programming error inside
+  // a switch case. That breaks observability (operators chase a verification
+  // bug that doesn't exist) AND semantics (a 400 tells Stripe "your fault,
+  // don't bother retrying" — for a DB hiccup we want 500 so Stripe's retry
+  // backoff kicks in and the event eventually lands once the DB recovers).
+  let event: ReturnType<typeof verifyWebhook>;
   try {
-    const event = verifyWebhook(req.body, sig);
-    handleWebhookEvent(event);
-    res.json({ received: true });
+    event = verifyWebhook(req.body, sig);
   } catch (e: unknown) {
     // E4: Do NOT echo Stripe's internal error message to the client.
     // The original `Webhook Error: ${err.message}` leaked signature
@@ -135,6 +143,24 @@ export const webhookHandler = async (req: Request, res: Response) => {
       hasSignature: !!sig,
     });
     res.status(400).send('Webhook verification failed');
+    return;
+  }
+
+  try {
+    handleWebhookEvent(event);
+    res.json({ received: true });
+  } catch (e: unknown) {
+    // Handler threw AFTER verification succeeded — log distinctly so it's
+    // not confused with signature-verification failures in dashboards, and
+    // return 500 so Stripe retries (transient DB lock / circuit breaker
+    // open / etc.). The idempotency claim row was rolled back inside the
+    // transaction in handleWebhookEvent, so a retry will re-enter cleanly.
+    logger.error('Stripe webhook handler failed', {
+      eventId: event?.id,
+      eventType: event?.type,
+      error: e instanceof Error ? e.message : String(e),
+    });
+    res.status(500).send('Webhook handler error');
   }
 };
 
