@@ -166,10 +166,21 @@ public struct InvoiceContextMenu<Content: View>: View {
             let body = RecordInvoicePaymentRequest(
                 amount: due,
                 method: "cash",
+                // BUGHUNT-2026-05-17: stable per-attempt UUID so a cancelled
+                // mark-paid + retry collapses on the server's idempotency
+                // window. Without this the cashier could record a second
+                // cash payment that overpays the invoice when the original
+                // POST landed but its response was lost.
+                transactionId: UUID().uuidString,
                 notes: "Marked paid via context menu"
             )
             _ = try await api.recordPayment(invoiceId: invoice.id, body: body)
             onRefresh()
+        } catch let e where AppError.isCancellation(e) {
+            // Server may already have accepted the POST. Don't paint a
+            // banner that tempts a re-tap; let the next list refresh
+            // reveal whether the payment landed.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
