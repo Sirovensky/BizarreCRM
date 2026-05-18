@@ -5,6 +5,7 @@ import CoreImage
 import CoreImage.CIFilterBuiltins
 import DesignSystem
 import Networking
+import Customers   // CustomerDetailView for the in-ticket "open customer profile" nav
 
 public struct TicketDetailView: View {
     @State private var vm: TicketDetailViewModel
@@ -613,7 +614,7 @@ public struct TicketDetailView: View {
                     .padding(BrandSpacing.base)
                     .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 14))
 
-                    CustomerCard(detail: detail)
+                    CustomerCard(detail: detail, api: api)
 
                     // §4.2 — Customer quick actions
                     if let customer = detail.customer {
@@ -1115,16 +1116,45 @@ private struct TimelinePreviewSection: View {
 
 private struct CustomerCard: View {
     let detail: TicketDetail
+    let api: APIClient?
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             Text("Customer")
                 .font(.brandLabelSmall())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
-            Text(detail.customer?.displayName ?? "Unknown")
-                .font(.brandTitleMedium())
-                .foregroundStyle(.bizarreOnSurface)
-                .textSelection(.enabled)
+            // USABILITY-2026-05-18: customer name is the natural tap target to
+            // open the full customer profile (matches every other POS/CRM
+            // app — tapping a customer name navigates to their record). When
+            // we have an `api` and a real customer id, wrap in NavigationLink
+            // so the row pushes CustomerDetailView. Walk-in / nil id falls
+            // back to the plain Text so we don't push a stub destination.
+            if let api, let customerId = detail.customer?.id {
+                NavigationLink {
+                    CustomerDetailView(
+                        repo: CustomerDetailRepositoryImpl(api: api),
+                        customerId: customerId,
+                        api: api
+                    )
+                } label: {
+                    HStack(spacing: BrandSpacing.xs) {
+                        Text(detail.customer?.displayName ?? "Unknown")
+                            .font(.brandTitleMedium())
+                            .foregroundStyle(.bizarreOnSurface)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open \(detail.customer?.displayName ?? "customer") profile")
+                .accessibilityHint("Pushes the full customer record")
+            } else {
+                Text(detail.customer?.displayName ?? "Unknown")
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .textSelection(.enabled)
+            }
             if let phone = detail.customer?.phone, !phone.isEmpty,
                let url = URL(string: "tel:\(phone.filter(\.isNumber))") {
                 Link(destination: url) {
