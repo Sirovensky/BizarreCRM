@@ -71,6 +71,11 @@ public final class BulkCampaignViewModel {
                 body: body
             )
             step = .confirmSend(preview)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: wizard back-step cancel — don't flip to
+            // .failed on a screen the user already left. The next preview
+            // re-fires from .editing state.
+            return
         } catch {
             AppLog.ui.error("BulkCampaign preview failed: \(error.localizedDescription, privacy: .public)")
             step = .failed(error.localizedDescription)
