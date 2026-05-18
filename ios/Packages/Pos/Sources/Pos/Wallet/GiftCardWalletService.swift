@@ -2,6 +2,7 @@
 import Foundation
 import PassKit
 import UIKit
+import Core
 import Networking
 
 /// §40 — Gift card Apple Wallet pass service.
@@ -54,6 +55,12 @@ public actor GiftCardWalletService {
         let (data, response): (Data, URLResponse)
         do {
             (data, response) = try await api.authedDataRequest(request)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: preserve cancellation identity so the UI
+            // catch (GiftCardAddToWalletButton) can distinguish a torn-down
+            // Task from a real network failure. Wrapping cancel in
+            // .network(error) painted "Failed: cancelled" in the button label.
+            throw e
         } catch {
             throw GiftCardWalletError.network(error)
         }

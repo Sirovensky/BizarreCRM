@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import DesignSystem
 import Networking
 #if canImport(PassKit)
@@ -165,6 +166,12 @@ final class GiftCardWalletButtonViewModel {
             state = .ready(url)
             try await service.addToWallet(from: url)
             state = .addedToWallet
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: button tapped, view popped before pass
+            // downloaded. Revert to idle so re-presenting works cleanly
+            // instead of showing a stale "Failed: cancelled" label.
+            state = .idle
+            return
         } catch {
             state = .failed(error.localizedDescription)
         }
