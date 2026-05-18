@@ -156,6 +156,7 @@ public struct AutoResponderEditorSheet: View {
                 HStack {
                     TextField("Add keyword (e.g. STOP)", text: $vm.newTrigger)
                         .autocorrectionDisabled()
+                        .textInputAutocapitalization(.characters)
                         .onSubmit { vm.addTrigger() }
                     Button("Add") { vm.addTrigger() }
                         .disabled(vm.newTrigger.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -174,6 +175,7 @@ public struct AutoResponderEditorSheet: View {
                     .foregroundStyle(.bizarreOnSurface)
                     .frame(minHeight: 80)
                     .scrollContentBackground(.hidden)
+                    .textInputAutocapitalization(.sentences)
                     .accessibilityLabel("Auto-reply message body")
             }
 

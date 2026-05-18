@@ -245,6 +245,7 @@ public struct EmailTemplateEditorView: View {
     private var metaSection: some View {
         Section("Template info") {
             TextField("Template name", text: $vm.name)
+                .textInputAutocapitalization(.words)
                 .accessibilityLabel("Template name — required")
 
             Picker("Category", selection: $vm.category) {
@@ -260,6 +261,7 @@ public struct EmailTemplateEditorView: View {
         Section("Subject") {
             VStack(alignment: .leading, spacing: BrandSpacing.xs) {
                 TextField("Email subject", text: $vm.subject)
+                    .textInputAutocapitalization(.sentences)
                     .accessibilityLabel("Email subject — required")
 
                 // Subject chip bar
@@ -312,6 +314,8 @@ public struct EmailTemplateEditorView: View {
                     .frame(minHeight: 180)
                     .font(.brandMono(size: 13))
                     .foregroundStyle(.bizarreOnSurface)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
                     .accessibilityLabel("HTML body — required")
             }
         }

@@ -83,6 +83,7 @@ public struct CreateRoleSheet: View {
         Section("Description (optional)") {
             TextField("Brief description of this role", text: $description, axis: .vertical)
                 .lineLimit(2...4)
+                .textInputAutocapitalization(.sentences)
                 .accessibilityLabel("Role description")
         }
     }

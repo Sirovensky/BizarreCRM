@@ -92,6 +92,7 @@ public struct SnippetEditorSheet: View {
     private var titleSection: some View {
         Section("Title") {
             TextField("Snippet name", text: $vm.title)
+                .textInputAutocapitalization(.words)
                 .accessibilityLabel("Snippet title — required, max 200 chars")
         }
     }
@@ -110,6 +111,7 @@ public struct SnippetEditorSheet: View {
                 .frame(minHeight: 110)
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurface)
+                .textInputAutocapitalization(.sentences)
                 .accessibilityLabel("Snippet content — required, max 10000 chars")
 
             HStack {

@@ -178,6 +178,7 @@ public struct MessageTemplateEditorView: View {
     private var nameSection: some View {
         Section("Name") {
             TextField("Template name", text: $vm.name)
+                .textInputAutocapitalization(.words)
                 .accessibilityLabel("Template name — required")
         }
     }
@@ -206,6 +207,7 @@ public struct MessageTemplateEditorView: View {
                 .frame(minHeight: 100)
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurface)
+                .textInputAutocapitalization(.sentences)
                 .accessibilityLabel("Template body text")
         }
     }
