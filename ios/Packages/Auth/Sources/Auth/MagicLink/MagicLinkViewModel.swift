@@ -73,6 +73,14 @@ public final class MagicLinkViewModel {
             _ = try await repository.requestLink(email: email)
             state = .sent
             startResendCooldown()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels request POST, but server may
+            // have dispatched the magic-link email. Surfacing .failed
+            // tempts a retap that DOUBLE-EMAILS the user (TCPA/CAN-SPAM
+            // noise on the customer's inbox). Stay silent — user can hit
+            // resend after cooldown.
+            state = .idle
+            return
         } catch let appError as AppError {
             state = .failed(appError)
             errorMessage = userMessage(for: appError)
@@ -92,6 +100,13 @@ public final class MagicLinkViewModel {
         do {
             let response = try await repository.verifyToken(token)
             state = .success(authToken: response.authToken)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: app backgrounded mid-verify cancels
+            // response, but server may have consumed the token. Retap
+            // hits 410 ("link expired or used"), misleading the user
+            // into requesting another link. Stay silent on cancel.
+            state = .idle
+            return
         } catch let appError as AppError {
             state = .failed(appError)
             errorMessage = userMessage(for: appError)

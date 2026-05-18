@@ -52,6 +52,10 @@ public final class TicketDetailViewModel {
             // Clear server-error banners on successful refresh
             deletedOnServerBanner = false
             networkErrorMessage = nil
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: detail refresh / nav cancel; keep cached
+            // .loaded state visible so we don't flash .failed.
+            return
         } catch {
             let appError = AppError.from(error)
             AppLog.ui.error("Ticket detail load failed: \(error.localizedDescription, privacy: .public)")

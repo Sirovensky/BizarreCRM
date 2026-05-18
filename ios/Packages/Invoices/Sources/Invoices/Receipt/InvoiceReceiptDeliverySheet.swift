@@ -124,6 +124,12 @@ public final class InvoiceReceiptDeliveryViewModel {
         do {
             try await repository.emailReceipt(invoiceId: invoiceId, email: email)
             state = .success("Receipt emailed to \(email).")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancels POST, but server
+            // may have dispatched the email. Retap DOUBLE-EMAILS the
+            // customer with the same receipt. Stay silent.
+            state = .idle
+            return
         } catch {
             state = .failed("Email failed: \(error.localizedDescription)")
         }
@@ -142,6 +148,12 @@ public final class InvoiceReceiptDeliveryViewModel {
             let message = "Payment of \(totalStr) received for \(invoiceNumber). Thank you!"
             try await repository.smsReceipt(phone: cleaned, message: message)
             state = .success("Receipt sent to \(cleaned).")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancels SMS POST, but
+            // server may have dispatched. Retap DOUBLE-TEXTS the customer
+            // (TCPA risk). Stay silent.
+            state = .idle
+            return
         } catch {
             state = .failed("SMS failed: \(error.localizedDescription)")
         }

@@ -53,6 +53,14 @@ final class InvoiceCreditNoteViewModel {
             let resp = try await api.issueInvoiceCreditNote(invoiceId: invoiceId, amount: amount, reason: reason)
             state = .success(referenceNumber: resp.referenceNumber)
             BrandHaptics.success()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: critical money write. Sheet dismiss
+            // mid-POST cancels response, but server may have issued the
+            // credit note (refund queued + customer notified). Retap
+            // creates DUPLICATE credit note for the same amount —
+            // refunding the customer twice. Stay silent.
+            state = .idle
+            return
         } catch {
             AppLog.ui.error("Issue credit note failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)

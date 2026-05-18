@@ -52,6 +52,10 @@ public final class DashboardViewModel {
             if let cached = cachedRepo {
                 lastSyncedAt = await cached.lastSyncedAt
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: pull-refresh cancels prior load; keep
+            // prior loaded state or cached snapshot visible.
+            return
         } catch {
             AppLog.ui.error("Dashboard load failed: \(error.localizedDescription, privacy: .public)")
             loadError = error.localizedDescription
@@ -82,6 +86,8 @@ public final class DashboardViewModel {
                 lastSyncedAt = await cached.lastSyncedAt
                 // §3.1 — haptic acknowledges that fresh data has arrived.
                 await HapticCatalog.play(.pullToRefresh)
+            } catch let e where AppError.isCancellation(e) {
+                return  // BUGHUNT-2026-05-17: repeated pull-refresh cancel
             } catch {
                 AppLog.ui.error("Dashboard force-refresh failed: \(error.localizedDescription, privacy: .public)")
                 loadError = error.localizedDescription
