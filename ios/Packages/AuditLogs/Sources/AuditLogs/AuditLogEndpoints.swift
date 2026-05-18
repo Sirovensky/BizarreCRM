@@ -42,6 +42,8 @@ public extension APIClient {
         // Note: `since` / `until` are not server-supported query params on this
         // endpoint — the repository applies them as client-side filters after fetch.
 
-        return try await get("/activity", query: items.isEmpty ? nil : items, as: AuditLogPage.self)
+        // BUGHUNT-2026-05-17: server mounts activity.routes at /api/v1/activity
+        // (index.ts:1738). Was missing the /api/v1 prefix → every call 404'd.
+        return try await get("/api/v1/activity", query: items.isEmpty ? nil : items, as: AuditLogPage.self)
     }
 }
