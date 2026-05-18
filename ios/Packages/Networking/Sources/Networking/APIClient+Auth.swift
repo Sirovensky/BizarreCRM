@@ -63,6 +63,16 @@ public struct ChangePasswordBody: Encodable, Sendable {
         self.currentPassword = currentPassword
         self.newPassword = newPassword
     }
+
+    // BUGHUNT-2026-05-17: server destructures `req.body` with
+    // `{ current_password, new_password }` (auth.routes.ts:2607), so the
+    // default camelCase encoding would post `currentPassword/newPassword`
+    // → both fields read as undefined → 400 "Current password is required"
+    // on every attempt. Force snake_case via explicit CodingKeys.
+    enum CodingKeys: String, CodingKey {
+        case currentPassword = "current_password"
+        case newPassword     = "new_password"
+    }
 }
 
 public struct MessageOnlyResponse: Decodable, Sendable {
