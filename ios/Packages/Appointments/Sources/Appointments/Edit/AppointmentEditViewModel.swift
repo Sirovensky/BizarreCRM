@@ -185,6 +185,14 @@ public final class AppointmentEditViewModel {
         do {
             let updated = try await api.updateAppointment(id: appointment.id, req)
             updatedAppointment = updated
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PUT reschedules an appointment; if the user
+            // backgrounds or dismisses mid-flight the server may already have
+            // accepted the update. Painting a "Cancelled" error tempts a re-tap
+            // that overwrites the row a second time — annoying but worse, if a
+            // SMS/email confirmation hook is wired server-side the customer
+            // gets two reminders. Stay silent on cancellation.
+            return
         } catch {
             let appError = AppError.from(error)
             errorMessage = Self.message(for: appError)
