@@ -141,6 +141,9 @@ final class SerialSellViewModel {
         do {
             let all = try await api.listSerials(parentSKU: parentSKU)
             availableUnits = SerialStatusCalculator.availableUnits(from: all, sku: parentSKU)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancellation; keep last-loaded units to avoid empty-state flash.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -157,6 +160,9 @@ final class SerialSellViewModel {
                 return
             }
             availableUnits = [item]
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: rapid scan cancels prior lookup; silent — don't paint a misleading "Serial not found" banner for a cancelled request.
+            return
         } catch {
             errorMessage = "Serial not found: \(error.localizedDescription)"
         }

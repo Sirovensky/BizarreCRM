@@ -180,6 +180,9 @@ final class SerialReceiveViewModel {
             )
             scannedItems.append(item)
             currentInput = ""
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: createSerial may have committed server-side when cancelled. "Failed" banner tempts retry → second INSERT on the same SN hits UNIQUE constraint (best case) OR if the user types a fresh SN before retry, the prior SN exists server-side but never appears in scannedItems — phantom serial. Silent return; receive sheet refresh will reveal the actual list.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

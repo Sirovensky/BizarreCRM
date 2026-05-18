@@ -257,6 +257,9 @@ final class SerialTraceViewModel {
         do {
             let item = try await api.getSerial(serialNumber: sn)
             state = .found(item)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: trace lookup cancelled by rapid retrace; preserve last state instead of flipping to false-negative .notFound.
+            return
         } catch {
             state = .notFound("No unit found for serial '\(sn)'.")
         }

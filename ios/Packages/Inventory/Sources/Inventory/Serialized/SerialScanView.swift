@@ -190,6 +190,9 @@ final class SerialScanViewModel {
 
         do {
             foundItem = try await api.getSerial(serialNumber: sn)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: rapid rescan cancels prior lookup; silent — no false "not found" banner for cancelled requests.
+            return
         } catch {
             lookupError = "Serial not found: \(error.localizedDescription)"
         }
