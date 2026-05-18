@@ -1849,11 +1849,31 @@ function VarianceAnalysisModal({ onClose }: { onClose: () => void }) {
   const [expandedItem, setExpandedItem] = useState<number | null>(null);
 
   useEffect(() => {
+    // BUGHUNT-2026-05-17: changing the `months` selector kicks off a fresh
+    // varianceReport fetch, but the previous fetch had no abort or
+    // stale-result guard. Clicking 1mo -> 3mo -> 6mo rapidly leaves three
+    // requests in flight; whichever resolves last paints its data, so the
+    // panel could show the wrong period (and matching `loading=false`
+    // after the SLOW response, not the latest). Track the latest months
+    // value and discard out-of-order resolves. Also abort on unmount so
+    // the .finally(setLoading) doesn't fire on a dead component.
+    let cancelled = false;
+    const requested = months;
     setLoading(true);
-    inventoryApi.varianceReport(months)
-      .then(res => setData(res.data.data))
-      .catch(() => toast.error('Failed to load variance report'))
-      .finally(() => setLoading(false));
+    inventoryApi.varianceReport(requested)
+      .then(res => {
+        if (cancelled) return;
+        setData(res.data.data);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        toast.error('Failed to load variance report');
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setLoading(false);
+      });
+    return () => { cancelled = true; };
   }, [months]);
 
   // WEB-FX-003: Esc dismisses.
