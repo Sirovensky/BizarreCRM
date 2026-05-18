@@ -74,6 +74,9 @@ final class CallRecordingPlayerViewModel {
             } else {
                 errorMessage = "Could not load recording: \(err.localizedDescription)"
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancel during recording download —
+            // don't paint a "Could not load recording" error.
         } catch {
             errorMessage = "Could not load recording: \(error.localizedDescription)"
         }
