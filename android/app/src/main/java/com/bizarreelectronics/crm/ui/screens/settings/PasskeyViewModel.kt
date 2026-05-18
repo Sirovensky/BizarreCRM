@@ -8,6 +8,7 @@ import com.bizarreelectronics.crm.data.remote.dto.PasskeyCredentialInfo
 import com.bizarreelectronics.crm.data.remote.dto.PasskeyRegisterFinishRequest
 import com.bizarreelectronics.crm.util.PasskeyManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -153,6 +154,19 @@ class PasskeyViewModel @Inject constructor(
                 }
                 Timber.e(e, "Passkey enrollment HTTP %d", e.code())
                 _uiState.value = _uiState.value.copy(isEnrolling = false, snackbarMessage = msg)
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation. The
+                // finish-passkey-registration POST may have already
+                // persisted the credential server-side, and the system
+                // CredentialManager has already saved the local
+                // private key. A false "Enrollment failed" snackbar
+                // would prompt the user to re-tap Add passkey -> the
+                // system shows the credential sheet again, creating a
+                // SECOND local credential and POSTing another
+                // attestation that registers another row in the
+                // passkey credentials table for the same user.
+                _uiState.value = _uiState.value.copy(isEnrolling = false)
+                throw e
             } catch (e: Exception) {
                 Timber.e(e, "Passkey enrollment error")
                 _uiState.value = _uiState.value.copy(
@@ -188,6 +202,15 @@ class PasskeyViewModel @Inject constructor(
                 }
                 Timber.e(e, "deletePasskey HTTP %d", e.code())
                 _uiState.value = _uiState.value.copy(isLoading = false, snackbarMessage = msg)
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation. DELETE may
+                // have already removed the credential server-side; a
+                // false "Remove failed" toast tempts the user to re-tap
+                // Remove, which 404s and is misleading but more
+                // importantly leaves the local UI thinking the
+                // credential still exists when it does not.
+                _uiState.value = _uiState.value.copy(isLoading = false)
+                throw e
             } catch (e: Exception) {
                 Timber.e(e, "deletePasskey error")
                 _uiState.value = _uiState.value.copy(
