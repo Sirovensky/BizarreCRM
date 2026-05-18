@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Foundation
 import Observation
+import Core
 import Networking
 
 /// Extracted view-model for `PosGiftCardSheet` — keeps the `View` body
@@ -146,6 +147,12 @@ final class PosGiftCardSheetViewModel {
         } catch let APITransportError.httpStatus(code, message) {
             let msg = (message?.isEmpty == false) ? message! : "Request failed"
             errorMessage = "Redeem failed (\(code)): \(msg)"
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: redeemGiftCard lacks an idempotency key —
+            // a re-tap after "cancelled" tempted a double-deduct from the
+            // customer's gift card balance. Surface a verification hint
+            // pointing at the card's balance check instead.
+            errorMessage = "Redeem was interrupted. Re-look up the card to verify the balance before retrying — the redemption may already be recorded."
         } catch {
             errorMessage = "Redeem failed: \(error.localizedDescription)"
         }
