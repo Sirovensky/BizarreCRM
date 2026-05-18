@@ -27,6 +27,7 @@ import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.theme.SuccessGreen
 import com.bizarreelectronics.crm.ui.theme.WarningAmber
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -231,16 +232,20 @@ class EmployeeDetailViewModel @Inject constructor(
     fun confirmDeactivate() {
         viewModelScope.launch {
             _state.value = _state.value.copy(showDeactivateDialog = false)
-            runCatching { employeeApi.deactivate(employeeId) }
-                .onSuccess {
-                    _state.value = _state.value.copy(actionMessage = "Employee deactivated")
-                    load()
-                }
-                .onFailure { t ->
-                    _state.value = _state.value.copy(
-                        actionMessage = t.message ?: "Deactivate failed",
-                    )
-                }
+            try {
+                employeeApi.deactivate(employeeId)
+                _state.value = _state.value.copy(actionMessage = "Employee deactivated")
+                load()
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: runCatching swallowed CancellationException
+                // and painted "Deactivate failed" via onFailure on back-nav,
+                // tempting a re-tap. Re-throw lets the launch die cleanly.
+                throw e
+            } catch (t: Throwable) {
+                _state.value = _state.value.copy(
+                    actionMessage = t.message ?: "Deactivate failed",
+                )
+            }
         }
     }
 
@@ -255,13 +260,20 @@ class EmployeeDetailViewModel @Inject constructor(
     fun confirmResetPin() {
         viewModelScope.launch {
             _state.value = _state.value.copy(showResetPinDialog = false)
-            runCatching { employeeApi.resetPin(employeeId) }
-                .onSuccess { _state.value = _state.value.copy(actionMessage = "PIN reset sent") }
-                .onFailure { t ->
-                    _state.value = _state.value.copy(
-                        actionMessage = t.message ?: "PIN reset failed",
-                    )
-                }
+            try {
+                employeeApi.resetPin(employeeId)
+                _state.value = _state.value.copy(actionMessage = "PIN reset sent")
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: runCatching swallowed cancellation and
+                // painted "PIN reset failed" on back-nav. That tempts the admin
+                // to re-tap, which would send a second PIN reset email to the
+                // staff member. Re-throw so the launch dies cleanly.
+                throw e
+            } catch (t: Throwable) {
+                _state.value = _state.value.copy(
+                    actionMessage = t.message ?: "PIN reset failed",
+                )
+            }
         }
     }
 
@@ -282,20 +294,25 @@ class EmployeeDetailViewModel @Inject constructor(
     fun confirmSendResetLink() {
         viewModelScope.launch {
             _state.value = _state.value.copy(showSendResetLinkDialog = false)
-            runCatching { employeeApi.triggerForgotPin(employeeId) }
-                .onSuccess {
-                    _state.value = _state.value.copy(
-                        actionMessage = "Reset link sent to the staff member's email.",
-                    )
+            try {
+                employeeApi.triggerForgotPin(employeeId)
+                _state.value = _state.value.copy(
+                    actionMessage = "Reset link sent to the staff member's email.",
+                )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: runCatching swallowed cancellation and
+                // painted "Failed to send reset link" on back-nav. That tempts
+                // the manager to re-tap, which sends a second reset email to
+                // the staff member. Re-throw to let the launch die cleanly.
+                throw e
+            } catch (t: Throwable) {
+                val msg = if (t is retrofit2.HttpException && t.code() == 404) {
+                    "Email reset is not enabled on this server. Reset the PIN directly instead."
+                } else {
+                    t.message ?: "Failed to send reset link."
                 }
-                .onFailure { t ->
-                    val msg = if (t is retrofit2.HttpException && t.code() == 404) {
-                        "Email reset is not enabled on this server. Reset the PIN directly instead."
-                    } else {
-                        t.message ?: "Failed to send reset link."
-                    }
-                    _state.value = _state.value.copy(actionMessage = msg)
-                }
+                _state.value = _state.value.copy(actionMessage = msg)
+            }
         }
     }
 
