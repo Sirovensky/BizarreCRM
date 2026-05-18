@@ -677,8 +677,18 @@ class SyncManager @Inject constructor(
                     if (newEntity.id == entry.entityId) {
                         inventoryDao.upsert(newEntity)
                     } else {
-                        inventoryDao.upsert(newEntity)
-                        inventoryDao.deleteById(entry.entityId)
+                        // BUGHUNT-2026-05-17: wrap the two-step reconciliation
+                        // in a Room transaction so a coroutine cancellation
+                        // between upsert and deleteById cannot leave both
+                        // the temp row and the real row visible in Room.
+                        // The queue entry is not yet marked completed at
+                        // this point, so the next flush would re-create
+                        // the inventory item on the server (no idempotency
+                        // key on /inventory create), duplicating the row.
+                        database.withTransaction {
+                            inventoryDao.upsert(newEntity)
+                            inventoryDao.deleteById(entry.entityId)
+                        }
                     }
                 }
             }
