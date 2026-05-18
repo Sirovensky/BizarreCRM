@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -21,15 +22,20 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 
@@ -68,6 +74,33 @@ fun LostReasonDialog(
     var validationError by rememberSaveable { mutableStateOf<String?>(null) }
 
     val isOther = selectedCategory == LostReasonCategory.Other
+    val freeTextFocus = remember { FocusRequester() }
+
+    // Auto-focus the free-text field as soon as "Other" is selected.
+    LaunchedEffect(isOther) {
+        if (isOther) {
+            runCatching { freeTextFocus.requestFocus() }
+        }
+    }
+
+    val submit: () -> Unit = {
+        when {
+            selectedCategory == null -> {
+                validationError = "Please select a reason."
+            }
+            isOther && freeText.isBlank() -> {
+                validationError = "Please describe the reason."
+            }
+            else -> {
+                val reason = if (isOther && freeText.isNotBlank()) {
+                    "${selectedCategory!!.label}: $freeText"
+                } else {
+                    selectedCategory!!.label
+                }
+                onConfirm(reason)
+            }
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -147,12 +180,16 @@ fun LostReasonDialog(
                             validationError = null
                         },
                         label = { Text("Describe the reason") },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(freeTextFocus),
                         maxLines = 3,
                         isError = validationError != null && freeText.isBlank(),
                         keyboardOptions = KeyboardOptions(
                             capitalization = KeyboardCapitalization.Sentences,
+                            imeAction = ImeAction.Done,
                         ),
+                        keyboardActions = KeyboardActions(onDone = { submit() }),
                     )
                 }
 
@@ -169,24 +206,7 @@ fun LostReasonDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = {
-                    when {
-                        selectedCategory == null -> {
-                            validationError = "Please select a reason."
-                        }
-                        isOther && freeText.isBlank() -> {
-                            validationError = "Please describe the reason."
-                        }
-                        else -> {
-                            val reason = if (isOther && freeText.isNotBlank()) {
-                                "${selectedCategory!!.label}: $freeText"
-                            } else {
-                                selectedCategory!!.label
-                            }
-                            onConfirm(reason)
-                        }
-                    }
-                },
+                onClick = submit,
                 colors = ButtonDefaults.textButtonColors(
                     contentColor = MaterialTheme.colorScheme.error,
                 ),

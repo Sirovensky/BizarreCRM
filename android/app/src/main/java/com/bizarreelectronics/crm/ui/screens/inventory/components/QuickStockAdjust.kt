@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -29,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -36,7 +38,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 
@@ -135,6 +140,22 @@ private fun StockAdjustSheet(
     var selectedReason by remember { mutableStateOf(AdjustReason.Adjusted) }
     var reasonMenuExpanded by remember { mutableStateOf(false) }
     var isDelta by remember { mutableStateOf(true) } // true = +/- delta, false = set absolute
+    val amountFocus = remember { FocusRequester() }
+
+    // Auto-focus the amount field when the sheet opens so users don't have to tap.
+    LaunchedEffect(Unit) {
+        runCatching { amountFocus.requestFocus() }
+    }
+
+    val applyAdjustment: () -> Unit = {
+        if (amount > 0) {
+            val delta = when (selectedReason) {
+                AdjustReason.Sold, AdjustReason.Damaged -> -amount
+                else -> amount
+            }
+            onConfirm(delta, selectedReason.apiType, selectedReason.label)
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -156,9 +177,15 @@ private fun StockAdjustSheet(
                 amount = v.toIntOrNull() ?: 0
             },
             label = { Text("Amount") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Number,
+                imeAction = ImeAction.Done,
+            ),
+            keyboardActions = KeyboardActions(onDone = { applyAdjustment() }),
             singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(amountFocus),
         )
 
         // Reason dropdown
@@ -200,13 +227,7 @@ private fun StockAdjustSheet(
             TextButton(onClick = onDismiss) { Text("Cancel") }
             Spacer(modifier = Modifier.width(8.dp))
             Button(
-                onClick = {
-                    val delta = when (selectedReason) {
-                        AdjustReason.Sold, AdjustReason.Damaged -> -amount
-                        else -> amount
-                    }
-                    onConfirm(delta, selectedReason.apiType, selectedReason.label)
-                },
+                onClick = applyAdjustment,
                 enabled = amount > 0,
             ) {
                 Text("Apply")
