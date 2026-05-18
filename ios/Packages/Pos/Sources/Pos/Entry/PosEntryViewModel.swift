@@ -161,8 +161,12 @@ public final class PosEntryViewModel {
             if Task.isCancelled { return }
             searchResults = customerHits
             isOffline = false
-        } catch is CancellationError {
-            // swallow
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: previous `catch is CancellationError` only
+            // matched Swift's CancellationError — URLSession surfaces an
+            // in-flight cancel as URLError.cancelled, which fell through to
+            // the generic catch and painted a "cancelled" error banner.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -207,6 +211,11 @@ public final class PosEntryViewModel {
         do {
             let resp = try await api.listTickets(filter: .open, pageSize: 5)
             readyForPickupCount = resp.tickets.filter { $0.status?.name.lowercased() == "ready" }.count
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: cancel mid-load was painting count=0,
+            // hiding the pickup banner spuriously when the screen unmounted
+            // and remounted. Leave the previous value intact on cancel.
+            return
         } catch {
             readyForPickupCount = 0
         }
