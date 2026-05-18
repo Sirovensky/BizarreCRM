@@ -289,8 +289,11 @@ export function PaymentLinksPage() {
             </div>
             <input
               type="number"
+              inputMode="decimal"
               step="0.01"
+              min="0"
               placeholder="Amount (USD)"
+              aria-label="Payment amount in USD"
               value={form.amount}
               onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
               className="rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-50"
@@ -313,6 +316,8 @@ export function PaymentLinksPage() {
             <input
               type="text"
               placeholder="Description"
+              aria-label="Payment description"
+              autoCapitalize="sentences"
               value={form.description}
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               className="rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-50"

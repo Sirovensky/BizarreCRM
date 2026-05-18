@@ -118,8 +118,10 @@ export function DepositCollectModal({
             <span className="text-sm font-medium text-gray-700 dark:text-surface-200">Amount (USD)</span>
             <input
               type="number"
+              inputMode="decimal"
               step="0.01"
               min="0"
+              autoFocus
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-50"
@@ -132,6 +134,7 @@ export function DepositCollectModal({
               rows={3}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
+              autoCapitalize="sentences"
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-50"
               maxLength={500}
               placeholder="e.g. parts order deposit"
