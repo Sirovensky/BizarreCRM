@@ -30,10 +30,26 @@ public final class WaitlistListViewModel {
         }
     }
 
+    /// BUGHUNT-2026-05-17: tracks per-entry write in-flight so a rapid double-
+    /// tap on the same row's Offer/Cancel button can't double-fire the SMS.
+    /// Cross-row taps still serialise via MainActor.
+    private var inFlightWriteEntryIds: Set<Int64> = []
+
     public func offer(entry: WaitlistEntry) async {
+        // BUGHUNT-2026-05-17: Re-entry guard. Offering a waitlist entry sends
+        // a slot-offer SMS to the customer. A double-tap in the row's Offer
+        // button without this guard sends two texts. TCPA exposure.
+        guard !inFlightWriteEntryIds.contains(entry.id) else { return }
+        inFlightWriteEntryIds.insert(entry.id)
+        defer { inFlightWriteEntryIds.remove(entry.id) }
         do {
             let updated = try await api.offerWaitlistEntry(id: entry.id)
             update(updated)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: Cancellation of a customer-facing SMS write.
+            // The server may already have queued the message; painting an
+            // error tempts a retap that double-texts. Stay silent.
+            return
         } catch {
             AppLog.ui.error("Waitlist offer failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -41,9 +57,19 @@ public final class WaitlistListViewModel {
     }
 
     public func cancel(entry: WaitlistEntry) async {
+        // BUGHUNT-2026-05-17: Re-entry guard on cancel. Status flip is itself
+        // idempotent server-side but the audit row + any notification hook
+        // may not be. Match offer()'s guard discipline.
+        guard !inFlightWriteEntryIds.contains(entry.id) else { return }
+        inFlightWriteEntryIds.insert(entry.id)
+        defer { inFlightWriteEntryIds.remove(entry.id) }
         do {
             let updated = try await api.cancelWaitlistEntry(id: entry.id)
             update(updated)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: Stay silent on cancellation — retap from a
+            // banner could re-emit any server-side cancellation notification.
+            return
         } catch {
             AppLog.ui.error("Waitlist cancel failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
