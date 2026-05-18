@@ -24,6 +24,10 @@ public final class OfflineSaleQueueViewModel {
         do {
             let all = try await SyncQueueStore.shared.due(limit: 200)
             ops = all.filter { Self.isPosRecord($0) }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: view popped or refresh re-fired mid-load.
+            // Don't paint a fake error — next .task / pull-refresh retries.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
