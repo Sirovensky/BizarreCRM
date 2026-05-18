@@ -72,6 +72,11 @@ public final class OnboardingChecklistViewModel {
                 celebrationReason = "setup complete"
                 showCelebration = true
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: dashboard nav cancellation — reset to
+            // .idle so next dashboard re-render can re-trigger load.
+            loadState = .idle
+            return
         } catch {
             AppLog.ui.error("OnboardingChecklist load failed: \(error.localizedDescription, privacy: .public)")
             loadState = .failed(error.localizedDescription)
@@ -82,6 +87,10 @@ public final class OnboardingChecklistViewModel {
         isDismissed = true
         do {
             _ = try await api.patchOnboardingDismissed()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PATCH may have committed server-side;
+            // local isDismissed already flipped optimistically. Silent.
+            return
         } catch {
             AppLog.ui.error("OnboardingChecklist dismiss failed: \(error.localizedDescription, privacy: .public)")
         }
