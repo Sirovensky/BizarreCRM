@@ -463,6 +463,7 @@ function AppointmentDetailModal({
           <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Start Time</label>
           <div className="flex gap-1">
             <select
+              aria-label="Start hour"
               value={form.start_hour}
               onChange={(e) => setForm((f) => ({ ...f, start_hour: e.target.value }))}
               className="flex-1 rounded-lg border border-surface-200 bg-surface-50 px-2 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
@@ -475,6 +476,7 @@ function AppointmentDetailModal({
             </select>
             <span className="flex items-center text-surface-400">:</span>
             <select
+              aria-label="Start minute"
               value={form.start_min}
               onChange={(e) => setForm((f) => ({ ...f, start_min: e.target.value }))}
               className="flex-1 rounded-lg border border-surface-200 bg-surface-50 px-2 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
@@ -489,6 +491,7 @@ function AppointmentDetailModal({
           <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">End Time</label>
           <div className="flex gap-1">
             <select
+              aria-label="End hour"
               value={form.end_hour}
               onChange={(e) => setForm((f) => ({ ...f, end_hour: e.target.value }))}
               className="flex-1 rounded-lg border border-surface-200 bg-surface-50 px-2 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
@@ -501,6 +504,7 @@ function AppointmentDetailModal({
             </select>
             <span className="flex items-center text-surface-400">:</span>
             <select
+              aria-label="End minute"
               value={form.end_min}
               onChange={(e) => setForm((f) => ({ ...f, end_min: e.target.value }))}
               className="flex-1 rounded-lg border border-surface-200 bg-surface-50 px-2 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
@@ -936,7 +940,7 @@ function CreateAppointmentModal({
                 {/* WEB-UIUX-1330: bumping start auto-slides end by +1h so an
                     operator who picks 18:00 doesn't get blocked by the
                     "End time must be after start time" toast. */}
-                <select value={form.start_hour} onChange={(e) => setForm((f) => {
+                <select aria-label="Start hour" value={form.start_hour} onChange={(e) => setForm((f) => {
                   const newStartHour = e.target.value;
                   const newEndHour = String((Number(newStartHour) + 1) % 24).padStart(2, '0');
                   return { ...f, start_hour: newStartHour, end_hour: newEndHour, end_min: f.start_min };
@@ -949,7 +953,7 @@ function CreateAppointmentModal({
                   })}
                 </select>
                 <span className="flex items-center text-surface-400">:</span>
-                <select value={form.start_min} onChange={(e) => setForm((f) => ({ ...f, start_min: e.target.value, end_min: e.target.value }))}
+                <select aria-label="Start minute" value={form.start_min} onChange={(e) => setForm((f) => ({ ...f, start_min: e.target.value, end_min: e.target.value }))}
                   className="flex-1 rounded-lg border border-surface-200 bg-surface-50 px-2 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100">
                   {['00', '15', '30', '45'].map((m) => (
                     <option key={m} value={m}>{m}</option>
@@ -960,7 +964,7 @@ function CreateAppointmentModal({
             <div>
               <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">End Time</label>
               <div className="flex gap-1">
-                <select value={form.end_hour} onChange={(e) => setForm((f) => ({ ...f, end_hour: e.target.value }))}
+                <select aria-label="End hour" value={form.end_hour} onChange={(e) => setForm((f) => ({ ...f, end_hour: e.target.value }))}
                   className="flex-1 rounded-lg border border-surface-200 bg-surface-50 px-2 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100">
                   {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map((h) => {
                     const n = Number(h);
@@ -969,7 +973,7 @@ function CreateAppointmentModal({
                   })}
                 </select>
                 <span className="flex items-center text-surface-400">:</span>
-                <select value={form.end_min} onChange={(e) => setForm((f) => ({ ...f, end_min: e.target.value }))}
+                <select aria-label="End minute" value={form.end_min} onChange={(e) => setForm((f) => ({ ...f, end_min: e.target.value }))}
                   className="flex-1 rounded-lg border border-surface-200 bg-surface-50 px-2 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100">
                   {['00', '15', '30', '45'].map((m) => (
                     <option key={m} value={m}>{m}</option>

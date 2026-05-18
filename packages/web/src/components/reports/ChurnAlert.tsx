@@ -44,6 +44,7 @@ export function ChurnAlert() {
           At-Risk Customers
         </div>
         <select
+          aria-label="Days inactive threshold for at-risk customer cohort"
           value={daysInactive}
           onChange={e => setDaysInactive(Number(e.target.value))}
           className="text-xs border rounded px-2 py-0.5 border-gray-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-gray-700 dark:text-surface-200"

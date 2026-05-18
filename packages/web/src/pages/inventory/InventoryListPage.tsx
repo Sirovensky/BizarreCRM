@@ -1033,6 +1033,7 @@ export function InventoryListPage() {
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs text-surface-500 dark:text-surface-400">Show</span>
                     <select
+                      aria-label="Rows per page"
                       value={pageSize}
                       onChange={(e) => { const v = e.target.value; localStorage.setItem('inventory_pagesize', v); setSavedPageSize(Number(v)); const p = new URLSearchParams(searchParams); p.set('pagesize', v); p.set('page', '1'); setSearchParams(p, { replace: true }); }}
                       className="text-xs rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 px-2 py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400"

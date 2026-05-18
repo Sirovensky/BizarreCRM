@@ -340,6 +340,7 @@ function CreateEstimateModal({
                     placeholder="Price"
                   />
                   <select
+                    aria-label={`Tax class for line item ${idx + 1}`}
                     value={item.tax_class_id}
                     onChange={(e) => updateLineItem(idx, 'tax_class_id', e.target.value)}
                     className="w-28 rounded-lg border border-surface-200 bg-surface-50 px-2 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
@@ -1151,6 +1152,7 @@ export function EstimateListPage() {
               <div className="flex items-center gap-1.5">
                 <span className="text-xs text-surface-500 dark:text-surface-400">Show</span>
                 <select
+                  aria-label="Rows per page"
                   value={pageSize}
                   onChange={(e) => {
                     const v = e.target.value;

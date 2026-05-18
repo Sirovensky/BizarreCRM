@@ -280,6 +280,7 @@ export function ExpensesPage() {
             />
           </div>
           <select
+            aria-label="Filter expenses by category"
             value={catFilter}
             onChange={(e) => { setCatFilter(e.target.value); setPage(1); }}
             className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100"

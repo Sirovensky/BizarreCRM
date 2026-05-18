@@ -700,6 +700,7 @@ export function InvoiceListPage() {
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs text-surface-500 dark:text-surface-400">Show</span>
                     <select
+                      aria-label="Rows per page"
                       value={pageSize}
                       onChange={(e) => {
                         const v = e.target.value;
