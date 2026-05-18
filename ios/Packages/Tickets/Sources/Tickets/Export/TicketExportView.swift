@@ -157,6 +157,12 @@ public struct TicketExportView: View {
         errorMessage = nil
         let file = await api.downloadTicketsCSV(filter: filter, keyword: keyword, sort: sort)
         isDownloading = false
+        if Task.isCancelled {
+            // BUGHUNT-2026-05-17: nav-cancel during download — the API swallows
+            // the cancel and returns nil. Don't paint a "Could not download"
+            // banner on a screen the user is leaving.
+            return
+        }
         guard let file else {
             errorMessage = "Could not download CSV. Make sure you're signed in and online."
             return
