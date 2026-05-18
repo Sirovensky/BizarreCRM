@@ -36,6 +36,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -317,7 +320,10 @@ fun RolesMatrixScreen(
             ) { CircularProgressIndicator() }
 
             state.error != null && state.entries.isEmpty() -> Box(
-                Modifier.fillMaxSize().padding(padding),
+                Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .semantics { liveRegion = LiveRegionMode.Assertive },
                 contentAlignment = Alignment.Center,
             ) {
                 ErrorState(message = state.error!!, onRetry = { viewModel.load() })
