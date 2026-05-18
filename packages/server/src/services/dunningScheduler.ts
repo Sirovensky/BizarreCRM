@@ -744,15 +744,18 @@ async function dispatchStep(
     }
 
     // TCPA / SCAN-582: Dunning is transactional (debt collection).
-    // BUGHUNT-2026-05-10-52: comment + invariant say EITHER flag set is
-    // sufficient — code used AND, which silently suppressed customers
-    // who had only one of the two consent columns ticked (e.g. opted
-    // in to marketing but legacy transactional flag null/zero). Switch
-    // to OR. Suppress only when BOTH flags explicitly = 0. NULL stays
-    // opted-in so existing legacy rows aren't silently dropped after
-    // deploy; new rows are explicit (migration default = 1).
+    // BUGHUNT-2026-05-17 [TCPA]: prior logic treated EITHER non-zero
+    // flag as sufficient consent, so a customer who replied STOP
+    // (which sets sms_opt_in = 0 in sms.routes.ts:1406) kept receiving
+    // dunning SMS as long as their sms_consent_transactional column
+    // was still 1. STOP is the master kill-switch — once set, NO
+    // automated outbound SMS may fire, even debt-collection. Mirror
+    // the OR-suppression pattern used by index.ts:2822/3149/3230/3310
+    // for the other auto-SMS paths: suppress when EITHER flag is
+    // explicitly 0. NULL stays opted-in so legacy rows pre-migration-063
+    // aren't silently dropped after deploy.
     const smsAllowed =
-      customer.sms_opt_in !== 0 || customer.sms_consent_transactional !== 0;
+      customer.sms_opt_in !== 0 && customer.sms_consent_transactional !== 0;
     if (!smsAllowed) {
       logger.info('dunning SMS skipped — customer opted out of transactional SMS', {
         invoice_id: invoice.id,
