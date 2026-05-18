@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -43,6 +44,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
@@ -332,6 +335,7 @@ private fun CreateReviewDialog(
                     label = { Text("Employee ID") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )
                 OutlinedTextField(
                     value = cycle,
@@ -339,6 +343,10 @@ private fun CreateReviewDialog(
                     label = { Text("Cycle (e.g. Q2-2026)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Characters,
+                        autoCorrect = false,
+                    ),
                 )
                 Spacer(Modifier.height(4.dp))
                 StarRatingInput("Quality", quality) { quality = it }
@@ -354,6 +362,9 @@ private fun CreateReviewDialog(
                     minLines = 2,
                     maxLines = 4,
                     modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                    ),
                 )
             }
         },

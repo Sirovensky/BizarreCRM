@@ -3,6 +3,7 @@ package com.bizarreelectronics.crm.ui.screens.employees
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -13,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -328,6 +330,9 @@ private fun CreateRoleDialog(
                     label = { Text("Role name *") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words,
+                    ),
                 )
                 OutlinedTextField(
                     value = description,
@@ -335,6 +340,9 @@ private fun CreateRoleDialog(
                     label = { Text("Description (optional)") },
                     modifier = Modifier.fillMaxWidth(),
                     maxLines = 2,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                    ),
                 )
             }
         },
