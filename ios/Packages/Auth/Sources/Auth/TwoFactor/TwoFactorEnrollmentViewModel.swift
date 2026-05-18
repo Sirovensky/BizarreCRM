@@ -70,6 +70,13 @@ public final class TwoFactorEnrollmentViewModel {
     // MARK: - Step 3: Verify
 
     public func submitVerifyCode() async {
+        // BUGHUNT-2026-05-17: re-entry guard. Without this, a double-tap on
+        // "Verify" sends two POST /2fa/verify with the same 6-digit code.
+        // The server marks TOTP windows as used on first verify, so the
+        // second call 401s — and the catch branch sets verifyFieldError +
+        // state back to .showingQR even though enrollment actually succeeded.
+        // The user sees "wrong code" on a code that was just accepted.
+        guard !isLoading else { return }
         let digits = verifyCode.filter(\.isNumber)
         guard digits.count == 6 else {
             verifyFieldError = "Enter the 6-digit code from your authenticator."

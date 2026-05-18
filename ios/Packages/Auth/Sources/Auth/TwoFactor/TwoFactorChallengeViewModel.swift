@@ -100,6 +100,12 @@ public final class TwoFactorChallengeViewModel {
     // MARK: - Submit TOTP
 
     public func submitTOTP() async {
+        // BUGHUNT-2026-05-17: re-entry guard. Two rapid taps on Verify would
+        // both POST the same TOTP — first succeeds and stores `result`, second
+        // 401s (server marks the TOTP window used), invokes recordFailure(),
+        // and `errorMessage` is set on top of the success state. The view's
+        // `.disabled(!canSubmit)` only blocks once `isLoading` propagates.
+        guard !isLoading else { return }
         guard !isLockedOut else {
             errorMessage = "Too many attempts. Try again in \(lockoutSecondsRemaining) seconds."
             return
@@ -126,6 +132,13 @@ public final class TwoFactorChallengeViewModel {
     // MARK: - Submit recovery
 
     public func submitRecovery() async {
+        // BUGHUNT-2026-05-17: re-entry guard. Recovery codes are single-use
+        // server-side. A double-tap silently burns two — first one returns
+        // tokens and decrements `codesRemaining`, second one 401s because
+        // the same code was already invalidated, and the user sees an error
+        // banner over a successful login that the result struct hasn't
+        // propagated to the view yet.
+        guard !isLoading else { return }
         let code = recoveryCodeInput
             .uppercased()
             .filter { $0.isLetter || $0.isNumber }
