@@ -180,6 +180,13 @@ public final class CustomerListViewModel {
             isBulkSelecting = false
             selectedIds.removeAll()
             await load()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: bulkTag POST has no idempotency key. A
+            // "cancelled" toast tempted a re-tap that — if the server had
+            // already accepted the first request — would re-apply the tag
+            // (server is idempotent on duplicate tag but produces redundant
+            // audit rows). Stay silent and let the next list refresh confirm.
+            return
         } catch {
             AppLog.ui.error("Bulk tag failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -197,6 +204,13 @@ public final class CustomerListViewModel {
             customers.removeAll { selectedIds.contains($0.id) }
             isBulkSelecting = false
             selectedIds.removeAll()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: destructive bulk delete cancelled mid-flight.
+            // The server may or may not have accepted some/all IDs. Stay
+            // silent — the next list refresh will reveal actual state. A
+            // toast would tempt the operator to re-tap, which on partial
+            // success would delete the survivors.
+            return toDelete
         } catch {
             AppLog.ui.error("Bulk delete failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
