@@ -121,6 +121,9 @@ public struct TaxSetupStepView: View {
                         .onChange(of: focus) { old, new in
                             if old == .name && new != .name { vm.onNameBlur() }
                         }
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.words)
+                        #endif
                         .accessibilityLabel("Tax name")
                         .accessibilityHint("e.g. Sales Tax, GST, VAT")
                 }

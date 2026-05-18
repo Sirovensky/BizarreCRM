@@ -109,6 +109,7 @@ public struct CompanyInfoStepView: View {
                     #if canImport(UIKit)
                     .keyboardType(.default)
                     .textContentType(.organizationName)
+                    .textInputAutocapitalization(.words)
                     #endif
 
                     // Address — plain TextField
@@ -123,6 +124,7 @@ public struct CompanyInfoStepView: View {
                     )
                     #if canImport(UIKit)
                     .textContentType(.fullStreetAddress)
+                    .textInputAutocapitalization(.words)
                     #endif
 
                     // Phone (required)

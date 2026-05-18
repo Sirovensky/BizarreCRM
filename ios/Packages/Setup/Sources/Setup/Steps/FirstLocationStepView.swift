@@ -125,6 +125,7 @@ public struct FirstLocationStepView: View {
                 )
                 #if canImport(UIKit)
                 .textContentType(.organizationName)
+                .textInputAutocapitalization(.words)
                 #endif
 
                 // MARK: Same as company toggle
@@ -167,6 +168,7 @@ public struct FirstLocationStepView: View {
                 .opacity(vm.sameAsCompany ? 0.6 : 1.0)
                 #if canImport(UIKit)
                 .textContentType(.fullStreetAddress)
+                .textInputAutocapitalization(.words)
                 #endif
 
                 // MARK: Phone
