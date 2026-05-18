@@ -60,6 +60,10 @@ public final class EmployeeCommissionsViewModel {
             commissions = response.commissions
             totalAmount = response.totalAmount
             loadState = .loaded
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: date filter swap cancels prior load;
+            // leave state alone so newer fetch sets .loaded.
+            return
         } catch {
             AppLog.ui.error("EmployeeCommissions load failed: \(error.localizedDescription, privacy: .public)")
             loadState = .failed(error.localizedDescription)

@@ -52,6 +52,10 @@ public final class EmployeeListViewModel {
             items = allItems
             availableRoles = Array(Set(allItems.compactMap { $0.role?.isEmpty == false ? $0.role : nil })).sorted()
             applyFilter()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: pull-to-refresh / showInactive toggle
+            // cancels prior load; keep prior list visible.
+            return
         } catch {
             AppLog.ui.error("Employees load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -70,6 +74,10 @@ public final class EmployeeListViewModel {
             }
             availableRoles = Array(Set(items.compactMap { $0.role?.isEmpty == false ? $0.role : nil })).sorted()
             applyFilter()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: repeated pull-to-refresh cancels prior
+            // fetch; keep prior list visible.
+            return
         } catch {
             AppLog.ui.error("Employees force-refresh failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription

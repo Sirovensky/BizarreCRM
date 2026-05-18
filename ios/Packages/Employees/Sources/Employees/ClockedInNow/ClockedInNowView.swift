@@ -82,6 +82,10 @@ public final class ClockedInNowViewModel {
             let all = try await api.listEmployeePresence()
             clockedIn = all.filter { $0.isClockedIn }
             lastRefreshed = Date()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: poll restart cancels prior refresh;
+            // keep prior roster + lastRefreshed visible.
+            return
         } catch {
             AppLog.ui.error("ClockedInNow load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
