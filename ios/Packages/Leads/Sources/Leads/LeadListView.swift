@@ -181,11 +181,30 @@ public struct LeadListView: View {
         } else if vm.items.isEmpty && !Reachability.shared.isOnline {
             OfflineEmptyStateView(entityName: "leads")
         } else if vm.items.isEmpty {
+            // BUGHUNT-2026-05-18: empty state had no Create CTA. A new
+            // install lands here first — the user has no obvious next
+            // action besides backing out to the tab bar. Match the
+            // pattern from Tickets / Customers empty states.
             VStack(spacing: BrandSpacing.md) {
                 Image(systemName: "sparkles").font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)
                     .accessibilityHidden(true)
                 Text(searchText.isEmpty ? "No leads yet" : "No results")
                     .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+                if searchText.isEmpty {
+                    Text("Capture a walk-in or web inquiry here.")
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .multilineTextAlignment(.center)
+                    Button {
+                        showingCreate = true
+                    } label: {
+                        Label("New Lead", systemImage: "plus")
+                            .font(.brandLabelLarge())
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.bizarreOrange)
+                    .accessibilityIdentifier("leads.list.emptyState.create")
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {

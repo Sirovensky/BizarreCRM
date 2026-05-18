@@ -239,6 +239,14 @@ public struct EstimateListView: View {
     @State private var selectedIds: Set<Int64> = []
     @State private var editMode: EditMode = .inactive
     @State private var selected: Int64?
+    // BUGHUNT-2026-05-18: EstimateCreateView shipped but no path to it
+    // existed from the list. Users were stuck unless they navigated via a
+    // lead → "Create estimate" deep link or duplicated an existing one.
+    @State private var showingCreate: Bool = false
+    /// Optional `api` retained from `init(api:)` so the toolbar Create
+    /// button can spawn `EstimateCreateView`. The repo-based init still
+    /// works (Create button hides).
+    private let createAPI: APIClient?
 
     @ViewBuilder
     private var contentView: some View {
@@ -266,10 +274,16 @@ public struct EstimateListView: View {
         formatMoneyShared(v)
     }
 
-    public init(repo: EstimateRepository) { _vm = State(wrappedValue: EstimateListViewModel(repo: repo)) }
+    public init(repo: EstimateRepository) {
+        _vm = State(wrappedValue: EstimateListViewModel(repo: repo))
+        self.createAPI = nil
+    }
 
     /// Legacy convenience init keeps existing call sites compiling.
-    public init(api: APIClient) { _vm = State(wrappedValue: EstimateListViewModel(api: api)) }
+    public init(api: APIClient) {
+        _vm = State(wrappedValue: EstimateListViewModel(api: api))
+        self.createAPI = api
+    }
 
     public var body: some View {
         Group {
@@ -285,6 +299,11 @@ public struct EstimateListView: View {
                 .onChange(of: vm.filters) { _, _ in
                     Task { await vm.load() }
                 }
+        }
+        .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.refresh() } }) {
+            if let createAPI {
+                EstimateCreateView(api: createAPI)
+            }
         }
     }
 
@@ -325,6 +344,18 @@ public struct EstimateListView: View {
                     }
                     .accessibilityLabel(editMode.isEditing ? "Exit selection mode" : "Enter selection mode for bulk actions")
                 }
+                // BUGHUNT-2026-05-18: Create entry point — only shown when
+                // the view was constructed with `api` (repo-only init has
+                // no APIClient to hand the create flow).
+                if createAPI != nil, !editMode.isEditing {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button { showingCreate = true } label: {
+                            Label("New estimate", systemImage: "plus")
+                        }
+                        .accessibilityLabel("New estimate")
+                        .keyboardShortcut("n", modifiers: .command)
+                    }
+                }
             }
             // §8.1: Bulk-action bar shown when items are selected
             .safeAreaInset(edge: .bottom) {
@@ -361,6 +392,15 @@ public struct EstimateListView: View {
                 }
                 ToolbarItem(placement: .topBarLeading) {
                     filterButton
+                }
+                if createAPI != nil, !editMode.isEditing {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button { showingCreate = true } label: {
+                            Label("New estimate", systemImage: "plus")
+                        }
+                        .accessibilityLabel("New estimate")
+                        .keyboardShortcut("n", modifiers: .command)
+                    }
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button(editMode.isEditing ? "Done" : "Select") {
@@ -443,11 +483,22 @@ public struct EstimateListView: View {
             } else if vm.items.isEmpty && vm.isOffline {
                 OfflineEmptyStateView(entityName: "estimates")
             } else if vm.items.isEmpty {
+                // BUGHUNT-2026-05-18: same as Leads — empty state had no
+                // primary action. With the new Create entry on the toolbar
+                // also offer it here so an empty list isn't a dead end.
                 VStack(spacing: BrandSpacing.md) {
                     Image(systemName: "list.clipboard").font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)
                         .accessibilityHidden(true)
                     Text(searchText.isEmpty ? "No estimates" : "No results")
                         .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+                    if searchText.isEmpty, createAPI != nil {
+                        Button { showingCreate = true } label: {
+                            Label("New estimate", systemImage: "plus")
+                                .font(.brandLabelLarge())
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.bizarreOrange)
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
