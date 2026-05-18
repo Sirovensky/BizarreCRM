@@ -540,7 +540,19 @@ export function purgeExpiredDeletions(): { scanned: number; purged: number } {
           const normalized = raw.includes('T') || raw.endsWith('Z') || raw.includes('+')
             ? raw
             : `${raw.replace(' ', 'T')}Z`;
-          deadlineMs = new Date(normalized).getTime();
+          const parsedMs = new Date(normalized).getTime();
+          // BUGHUNT-2026-05-18: if the master-DB column is corrupt, parsed
+          // becomes NaN and `nowMs >= NaN` is ALWAYS false — the archived
+          // tenant DB lives forever past its compliance deadline. Fall back
+          // to mtime+GRACE_MS instead so the deletion still completes.
+          if (Number.isFinite(parsedMs)) {
+            deadlineMs = parsedMs;
+          } else {
+            logger.warn(
+              'purgeExpiredDeletions: deletion_scheduled_at unparseable; falling back to mtime',
+              { file: name, raw },
+            );
+          }
         }
       }
 

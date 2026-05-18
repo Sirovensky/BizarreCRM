@@ -13,7 +13,7 @@ import { confirm } from '@/stores/confirmStore';
 // symbol + locale flow through (the tenant-onboarding wizard collects locale
 // but it never reached this surface). Two callsites: the tier card price
 // readout and the subscriber summary line.
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, formatDate } from '@/utils/format';
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -637,7 +637,7 @@ function ActiveSubscribers() {
               </span>
               {sub.current_period_end && (
                 <p className="text-xs text-surface-400 mt-0.5">
-                  Renews {new Date(sub.current_period_end).toLocaleDateString()}
+                  Renews {formatDate(sub.current_period_end)}
                 </p>
               )}
             </div>

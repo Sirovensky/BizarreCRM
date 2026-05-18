@@ -24,7 +24,7 @@ import {
   validateImageFile,
 } from '@/utils/imageUploadPolicy';
 // @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): bare `n.toLocaleString()` ignored tenant locale — use shared formatNumber.
-import { formatNumber, formatCurrency, toLocalDateString, parseServerDate } from '@/utils/format';
+import { formatNumber, formatCurrency, toLocalDateString, parseServerDate, formatDateTime } from '@/utils/format';
 // FA-M7: DeviceTemplatesPage is a standalone admin editor. Before this change
 // it was only reachable by typing the URL (/settings/device-templates was
 // never defined). Mount it as a Settings tab so the DeviceTemplatePicker
@@ -3068,7 +3068,7 @@ function DownloadAllDataSection() {
         <div className="text-xs text-surface-500 dark:text-surface-400 space-y-0.5">
           {lastExportAt && (
             <div>
-              Last export: <span className="font-medium text-surface-700 dark:text-surface-300">{new Date(lastExportAt).toLocaleString()}</span>
+              Last export: <span className="font-medium text-surface-700 dark:text-surface-300">{formatDateTime(lastExportAt)}</span>
             </div>
           )}
           {!allowed && (

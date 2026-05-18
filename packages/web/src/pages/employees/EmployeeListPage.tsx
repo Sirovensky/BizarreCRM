@@ -8,7 +8,7 @@ import { Link } from 'react-router-dom';
 import { employeeApi, locationApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatApiError } from '@/utils/apiError';
-import { formatCurrency, formatTime } from '@/utils/format';
+import { formatCurrency, formatTime, parseServerDate } from '@/utils/format';
 import { useAuthStore } from '@/stores/authStore';
 import { useHasRole } from '@/hooks/useHasRole';
 import { confirm } from '@/stores/confirmStore';
@@ -74,7 +74,12 @@ interface Commission {
 const _employeeLocale = typeof navigator !== 'undefined' ? navigator.language || 'en-US' : 'en-US';
 
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString(_employeeLocale, {
+  // BUGHUNT-2026-05-18: commission.created_at (and similar) arrives as SQLite
+  // datetime('now') 'YYYY-MM-DD HH:MM:SS'. V8 reads bare strings as local
+  // time, shifting the displayed date by the user's UTC offset.
+  const d = parseServerDate(iso);
+  if (!d || !Number.isFinite(d.getTime())) return '—';
+  return d.toLocaleDateString(_employeeLocale, {
     month: 'short', day: 'numeric',
   });
 }
@@ -771,7 +776,8 @@ export function EmployeeListPage() {
       if (totalHours > 0) {
         const h = Math.floor(totalHours);
         const m = Math.round((totalHours - h) * 60);
-        msg = `Clocked out — ${h}h ${m}m logged${clockInAt ? ` since ${new Date(clockInAt).toLocaleTimeString()}` : ''}`;
+        const parsedClockIn = clockInAt ? parseServerDate(clockInAt) : null;
+        msg = `Clocked out — ${h}h ${m}m logged${parsedClockIn && Number.isFinite(parsedClockIn.getTime()) ? ` since ${parsedClockIn.toLocaleTimeString()}` : ''}`;
       }
       toast.success(msg);
       setPinModal(null);
@@ -915,7 +921,10 @@ function ActiveShiftElapsed({ clockInAt }: { clockInAt: string }) {
     const t = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(t);
   }, []);
-  const startMs = new Date(clockInAt).getTime();
+  // BUGHUNT-2026-05-18: parseServerDate handles SQL-style 'YYYY-MM-DD HH:MM:SS'
+  // values (datetime('now') subquery) so the live elapsed counter doesn't go
+  // negative or jump by the user's UTC offset on bare-string returns.
+  const startMs = parseServerDate(clockInAt)?.getTime() ?? NaN;
   if (!Number.isFinite(startMs)) return null;
   const elapsedMin = Math.max(0, Math.floor((Date.now() - startMs) / 60_000));
   const h = Math.floor(elapsedMin / 60);
@@ -923,7 +932,7 @@ function ActiveShiftElapsed({ clockInAt }: { clockInAt: string }) {
   return (
     <span
       className="ml-2 text-[11px] font-mono tabular-nums text-surface-500 dark:text-surface-400"
-      title={`Clocked in at ${new Date(clockInAt).toLocaleTimeString()}`}
+      title={`Clocked in at ${new Date(startMs).toLocaleTimeString()}`}
     >
       {h > 0 ? `${h}h ${m}m` : `${m}m`}
     </span>

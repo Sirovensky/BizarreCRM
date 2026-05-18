@@ -10,6 +10,7 @@ import { X, Users, Bell, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { onboardingApi, type OnboardingState } from '@/api/endpoints';
+import { parseServerDate } from '@/utils/format';
 
 interface DailyNudgeProps {
   preloadedState: OnboardingState | null;
@@ -63,7 +64,11 @@ const NUDGE_CONFIGS: Record<NudgeVariant, NudgeConfig> = {
 function computeActiveNudge(state: OnboardingState): NudgeConfig | null {
   if (!state.created_at) return null;
 
-  const created = new Date(state.created_at);
+  // BUGHUNT-2026-05-18: state.created_at may be SQL-style 'YYYY-MM-DD HH:MM:SS'
+  // (datetime('now')). parseServerDate normalises to UTC so day-N nudges fire
+  // on the correct day regardless of the browser tz.
+  const created = parseServerDate(state.created_at);
+  if (!created || !Number.isFinite(created.getTime())) return null;
   const now = new Date();
   const daysSinceSignup = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
 

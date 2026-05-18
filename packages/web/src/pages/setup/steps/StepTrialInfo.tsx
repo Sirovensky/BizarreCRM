@@ -1,6 +1,7 @@
 import { Sparkles, ArrowRight, ArrowLeft, Check } from 'lucide-react';
 import type { StepProps } from '../wizardTypes';
 import { usePlanStore } from '@/stores/planStore';
+import { formatDate } from '@/utils/format';
 
 /**
  * Step 3 — Your Pro Trial (informational).
@@ -19,9 +20,11 @@ export function StepTrialInfo({ onNext, onBack }: StepProps) {
 
   // Trial end date formatted for display. If planStore hasn't loaded yet
   // (edge case), fall back to "in 14 days" copy.
-  const endDateLabel = trialEndsAt
-    ? new Date(trialEndsAt).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
-    : null;
+  // BUGHUNT-2026-05-18: tenants.trial_ends_at may arrive as SQLite
+  // 'YYYY-MM-DD HH:MM:SS'. formatDate() normalises that to UTC before
+  // formatting so the displayed end date doesn't slip by a day on
+  // browsers far from UTC.
+  const endDateLabel = trialEndsAt ? formatDate(trialEndsAt) : null;
 
   const benefits: Array<{ title: string; body: string }> = [
     { title: 'Unlimited tickets', body: 'Free is capped at 50 tickets/month. Pro is unlimited during your trial.' },

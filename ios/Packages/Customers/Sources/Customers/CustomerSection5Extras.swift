@@ -671,7 +671,13 @@ public struct CustomerLinkRelationshipSheet: View {
         }
         isSearching = true
         defer { isSearching = false }
-        results = (try? await api.listCustomers(keyword: query, pageSize: 20).customers) ?? []
+        // BUGHUNT-2026-05-18: debounced search races — typing fast cancels
+        // the previous Task. `try?` returns nil, `?? []` overwrites the new
+        // task's results if the cancel-clobber lands after the newer task's
+        // success. Capture, then write only when not cancelled.
+        let resolved = (try? await api.listCustomers(keyword: query, pageSize: 20).customers) ?? []
+        if Task.isCancelled { return }
+        results = resolved
     }
 
     private func submitLink() async {
