@@ -97,8 +97,10 @@ public final class ClockedInNowViewModel {
         refreshTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
-                if Task.isCancelled { break }
-                await self?.load()
+                // BUGHUNT-2026-05-17: break on weak-self deinit so the poll
+                // doesn't spin forever after the view disappears.
+                guard let strongSelf = self, !Task.isCancelled else { break }
+                await strongSelf.load()
             }
         }
     }

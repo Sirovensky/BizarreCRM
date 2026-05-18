@@ -32,8 +32,10 @@ public final class DLQAlertBannerViewModel {
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 30_000_000_000)
-                guard !Task.isCancelled else { return }
-                await self?.refresh()
+                // BUGHUNT-2026-05-17: break on weak-self deinit so the 30s
+                // banner refresh doesn't spin forever after the banner is gone.
+                guard let strongSelf = self, !Task.isCancelled else { return }
+                await strongSelf.refresh()
             }
         }
     }
