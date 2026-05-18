@@ -347,6 +347,10 @@ fun InvoiceDetailScreen(
     invoiceId: Long,
     onBack: () -> Unit,
     onNavigateToTicket: ((Long) -> Unit)? = null,
+    // BUGHUNT-2026-05-18: customer name on the header card was non-tappable
+    // Text, same usability gap I'd just fixed on iOS. Push CustomerDetail
+    // when callback + id are wired in AppNavGraph.
+    onNavigateToCustomer: ((Long) -> Unit)? = null,
     viewModel: InvoiceDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -1011,6 +1015,7 @@ fun InvoiceDetailScreen(
                     serverUrl = state.serverUrl,
                     padding = padding,
                     onNavigateToTicket = onNavigateToTicket,
+                    onNavigateToCustomer = onNavigateToCustomer,
                 )
             }
         }
@@ -1027,6 +1032,7 @@ private fun InvoiceDetailContent(
     serverUrl: String?,
     padding: PaddingValues,
     onNavigateToTicket: ((Long) -> Unit)? = null,
+    onNavigateToCustomer: ((Long) -> Unit)? = null,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
 
@@ -1118,13 +1124,25 @@ private fun InvoiceDetailContent(
         // ── §7.2 Customer card — name, phone, email, quick-actions
         item {
             val customerName = onlineDetail?.customerName ?: invoice.customerName ?: "Unknown Customer"
+            val customerId = onlineDetail?.customerId ?: invoice.customerId
             val customerPhone = onlineDetail?.customerPhone
             val customerEmail = onlineDetail?.customerEmail
             val hasContactInfo = !customerPhone.isNullOrBlank() || !customerEmail.isNullOrBlank()
             OutlinedCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // BUGHUNT-2026-05-18: customer-name row wraps in a clickable
+                    // when we have both an id and a nav callback so users can
+                    // jump to the customer profile (parity with iOS fix).
+                    val nameClickable = customerId != null && onNavigateToCustomer != null
+                    val nameRowModifier = if (nameClickable) {
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { onNavigateToCustomer!!(customerId!!) }
+                    } else {
+                        Modifier.fillMaxWidth()
+                    }
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = nameRowModifier,
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
@@ -1139,7 +1157,16 @@ private fun InvoiceDetailContent(
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.weight(1f),
+                            color = if (nameClickable) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                         )
+                        if (nameClickable) {
+                            Icon(
+                                Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                     if (!customerPhone.isNullOrBlank()) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {

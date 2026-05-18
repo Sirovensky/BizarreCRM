@@ -2126,6 +2126,7 @@ fun AppNavGraph(
                     invoiceId = invoiceId,
                     onBack = { navController.popBackStack() },
                     onNavigateToTicket = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },
+                    onNavigateToCustomer = { id -> navController.navigate(Screen.CustomerDetail.createRoute(id)) },
                 )
             }
             composable(Screen.InvoiceCreate.route) {
@@ -2887,6 +2888,7 @@ fun AppNavGraph(
                 com.bizarreelectronics.crm.ui.screens.estimates.EstimateDetailScreen(
                     estimateId = estimateId,
                     onBack = { navController.popBackStack() },
+                    onNavigateToCustomer = { id -> navController.navigate(Screen.CustomerDetail.createRoute(id)) },
                     onConverted = { ticketId ->
                         navController.navigate(Screen.TicketDetail.createRoute(ticketId)) {
                             popUpTo(Screen.Estimates.route)

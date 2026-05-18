@@ -3,6 +3,7 @@ package com.bizarreelectronics.crm.ui.screens.estimates
 import android.content.Context
 import android.print.PrintAttributes
 import android.print.PrintManager
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
@@ -42,6 +43,9 @@ fun EstimateDetailScreen(
     // AND-20260414-M7: invoked after a successful delete. Nav graph uses this
     // to write a refresh signal into the previous back stack entry and pop.
     onDeleted: (() -> Unit)? = null,
+    // BUGHUNT-2026-05-18: customer-card row was non-interactive Text — match
+    // the iOS fix and let the customer name push CustomerDetail.
+    onNavigateToCustomer: ((Long) -> Unit)? = null,
     viewModel: EstimateDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -513,7 +517,14 @@ private fun EstimateDetailContent(
 
         // Customer card
         item {
-            BrandCard(modifier = Modifier.fillMaxWidth()) {
+            val customerId = estimate.customerId
+            val nameClickable = customerId != null && onNavigateToCustomer != null
+            val cardModifier = if (nameClickable) {
+                Modifier.fillMaxWidth().clickable { onNavigateToCustomer!!(customerId!!) }
+            } else {
+                Modifier.fillMaxWidth()
+            }
+            BrandCard(modifier = cardModifier) {
                 Column(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -523,11 +534,23 @@ private fun EstimateDetailContent(
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Text(
-                        estimate.customerName ?: "Unknown",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            estimate.customerName ?: "Unknown",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f),
+                            color = if (nameClickable) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        )
+                        if (nameClickable) {
+                            Icon(
+                                Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
             }
         }
