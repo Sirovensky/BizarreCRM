@@ -304,131 +304,158 @@ function superAdminAuth(req: Request, res: Response, next: NextFunction): void {
 // ═══════════════════════════════════════════════════════════════════
 
 // POST /login — Step 1: verify password, return challenge
+// BUGHUNT-2026-05-17: wrap bare-async handler in try/catch. `await bcrypt.compare`
+// can throw on a malformed stored hash (DB row corruption) and the subsequent DB
+// writes can throw on lock; an unhandled rejection on the super admin login path
+// would crash the whole server — an obvious DoS vector via the unauthenticated
+// endpoint.
 router.post('/login', async (req: Request, res: Response) => {
-  const masterDb = getMasterDb();
-  if (!masterDb) return res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_DB_UNAVAILABLE, message: 'Master DB unavailable' });
-
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  try {
+    const masterDb = getMasterDb();
+    if (!masterDb) return res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_DB_UNAVAILABLE, message: 'Master DB unavailable' });
 
-  if (!checkWindowRate(masterDb, 'super_admin_login', ip, MAX_LOGIN_ATTEMPTS, LOCKOUT_DURATION)) {
-    auditLog('super_admin_login_rate_limited', null, ip);
-    return res.status(429).json({ success: false, message: 'Too many attempts. Try again in 30 minutes.' });
-  }
-
-  const { username, password } = req.body;
-  if (!username || !password) return res.status(400).json({ success: false, message: 'Credentials required' });
-
-  // Length limits (prevent bcrypt DoS)
-  if (typeof password !== 'string' || password.length > 128) {
-    return res.status(400).json({ success: false, message: 'Invalid credentials' });
-  }
-
-  const admin = masterDb.prepare(
-    'SELECT * FROM super_admins WHERE username = ? AND is_active = 1'
-  ).get(username) as AnyRow | undefined;
-
-  // Always run bcrypt.compare even when admin not found to prevent timing oracle
-  // (attacker cannot distinguish "user not found" from "wrong password" via response time)
-  const DUMMY_HASH = '$2a$12$LJ3m4ys3Rl4gTMGaUpVWaeOpMxDkx5JH3gXsIQr7gJSNVMmOG0OO2';
-
-  if (!admin) {
-    await bcrypt.compare(password, DUMMY_HASH);
-    recordWindowFailure(masterDb, 'super_admin_login', ip, LOCKOUT_DURATION);
-    auditLog('super_admin_login_failed', null, ip, { username, reason: 'user_not_found' });
-    return res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
-  }
-
-  // Check account lock — SCAN-740: use timestamp math to avoid fragile Date constructor
-  function isLockedOut(lockedUntil: string | null): boolean {
-    if (!lockedUntil) return false;
-    const ts = Date.parse(lockedUntil);
-    if (Number.isNaN(ts)) {
-      logger.warn('admin.locked_until unparseable', { raw: lockedUntil });
-      return false; // fail-open on malformed (don't lock out legitimate admin)
+    if (!checkWindowRate(masterDb, 'super_admin_login', ip, MAX_LOGIN_ATTEMPTS, LOCKOUT_DURATION)) {
+      auditLog('super_admin_login_rate_limited', null, ip);
+      return res.status(429).json({ success: false, message: 'Too many attempts. Try again in 30 minutes.' });
     }
-    return ts > Date.now();
-  }
-  if (isLockedOut(admin.locked_until ?? null)) {
-    auditLog('super_admin_login_locked', admin.id, ip);
-    return res.status(423).json({ success: false, message: 'Account temporarily locked. Contact another super admin.' });
-  }
 
-  const valid = await bcrypt.compare(password, admin.password_hash);
-  if (!valid) {
-    recordWindowFailure(masterDb, 'super_admin_login', ip, LOCKOUT_DURATION);
-    // SCAN-756: single atomic UPDATE avoids count > 7 with locked_until NULL on crash between two statements.
-    masterDb.prepare(
-      `UPDATE super_admins
-       SET failed_login_count = failed_login_count + 1,
-           locked_until = CASE WHEN failed_login_count + 1 >= 7
-                          THEN datetime('now', '+30 minutes')
-                          ELSE locked_until
-                          END
-       WHERE id = ?`
-    ).run(admin.id);
-    const fails = (admin.failed_login_count || 0) + 1;
-    auditLog('super_admin_login_failed', admin.id, ip, { username, attempt: fails, locked: fails >= 7 });
-    return res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
-  }
+    const { username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ success: false, message: 'Credentials required' });
 
-  // SCAN-564: per-IP cap on challenge creation (10/15min) to limit how fast an
-  // attacker with a valid password can flood the challenges Map via this
-  // unauthenticated endpoint (adminId 0 is never a real record, so auth state
-  // of the caller is irrelevant — the cap must be IP-based).
-  const CHALLENGE_CREATE_MAX = 10;
-  const CHALLENGE_CREATE_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
-  if (!checkWindowRate(masterDb, 'super_admin_challenge', ip, CHALLENGE_CREATE_MAX, CHALLENGE_CREATE_WINDOW_MS)) {
-    auditLog('super_admin_challenge_rate_limited', admin.id, ip);
-    return res.status(429).json({ success: false, message: 'Too many attempts. Try again in 15 minutes.' });
-  }
+    // Length limits (prevent bcrypt DoS)
+    if (typeof password !== 'string' || password.length > 128) {
+      return res.status(400).json({ success: false, message: 'Invalid credentials' });
+    }
 
-  // Password OK — check if password setup needed
-  if (!admin.password_set) {
+    const admin = masterDb.prepare(
+      'SELECT * FROM super_admins WHERE username = ? AND is_active = 1'
+    ).get(username) as AnyRow | undefined;
+
+    // Always run bcrypt.compare even when admin not found to prevent timing oracle
+    // (attacker cannot distinguish "user not found" from "wrong password" via response time)
+    const DUMMY_HASH = '$2a$12$LJ3m4ys3Rl4gTMGaUpVWaeOpMxDkx5JH3gXsIQr7gJSNVMmOG0OO2';
+
+    if (!admin) {
+      await bcrypt.compare(password, DUMMY_HASH);
+      recordWindowFailure(masterDb, 'super_admin_login', ip, LOCKOUT_DURATION);
+      auditLog('super_admin_login_failed', null, ip, { username, reason: 'user_not_found' });
+      return res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
+    }
+
+    // Check account lock — SCAN-740: use timestamp math to avoid fragile Date constructor
+    function isLockedOut(lockedUntil: string | null): boolean {
+      if (!lockedUntil) return false;
+      const ts = Date.parse(lockedUntil);
+      if (Number.isNaN(ts)) {
+        logger.warn('admin.locked_until unparseable', { raw: lockedUntil });
+        return false; // fail-open on malformed (don't lock out legitimate admin)
+      }
+      return ts > Date.now();
+    }
+    if (isLockedOut(admin.locked_until ?? null)) {
+      auditLog('super_admin_login_locked', admin.id, ip);
+      return res.status(423).json({ success: false, message: 'Account temporarily locked. Contact another super admin.' });
+    }
+
+    const valid = await bcrypt.compare(password, admin.password_hash);
+    if (!valid) {
+      recordWindowFailure(masterDb, 'super_admin_login', ip, LOCKOUT_DURATION);
+      // SCAN-756: single atomic UPDATE avoids count > 7 with locked_until NULL on crash between two statements.
+      masterDb.prepare(
+        `UPDATE super_admins
+         SET failed_login_count = failed_login_count + 1,
+             locked_until = CASE WHEN failed_login_count + 1 >= 7
+                            THEN datetime('now', '+30 minutes')
+                            ELSE locked_until
+                            END
+         WHERE id = ?`
+      ).run(admin.id);
+      const fails = (admin.failed_login_count || 0) + 1;
+      auditLog('super_admin_login_failed', admin.id, ip, { username, attempt: fails, locked: fails >= 7 });
+      return res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
+    }
+
+    // SCAN-564: per-IP cap on challenge creation (10/15min) to limit how fast an
+    // attacker with a valid password can flood the challenges Map via this
+    // unauthenticated endpoint (adminId 0 is never a real record, so auth state
+    // of the caller is irrelevant — the cap must be IP-based).
+    const CHALLENGE_CREATE_MAX = 10;
+    const CHALLENGE_CREATE_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+    if (!checkWindowRate(masterDb, 'super_admin_challenge', ip, CHALLENGE_CREATE_MAX, CHALLENGE_CREATE_WINDOW_MS)) {
+      auditLog('super_admin_challenge_rate_limited', admin.id, ip);
+      return res.status(429).json({ success: false, message: 'Too many attempts. Try again in 15 minutes.' });
+    }
+
+    // Password OK — check if password setup needed
+    if (!admin.password_set) {
+      const challengeToken = createChallenge(admin.id);
+      auditLog('super_admin_password_setup_required', admin.id, ip);
+      return res.json({ success: true, data: { challengeToken, requiresPasswordSetup: true } });
+    }
+
+    // Check if 2FA is set up
+    if (!admin.totp_enabled) {
+      const challengeToken = createChallenge(admin.id);
+      auditLog('super_admin_2fa_setup_required', admin.id, ip);
+      return res.json({ success: true, data: { challengeToken, requires2faSetup: true } });
+    }
+
+    // Password OK, 2FA enabled — return challenge for TOTP verification
     const challengeToken = createChallenge(admin.id);
-    auditLog('super_admin_password_setup_required', admin.id, ip);
-    return res.json({ success: true, data: { challengeToken, requiresPasswordSetup: true } });
+    auditLog('super_admin_login_challenge', admin.id, ip);
+    res.json({ success: true, data: { challengeToken, totpEnabled: true } });
+  } catch (e: unknown) {
+    logger.error('super_admin_login_error', { error: e instanceof Error ? e.message : String(e), ip });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_GENERIC, message: 'Login failed' });
+    }
   }
-
-  // Check if 2FA is set up
-  if (!admin.totp_enabled) {
-    const challengeToken = createChallenge(admin.id);
-    auditLog('super_admin_2fa_setup_required', admin.id, ip);
-    return res.json({ success: true, data: { challengeToken, requires2faSetup: true } });
-  }
-
-  // Password OK, 2FA enabled — return challenge for TOTP verification
-  const challengeToken = createChallenge(admin.id);
-  auditLog('super_admin_login_challenge', admin.id, ip);
-  res.json({ success: true, data: { challengeToken, totpEnabled: true } });
 });
 
 // POST /login/set-password — First-time password setup
+// BUGHUNT-2026-05-17: wrap bare-async handler in try/catch. `await bcrypt.hash(_,14)`
+// is expensive and can throw on malformed input; the follow-up UPDATE can throw on
+// DB lock. Any unhandled rejection here crashes the server on the first super-admin
+// setup flow.
 router.post('/login/set-password', async (req: Request, res: Response) => {
-  const { challengeToken, password } = req.body;
-  const challenge = consumeChallenge(challengeToken);
-  if (!challenge) return res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_CHALLENGE_EXPIRED, message: 'Invalid or expired challenge' });
+  try {
+    const { challengeToken, password } = req.body;
+    const challenge = consumeChallenge(challengeToken);
+    if (!challenge) return res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_CHALLENGE_EXPIRED, message: 'Invalid or expired challenge' });
 
-  if (!password || typeof password !== 'string' || password.length < 10) {
-    return res.status(400).json({ success: false, message: 'Password must be at least 10 characters' });
+    if (!password || typeof password !== 'string' || password.length < 10) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 10 characters' });
+    }
+    if (password.length > 128) {
+      return res.status(400).json({ success: false, message: 'Password too long' });
+    }
+
+    const masterDb = getMasterDb()!;
+    const hash = await bcrypt.hash(password, 14); // Higher cost for super admin
+    masterDb.prepare('UPDATE super_admins SET password_hash = ?, password_set = 1, updated_at = datetime(?) WHERE id = ?')
+      .run(hash, new Date().toISOString(), challenge.adminId);
+
+    const newChallenge = createChallenge(challenge.adminId);
+    const ip = req.ip || 'unknown';
+    auditLog('super_admin_password_set', challenge.adminId, ip);
+
+    res.json({ success: true, data: { challengeToken: newChallenge, requires2faSetup: true } });
+  } catch (e: unknown) {
+    logger.error('super_admin_set_password_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_GENERIC, message: 'Could not set password' });
+    }
   }
-  if (password.length > 128) {
-    return res.status(400).json({ success: false, message: 'Password too long' });
-  }
-
-  const masterDb = getMasterDb()!;
-  const hash = await bcrypt.hash(password, 14); // Higher cost for super admin
-  masterDb.prepare('UPDATE super_admins SET password_hash = ?, password_set = 1, updated_at = datetime(?) WHERE id = ?')
-    .run(hash, new Date().toISOString(), challenge.adminId);
-
-  const newChallenge = createChallenge(challenge.adminId);
-  const ip = req.ip || 'unknown';
-  auditLog('super_admin_password_set', challenge.adminId, ip);
-
-  res.json({ success: true, data: { challengeToken: newChallenge, requires2faSetup: true } });
 });
 
 // POST /login/2fa-setup — Generate TOTP secret + QR code
+// BUGHUNT-2026-05-17: wrap bare-async handler in try/catch. The challenge-consumption
+// path AND the QR encode are inside an async fn — the inner try/catch only guards
+// QRCode.toDataURL. A throw from masterDb.prepare on a missing migration would leak
+// out as an unhandled rejection on this unauthenticated endpoint.
 router.post('/login/2fa-setup', async (req: Request, res: Response) => {
+  try {
   const { challengeToken } = req.body;
   const challenge = consumeChallenge(challengeToken);
   if (!challenge) return res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_CHALLENGE_EXPIRED, message: 'Invalid or expired challenge' });
@@ -475,6 +502,12 @@ router.post('/login/2fa-setup', async (req: Request, res: Response) => {
     success: true,
     data: { challengeToken: newChallenge, qr: qrDataUrl, secret: base32, manualEntry: base32 },
   });
+  } catch (e: unknown) {
+    logger.error('super_admin_2fa_setup_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_GENERIC, message: '2FA setup failed' });
+    }
+  }
 });
 
 // POST /login/2fa-verify — Verify TOTP code and complete login
