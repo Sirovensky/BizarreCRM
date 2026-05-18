@@ -50,6 +50,11 @@ public final class DeadLetterActionCoordinator {
             await SyncManager.shared.syncNow()
             await onMutated?()
             AppLog.sync.info("DeadLetterActionCoordinator: retried \(id, privacy: .public)")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: retry is a server replay. If cancelled, server
+            // may have already processed; painting lastError tempts another tap
+            // that double-applies the sync op. Stay silent.
+            return
         } catch {
             lastError = error.localizedDescription
             AppLog.sync.error("DeadLetterActionCoordinator retryOne(\(id, privacy: .public)) failed: \(error, privacy: .public)")
@@ -66,6 +71,10 @@ public final class DeadLetterActionCoordinator {
             try await store.discard(id)
             await onMutated?()
             AppLog.sync.info("DeadLetterActionCoordinator: discarded \(id, privacy: .public)")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: discard is a DELETE; if server committed
+            // before cancel, painting lastError tempts retap that 404s.
+            return
         } catch {
             lastError = error.localizedDescription
             AppLog.sync.error("DeadLetterActionCoordinator discardOne(\(id, privacy: .public)) failed: \(error, privacy: .public)")
@@ -85,6 +94,12 @@ public final class DeadLetterActionCoordinator {
         for id in ids {
             do {
                 try await store.retry(id)
+            } catch let e where AppError.isCancellation(e) {
+                // BUGHUNT-2026-05-17: cancellation breaks the bulk loop —
+                // server-side retries may have partially landed. Don't tally
+                // cancel as a per-item failure; exit so the user sees the
+                // partial progress and can resume.
+                break
             } catch {
                 if firstError == nil { firstError = error.localizedDescription }
                 AppLog.sync.error("DeadLetterActionCoordinator retryAll item \(id, privacy: .public) failed: \(error, privacy: .public)")
