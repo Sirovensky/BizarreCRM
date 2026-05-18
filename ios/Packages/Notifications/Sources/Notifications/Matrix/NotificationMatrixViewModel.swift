@@ -61,6 +61,8 @@ public final class NotificationMatrixViewModel {
             let prefs = try await repository.fetchAll()
             originalPreferences = prefs
             matrix = NotificationMatrixModel.build(from: prefs)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-18: nav cancel — .task re-fires
         } catch {
             AppLog.ui.error("MatrixVM load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
