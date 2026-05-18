@@ -33,6 +33,8 @@ import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.theme.SuccessGreen
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -62,10 +64,15 @@ class RmaListViewModel @Inject constructor(
     private val _state = MutableStateFlow(RmaListUiState())
     val state = _state.asStateFlow()
 
+    // BUGHUNT-2026-05-17: track latest load so back-to-back filter changes
+    // can't leave a slower request painting a stale list over the newer one.
+    private var loadJob: Job? = null
+
     init { load() }
 
     fun load() {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
             try {
                 val response = api.listRmas(status = _state.value.statusFilter)
@@ -75,6 +82,11 @@ class RmaListViewModel @Inject constructor(
                     isLoading = false,
                     isRefreshing = false,
                 )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: don't paint a fake "Failed to load
+                // returns" error when this load was superseded by a newer
+                // filter change.
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "load failed: ${e.message}")
                 _state.value = _state.value.copy(
