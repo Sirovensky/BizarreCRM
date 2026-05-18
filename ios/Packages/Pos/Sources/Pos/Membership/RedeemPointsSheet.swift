@@ -332,6 +332,13 @@ public struct RedeemPointsSheet: View {
                     validationError = "Redemption failed. Try again."
                     BrandHaptics.error()
                 }
+            } catch let e where AppError.isCancellation(e) {
+                // BUGHUNT-2026-05-17: sheet dismissed mid-redeem cancelled the
+                // Task. Server-side point debit may have committed; painting
+                // "Redemption failed. Try again." would invite a second debit.
+                // Silently drop — the cashier can re-open the sheet if needed
+                // and the load() will reflect the actual balance.
+                return
             } catch {
                 AppLog.pos.error("RedeemPointsSheet: unexpected error \(error)")
                 validationError = "Redemption failed. Try again."

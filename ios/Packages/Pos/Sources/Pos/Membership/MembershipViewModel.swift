@@ -81,6 +81,11 @@ public final class MembershipViewModel {
         do {
             account = try await repository.fetchAccount(customerId: customerId)
             recalcPointsToEarn()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: view lifecycle cancelled the `.task` mid-fetch
+            // (customer swap, tender screen dismiss). Don't paint a misleading
+            // "Could not load loyalty info." banner — the next .task will retry.
+            return
         } catch {
             AppLog.pos.error("MembershipViewModel.load: \(error)")
             errorMessage = "Could not load loyalty info."
