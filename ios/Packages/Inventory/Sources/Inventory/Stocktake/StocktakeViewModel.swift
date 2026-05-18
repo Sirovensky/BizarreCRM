@@ -166,6 +166,12 @@ public final class StocktakeScanViewModel {
         do {
             _ = try await api.commitStocktake(id: sessionId)
             showReview = true
+        } catch let e where AppError.isCancellation(e) {
+            // Stocktake commit applies real inventory variance. If the
+            // server accepted before the cancel, retrying re-applies it.
+            // Stay silent so the user reads the actual session state on
+            // next list refresh instead of re-tapping the commit button.
+            return
         } catch {
             if InventoryOfflineQueue.isNetworkError(error) {
                 // Enqueue commit for offline drain
