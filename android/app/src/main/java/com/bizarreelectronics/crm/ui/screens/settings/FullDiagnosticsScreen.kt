@@ -46,6 +46,7 @@ import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.sync.SyncManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -101,6 +102,8 @@ class FullDiagnosticsViewModel @Inject constructor(
             try {
                 syncManager.syncAll()
                 _uiState.value = _uiState.value.copy(syncMessage = "Sync triggered")
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: nav cancel during sync trigger
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(syncMessage = "Sync failed: ${e.message}")
             }

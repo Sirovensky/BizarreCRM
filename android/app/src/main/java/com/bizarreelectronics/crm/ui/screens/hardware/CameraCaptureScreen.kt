@@ -40,6 +40,7 @@ import com.bizarreelectronics.crm.data.remote.api.TicketApi
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.util.ImageUploadPolicy
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -113,6 +114,12 @@ class CameraCaptureViewModel @Inject constructor(
                     isCapturing = false,
                     capturedCount = _state.value.capturedCount + 1,
                 )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: optimistic — server may have committed the
+                // photo upload before nav-cancel. Don't paint "Upload failed"
+                // (which tempts retap and double-uploads the same photo).
+                _state.value = _state.value.copy(isCapturing = false)
+                throw e
             } catch (e: Exception) {
                 Timber.w(e, "CameraCapture: upload failed")
                 _state.value = _state.value.copy(
