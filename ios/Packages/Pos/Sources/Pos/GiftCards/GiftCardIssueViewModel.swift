@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Foundation
 import Observation
+import Core
 import Networking
 
 // MARK: - GiftCardIssueViewModel
@@ -114,6 +115,14 @@ public final class GiftCardIssueViewModel {
         do {
             let response = try await api.issueGiftCard(request)
             state = .issued(code: response.code, balanceCents: amountCents)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: Sheet dismissed mid-issue. Don't paint .failure
+            // — a manager hitting "retry" would create a duplicate gift card
+            // (server has no idempotency key for POST /gift-cards). Revert to
+            // .idle so the form state is preserved and the next press is a
+            // deliberate re-submission.
+            state = .idle
+            return
         } catch let APITransportError.httpStatus(code, message) {
             let msg = (message?.isEmpty == false) ? message! : "Issue failed"
             state = .failure("Issue failed (\(code)): \(msg)")
