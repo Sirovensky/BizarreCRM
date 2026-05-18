@@ -47,6 +47,13 @@ final class TicketAssigneePickerViewModel {
         defer { isLoading = false }
         do {
             employees = try await api.ticketAssigneeCandidates()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: broad catch was painting "cancelled" into
+            // errorMessage when the picker sheet dismissed mid-load. Re-
+            // opening the sheet then showed a confused red error banner over
+            // an empty grid. Cancellation here is structural — let the next
+            // presentation re-load.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -66,6 +73,15 @@ final class TicketAssigneePickerViewModel {
                 as: TicketDetail.self
             )
             savedSuccessfully = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PUT /tickets/:id with {assigned_to} is a
+            // server-state mutation. The broad catch painted "cancelled"
+            // into errorMessage when the sheet dismissed mid-PUT, even
+            // though the server may have already accepted the assignment.
+            // That tempts a re-tap that re-assigns to the same employee.
+            // Suppress cancel-as-failure; the next ticket-detail refresh
+            // reconciles the true assignee.
+            return
         } catch {
             AppLog.ui.error("Assign ticket \(self.ticketId) failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
