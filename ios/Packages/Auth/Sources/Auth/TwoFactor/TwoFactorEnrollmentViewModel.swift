@@ -59,6 +59,14 @@ public final class TwoFactorEnrollmentViewModel {
             secret = resp.secret
             recoveryCodeList = RecoveryCodeList(codes: resp.backupCodes)
             state = .showingQR
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels enroll POST; server may
+            // have generated a pending 2FA secret. Reset to .idle so
+            // retap creates a fresh enrollment (server should overwrite
+            // pending) rather than painting an error.
+            state = .idle
+            isLoading = false
+            return
         } catch let appError as AppError {
             state = .error(appError.errorDescription ?? "Enrollment failed.")
         } catch {
@@ -88,6 +96,15 @@ public final class TwoFactorEnrollmentViewModel {
         do {
             _ = try await repository.verify(code: digits)
             state = .showingCodes
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels verify POST, but server
+            // may have committed (2FA activated). Painting "wrong code"
+            // tempts the user to re-enter the same 6-digit code, which
+            // the server will reject (TOTP window used/elapsed), locking
+            // them out of finishing setup. Stay silent on cancel.
+            state = .showingQR
+            isLoading = false
+            return
         } catch let appError as AppError {
             if case .validation(let fields) = appError {
                 verifyFieldError = fields["code"] ?? appError.errorDescription

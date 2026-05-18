@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import DesignSystem
 import Networking
 
@@ -56,6 +57,8 @@ public final class LoyaltyPlanSettingsViewModel {
             }
             rule = fetchedRule
             state = .loaded
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch let t as APITransportError {
             if case .httpStatus(let c, _) = t, c == 404 || c == 402 || c == 501 {
                 // Feature not enabled or endpoint not yet live — show stubs.
@@ -89,6 +92,11 @@ public final class LoyaltyPlanSettingsViewModel {
             // Server route: DELETE /api/v1/membership/tiers/:id (soft-delete)
             try await api.deleteMembershipTier(id: plan.id)
             plans.removeAll { $0.id == plan.id }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels DELETE; keep optimistic
+            // remove since server may have committed.
+            plans.removeAll { $0.id == plan.id }
+            return
         } catch {
             errorMessage = error.localizedDescription
             showError = true
@@ -109,6 +117,11 @@ public final class LoyaltyPlanSettingsViewModel {
                 plans.append(created)
             }
             showPlanEditor = false
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: editor dismiss cancels save POST/PUT,
+            // but server may have committed. Retap on create creates
+            // DUPLICATE tier row; retap on update generates audit noise.
+            return
         } catch {
             errorMessage = error.localizedDescription
             showError = true
@@ -122,6 +135,8 @@ public final class LoyaltyPlanSettingsViewModel {
             let saved = try await api.updateLoyaltyRule(newRule)
             rule = saved
             showRuleEditor = false
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: editor dismiss cancel
         } catch {
             errorMessage = error.localizedDescription
             showError = true
