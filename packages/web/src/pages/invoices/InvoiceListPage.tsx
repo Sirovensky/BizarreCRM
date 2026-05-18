@@ -210,6 +210,20 @@ export function InvoiceListPage() {
     timerRef.current = setTimeout(() => setParam('keyword', val.trim()), 300);
   };
 
+  // BUGHUNT-2026-05-17: clear pending search debounce on unmount so a quick
+  // keystroke followed by a route change doesn't fire setSearchParams on the
+  // freshly-unmounted page. Previously timerRef was never cleared so the
+  // deferred update could land after the user had navigated to a different
+  // invoice page or back to the dashboard.
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, []);
+
   const clearFilters = () => {
     const p = new URLSearchParams(searchParams);
     ['status', 'date_range', 'keyword', 'from_date', 'to_date', 'from', 'to'].forEach((key) => p.delete(key));
