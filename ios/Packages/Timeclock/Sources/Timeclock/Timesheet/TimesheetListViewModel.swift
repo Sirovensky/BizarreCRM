@@ -96,6 +96,9 @@ public final class TimesheetListViewModel {
             editState = .failed("A reason is required to edit a timesheet entry.")
             return
         }
+        // BUGHUNT-2026-05-17: re-entry guard. Manager can fire two PATCHes
+        // by double-tapping Save (no .disabled gate at the call site).
+        if case .saving = editState { return }
         editState = .saving
         let edit = ClockEntryEditRequest(
             clockIn: clockIn,
@@ -108,6 +111,13 @@ public final class TimesheetListViewModel {
             // Immutable update: replace matching entry in the array.
             entries = entries.map { $0.id == updated.id ? updated : $0 }
             editState = .saved
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PATCH may have already landed before
+            // cancellation fired. Painting .failed("cancelled") would
+            // tempt the manager to retap Save, double-stamping the audit
+            // log with the same reason. Roll back to .idle so the next
+            // load() refresh surfaces the actual saved state.
+            editState = .idle
         } catch {
             AppLog.ui.error("TimesheetList edit failed: \(error.localizedDescription, privacy: .public)")
             editState = .failed(error.localizedDescription)
