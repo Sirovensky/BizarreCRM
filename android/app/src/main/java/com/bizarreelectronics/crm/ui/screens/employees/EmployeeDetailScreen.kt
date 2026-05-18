@@ -1,6 +1,9 @@
 package com.bizarreelectronics.crm.ui.screens.employees
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -12,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -513,11 +517,27 @@ private fun EmployeeDetailBody(
 
         // ── Contact ─────────────────────────────────────────────────────────
         item {
+            val context = LocalContext.current
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Contact", style = MaterialTheme.typography.titleSmall)
                     DetailRow(Icons.Default.Person, "Username", employee.username ?: "—")
-                    DetailRow(Icons.Default.Email, "Email", employee.email ?: "—")
+                    // BUGHUNT-2026-05-18: email row was non-interactive Text.
+                    // Tap should open the user's mail composer with the
+                    // employee's address pre-filled (mailto intent), matching
+                    // the customer/lead detail patterns.
+                    DetailRow(
+                        Icons.Default.Email,
+                        "Email",
+                        employee.email ?: "—",
+                        onClick = employee.email?.takeIf { it.isNotBlank() }?.let { addr ->
+                            {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_SENDTO, Uri.fromParts("mailto", addr, null))
+                                )
+                            }
+                        },
+                    )
                     DetailRow(Icons.Default.Badge, "Role", employee.role ?: "—")
                 }
             }
@@ -752,15 +772,20 @@ private fun DetailRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     value: String,
+    onClick: (() -> Unit)? = null,
 ) {
+    val rowModifier = if (onClick != null) {
+        Modifier.fillMaxWidth().clickable(onClick = onClick)
+    } else Modifier.fillMaxWidth()
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = rowModifier,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.Top,
     ) {
         Icon(
             icon, contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = if (onClick != null) MaterialTheme.colorScheme.primary
+                   else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(20.dp),
         )
         Column(modifier = Modifier.weight(1f)) {
@@ -772,7 +797,8 @@ private fun DetailRow(
             Text(
                 text = value,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = if (onClick != null) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurface,
             )
         }
     }
