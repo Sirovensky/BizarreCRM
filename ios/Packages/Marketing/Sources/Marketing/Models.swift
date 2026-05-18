@@ -68,9 +68,18 @@ public struct Campaign: Identifiable, Codable, Sendable, Hashable {
         let status = CampaignStatus(rawValue: row.status) ?? .draft
         let type = CampaignType(rawValue: row.type) ?? .custom
         let channel = CampaignChannel(rawValue: row.channel) ?? .sms
-        // Parse ISO 8601 date from string
-        let formatter = ISO8601DateFormatter()
-        let createdAt = formatter.date(from: row.createdAt) ?? Date()
+        // Parse ISO 8601 date from string.
+        // BUGHUNT-2026-05-18: bare ISO8601DateFormatter() rejects Node
+        // Date.toISOString() millisecond strings — every server-returned
+        // campaign would fall through to `?? Date()` and appear "created
+        // just now," breaking sort-by-date and the "Created N days ago"
+        // copy. Try fractional → plain.
+        let isoFractional = ISO8601DateFormatter()
+        isoFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let isoPlain = ISO8601DateFormatter()
+        let createdAt = isoFractional.date(from: row.createdAt)
+            ?? isoPlain.date(from: row.createdAt)
+            ?? Date()
         return Campaign(
             id: String(row.id),
             name: row.name,
