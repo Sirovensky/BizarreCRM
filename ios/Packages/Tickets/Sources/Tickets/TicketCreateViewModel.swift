@@ -63,6 +63,13 @@ public final class TicketCreateViewModel {
             let created = try await api.createTicket(req)
             createdId = created.id
             await clearDraftAfterSubmit()
+        } catch let e where AppError.isCancellation(e) {
+            // Ticket create is a row create. A re-tap after mid-flight
+            // cancellation creates a duplicate ticket. Don't surface an
+            // error toast (which would tempt the retry) and don't fall
+            // into the offline-queue branch — the server may have
+            // accepted the original POST.
+            return
         } catch {
             let appError = AppError.from(error)
             if case .offline = appError {
