@@ -34,6 +34,15 @@ public final class CommissionRulesListViewModel {
         rules.removeAll { $0.id == id }
         do {
             try await api.deleteCommissionRule(id: id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: DELETE may have landed before cancel.
+            // The optimistic local removal stays — relying on the next
+            // pull-to-refresh to reconcile rather than calling load()
+            // here (which itself would inherit the cancellation and
+            // leave the local list permanently empty until manual refresh).
+            // Re-insert the row so the user can decide on retry.
+            rules.append(rule)
+            rules.sort { $0.id < $1.id }
         } catch {
             AppLog.ui.error("Commission rule delete failed: \(error.localizedDescription, privacy: .public)")
             await load()
