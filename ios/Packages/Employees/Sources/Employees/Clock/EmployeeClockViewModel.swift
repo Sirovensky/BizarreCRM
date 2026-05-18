@@ -86,6 +86,12 @@ public final class EmployeeClockViewModel {
             let entry = try await api.clockIn(userId: employeeId, pin: pin)
             clockState = .clockedIn(entry)
             updateElapsed(from: entry)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: cancellation may fire after the POST has
+            // landed server-side. Painting "Clock-in failed" tempts the user
+            // to retap, creating a duplicate clock-in row. Reconcile against
+            // the server's truth instead of swallowing into .failed.
+            await refresh()
         } catch {
             AppLog.ui.error(
                 "EmployeeClockViewModel clockIn failed: \(error.localizedDescription, privacy: .public)"
@@ -111,6 +117,12 @@ public final class EmployeeClockViewModel {
             _ = try await api.clockOut(userId: employeeId, pin: pin)
             clockState = .notClockedIn
             elapsedSeconds = 0
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: cancellation may fire after the POST has
+            // landed. Painting "Clock-out failed" misleads the user into a
+            // retap that would attempt a second clock-out. Refresh to let
+            // the server be the source of truth.
+            await refresh()
         } catch {
             AppLog.ui.error(
                 "EmployeeClockViewModel clockOut failed: \(error.localizedDescription, privacy: .public)"
