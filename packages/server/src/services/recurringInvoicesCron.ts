@@ -20,6 +20,7 @@
 import type Database from 'better-sqlite3';
 import { createLogger } from '../utils/logger.js';
 import { allocateCounter, allocateUniqueOrderId, formatInvoiceOrderId } from '../utils/counters.js';
+import { audit } from '../utils/audit.js';
 
 const logger = createLogger('recurring-invoices-cron');
 
@@ -318,6 +319,28 @@ function processTemplate(slug: string, db: Database.Database, tpl: InvoiceTempla
         INSERT INTO invoice_template_runs (template_id, invoice_id, run_at, succeeded)
         VALUES (?, ?, datetime('now'), 1)
       `).run(tpl.id, invoiceId);
+
+      // BUGHUNT-2026-05-17 [missing audit]: every other invoice-creating
+      // path writes an audit_logs breadcrumb (see invoices.routes.ts).
+      // Recurring-template-driven invoices were a silent gap, so a tenant
+      // auditor could not tell from audit_logs why their invoice count
+      // jumped at midnight. Record one row per minted invoice with the
+      // template + resolved-creator context. user_id=null + ip=system tag
+      // the row as cron-originated (matches dunningScheduler audit style
+      // before SCAN-1173 moved 'system' into details JSON).
+      try {
+        audit(db, 'recurring_invoice_created', resolvedCreatedBy, 'system', {
+          slug,
+          template_id: tpl.id,
+          invoice_id: invoiceId,
+          order_id: orderId,
+          customer_id: tpl.customer_id,
+          subtotal,
+        });
+      } catch {
+        // Audit-write failure must not abort the mint — the invoice row is
+        // committed via the surrounding transaction.
+      }
 
       logger.info('recurring invoice created', {
         slug,
