@@ -1,6 +1,7 @@
 import SwiftUI
 import DesignSystem
 import Networking
+import Core
 
 // MARK: - BreakInOutViewModel
 
@@ -35,6 +36,12 @@ public final class BreakInOutViewModel {
     }
 
     public func startBreak(kind: BreakKind) async {
+        // BUGHUNT-2026-05-17: re-entry guard. Without this a double-tap on a
+        // break-kind button spawns two parallel startBreak POSTs and two
+        // break-start rows. Refuse to start a second one while loading or
+        // already on break.
+        if case .loading = state { return }
+        if case .onBreak = state { return }
         state = .loading
         let employeeId = await userIdProvider()
         let shiftId = await shiftIdProvider()
@@ -42,6 +49,14 @@ public final class BreakInOutViewModel {
             let entry = try await api.startBreak(employeeId: employeeId, shiftId: shiftId, kind: kind)
             state = .onBreak(entry)
             tracker.breakDidStart(entry)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: server may already have inserted a
+            // break_start row when the task was cancelled. Painting
+            // "Failed: cancelled" tempts a re-tap that creates a second
+            // open break. Roll back to idle silently; the user can re-tap
+            // intentionally if they meant to.
+            state = .idle
+            tracker.breakDidEnd()
         } catch {
             state = .failed(error.localizedDescription)
             tracker.setFailed(error.localizedDescription)
@@ -55,6 +70,14 @@ public final class BreakInOutViewModel {
             _ = try await api.endBreak(breakId: entry.id)
             state = .idle
             tracker.breakDidEnd()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: endBreak POST may have landed before
+            // cancellation fired. Painting "Failed: cancelled" misleads the
+            // cashier into a retap that hits the already-ended break_id and
+            // either 404s or (worse) creates a second end-break entry on
+            // tolerant servers. Restore the .onBreak state so the user can
+            // verify on the timesheet rather than retap blindly.
+            state = .onBreak(entry)
         } catch {
             state = .failed(error.localizedDescription)
             tracker.setFailed(error.localizedDescription)
