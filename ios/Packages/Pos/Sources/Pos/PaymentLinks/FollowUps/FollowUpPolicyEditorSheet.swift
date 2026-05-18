@@ -165,9 +165,22 @@ public final class FollowUpPolicyEditorViewModel {
         defer { isSaving = false }
         do {
             for rule in rules {
+                // BUGHUNT-2026-05-17: check cancellation between iterations so
+                // a dismiss mid-loop stops the cascade — without this, a
+                // 5-rule list would keep POSTing even after the sheet went
+                // away, double-saving on re-open.
+                try Task.checkCancellation()
                 _ = try await api.createFollowUp(linkId: linkId, request: rule.toRequest())
             }
             BrandHaptics.success()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: bulk POST cancelled. Server may have
+            // accepted some-but-not-all rules. Painting "Could not save
+            // follow-up rules." invites a retry that re-creates the
+            // already-saved rules as duplicates (endpoint has no idempotency
+            // key). Stay silent; the next sheet open re-loads from the
+            // server and the admin can re-confirm the actual state.
+            return
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription
                 ?? "Could not save follow-up rules."
