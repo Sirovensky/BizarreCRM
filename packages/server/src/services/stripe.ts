@@ -646,35 +646,43 @@ function processPaymentFailed(
     });
   } else {
     // BL3 grace period: keep paid plan active but flag past_due.
-    // SEC-H70 differential UPDATE: only write if the row isn't already past_due
-    // so re-delivered invoice.payment_failed events don't produce a no-op write
-    // that resets updated_at and confuses audit logs.
-    const gracePeriodResult = masterDb
+    //
+    // BUGHUNT-2026-05-17: previously the UPDATE carried `AND payment_past_due
+    // != 1` with a comment about "differential UPDATE to skip re-delivered
+    // events". That conflated two distinct cases:
+    //   (a) Stripe re-delivers the SAME event (same stripe_event_id) — already
+    //       handled at the BL2 INSERT OR IGNORE layer, which short-circuits
+    //       before reaching this code path.
+    //   (b) Stripe sends a NEW invoice.payment_failed event (different
+    //       stripe_event_id) for the next billing-cycle failure — the
+    //       expected dunning escalation path.
+    //
+    // The `payment_past_due != 1` guard blocked (b) too, so once a tenant was
+    // flagged past_due their failed_charge_count would NEVER increment on
+    // subsequent failures and the FAILED_CHARGE_DOWNGRADE_THRESHOLD downgrade
+    // was unreachable — a Free-loading tenant could rack up an unlimited
+    // number of failed charges while staying on the Pro plan.
+    //
+    // Fix: always run the UPDATE so failed_charge_count advances per distinct
+    // event. The BL2 idempotency PK already prevents double-counting the same
+    // stripe_event_id; no other dedup is needed here.
+    masterDb
       .prepare(
         `UPDATE tenants
             SET failed_charge_count = ?,
                 payment_past_due = 1,
                 updated_at = datetime('now')
-          WHERE id = ? AND payment_past_due != 1`,
+          WHERE id = ?`,
       )
       .run(newCount, tenantRow.id);
 
-    if (gracePeriodResult.changes === 0) {
-      logger.info('invoice.payment_failed: tenant already past_due — differential UPDATE skipped', {
-        tenantId: tenantRow.id,
-        attempts: newCount,
-        subscriptionId,
-        eventId: event.id,
-      });
-    } else {
-      logger.warn('Tenant payment failed — grace period', {
-        tenantId: tenantRow.id,
-        attempts: newCount,
-        threshold: FAILED_CHARGE_DOWNGRADE_THRESHOLD,
-        subscriptionId,
-        eventId: event.id,
-      });
-    }
+    logger.warn('Tenant payment failed — grace period', {
+      tenantId: tenantRow.id,
+      attempts: newCount,
+      threshold: FAILED_CHARGE_DOWNGRADE_THRESHOLD,
+      subscriptionId,
+      eventId: event.id,
+    });
   }
 
   // BL3: enqueue notification regardless of whether we downgraded.
