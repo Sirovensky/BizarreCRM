@@ -15,6 +15,7 @@ import { logger } from '../utils/logger.js';
 import { trackInterval } from '../utils/trackInterval.js';
 import { checkWindowRate, recordWindowFailure, clearRateLimit } from '../utils/rateLimiter.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
 import {
   requestTermination,
   confirmTerminationSlug,
@@ -473,7 +474,7 @@ router.get('/backups', (req, res) => {
 // unhandledRejection and left the client request hanging forever (TCP keepalive
 // would eventually reap it, but the admin UI looked frozen). Wrap in try/catch
 // so a backup failure renders a proper 500 + audit log entry.
-router.post('/backup', async (req, res) => {
+router.post('/backup', asyncHandler(async (req, res) => {
   const db = req.db;
   if (isTenantBackupRunning()) {
     res.status(429).json({ success: false, message: 'Backup already in progress for this shop' });
@@ -489,7 +490,7 @@ router.post('/backup', async (req, res) => {
       res.status(500).json({ success: false, message: 'Backup failed. Check server logs.' });
     }
   }
-});
+}));
 
 // GET /admin/backups/:filename/download — stream the encrypted file for off-site copy.
 // Requires adminAuth (already applied via router.use above).
