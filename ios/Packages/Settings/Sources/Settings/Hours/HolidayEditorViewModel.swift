@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import Core
 
 // MARK: - §19 HolidayEditorViewModel
 
@@ -83,6 +84,14 @@ public final class HolidayEditorViewModel {
                 _ = try await repository.updateHoliday(holiday)
             }
             saveSucceeded = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: holiday create POST has no idempotency.
+            // A cancellation banner tempted a retap that — if the server
+            // accepted the first POST — would create a duplicate holiday
+            // for the same date. The duplicates surface as repeated entries
+            // in the closed-hours calendar and confuse appointment-booking
+            // availability checks. Stay silent; reload reveals state.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
