@@ -43,19 +43,31 @@ public struct TicketDeviceEditView: View {
             Form {
                 Section("Device info") {
                     TextField("Device name (required)", text: $vm.deviceName)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.words)
+                        #endif
                         .autocorrectionDisabled()
                         .accessibilityLabel("Device name, required")
 
                     TextField("IMEI", text: $vm.imei)
                         .keyboardType(.numbersAndPunctuation)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.never)
+                        #endif
                         .autocorrectionDisabled()
                         .accessibilityLabel("IMEI number")
 
                     TextField("Serial number", text: $vm.serial)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.characters)
+                        #endif
                         .autocorrectionDisabled()
                         .accessibilityLabel("Serial number")
 
                     TextField("Security code / pattern", text: $vm.securityCode)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.never)
+                        #endif
                         .autocorrectionDisabled()
                         .accessibilityLabel("Security code or unlock pattern")
                 }
@@ -63,6 +75,9 @@ public struct TicketDeviceEditView: View {
                 Section("Service notes") {
                     TextField("Issue description…", text: $vm.additionalNotes, axis: .vertical)
                         .lineLimit(2...5)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.sentences)
+                        #endif
                         .accessibilityLabel("Device issue description")
                 }
 

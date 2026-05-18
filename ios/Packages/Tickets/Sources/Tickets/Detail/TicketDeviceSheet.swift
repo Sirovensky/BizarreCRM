@@ -138,6 +138,7 @@ public struct TicketDeviceSheet: View {
                     Section("Device info") {
                         TextField("Device name (e.g. iPhone 14 Pro)", text: $vm.name)
                             .autocorrectionDisabled()
+                            .textInputAutocapitalization(.words)
                             .accessibilityLabel("Device name, required")
 
                         TextField("IMEI", text: $vm.imei)
@@ -153,12 +154,14 @@ public struct TicketDeviceSheet: View {
 
                         TextField("Security code / pattern", text: $vm.securityCode)
                             .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
                             .accessibilityLabel("Device security code or screen pattern")
                     }
 
                     Section("Notes & pricing") {
                         TextField("Issue / customer comments…", text: $vm.additionalNotes, axis: .vertical)
                             .lineLimit(2...5)
+                            .textInputAutocapitalization(.sentences)
                             .accessibilityLabel("Device issue or customer comment")
 
                         TextField("Repair price (USD)", text: $vm.price)

@@ -257,6 +257,9 @@ public struct TicketDeviceChecklistSheet: View {
                 axis: .vertical
             )
             .lineLimit(3...6)
+            #if canImport(UIKit)
+            .textInputAutocapitalization(.sentences)
+            #endif
             .font(.brandBodyMedium())
             .accessibilityLabel("Technician notes")
         }

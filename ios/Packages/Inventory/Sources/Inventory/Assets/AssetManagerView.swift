@@ -267,6 +267,7 @@ public struct AssetEditorSheet: View {
                 Section("Device") {
                     TextField("Name (required)", text: $name)
                         .textContentType(.name)
+                        .textInputAutocapitalization(.words)
                     TextField("Serial number", text: $serial)
                         .textInputAutocapitalization(.characters)
                         .disableAutocorrection(true)
@@ -278,6 +279,7 @@ public struct AssetEditorSheet: View {
 
                 Section("Condition & Status") {
                     TextField("Condition (e.g. Good, Minor scratch)", text: $condition)
+                        .textInputAutocapitalization(.sentences)
                     Picker("Status", selection: $status) {
                         ForEach(AssetStatus.allCases, id: \.self) { s in
                             Text(s.displayName).tag(s)

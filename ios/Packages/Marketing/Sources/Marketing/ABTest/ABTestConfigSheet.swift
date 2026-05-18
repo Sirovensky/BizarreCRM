@@ -239,6 +239,9 @@ public struct ABTestConfigSheet: View {
                     get: { variant.label },
                     set: { vm.updateLabel($0, at: index) }
                 ))
+                #if canImport(UIKit)
+                .textInputAutocapitalization(.words)
+                #endif
                 .font(.brandBodyMedium().bold())
                 .accessibilityLabel("Variant \(index + 1) label")
 
@@ -277,6 +280,9 @@ public struct ABTestConfigSheet: View {
                 set: { vm.updateMessage($0, at: index) }
             ), axis: .vertical)
             .lineLimit(2...4)
+            #if canImport(UIKit)
+            .textInputAutocapitalization(.sentences)
+            #endif
             .font(.brandBodyMedium())
             .foregroundStyle(.bizarreOnSurface)
             .accessibilityLabel("Variant \(index + 1) message")
