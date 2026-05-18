@@ -421,6 +421,8 @@ export function SmsVoiceSettings() {
             <input
               id="voice_forward_number"
               type="tel"
+              inputMode="tel"
+              autoComplete="tel"
               placeholder="+13035551234 (leave blank to disable)"
               value={voiceForwardNumber}
               onChange={(e) => {

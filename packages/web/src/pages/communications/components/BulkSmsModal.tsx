@@ -653,6 +653,9 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
                 value={templateFilter}
                 onChange={(e) => setTemplateFilter(e.target.value)}
                 placeholder="Filter templates by name or content…"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
                 className="mb-1.5 w-full rounded-lg border border-surface-300 bg-white px-2 py-1.5 text-sm dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                 aria-label="Filter templates"
               />
