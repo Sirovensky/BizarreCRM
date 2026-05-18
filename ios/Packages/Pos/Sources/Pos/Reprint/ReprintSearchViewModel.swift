@@ -38,6 +38,13 @@ public final class ReprintSearchViewModel {
     // MARK: - Private
 
     private var debounceTask: Task<Void, Never>?
+    /// BUGHUNT-2026-05-17: the previous version launched an untracked `Task`
+    /// inside `performSearch`, so cancelling the debounce did not cancel the
+    /// in-flight network call. When a slow search for "iPhone" finished
+    /// AFTER a fast search for "iPhone 14", the older results overwrote the
+    /// newer ones in `searchState`. Tracking the task lets us cancel it
+    /// before starting the next search.
+    private var searchTask: Task<Void, Never>?
     private let debounceInterval: Duration = .milliseconds(400)
 
     /// Designated init — accepts any `ReprintRepository`.
@@ -67,6 +74,8 @@ public final class ReprintSearchViewModel {
     public func clear() {
         debounceTask?.cancel()
         debounceTask = nil
+        searchTask?.cancel()
+        searchTask = nil
         query = ""
         searchState = .idle
     }
@@ -91,14 +100,23 @@ public final class ReprintSearchViewModel {
     // MARK: - Repository call (§20 containment — no direct APIClient here)
 
     private func performSearch(query: String) {
+        // Cancel any in-flight search so an out-of-order completion can't
+        // clobber the newest query's results.
+        searchTask?.cancel()
         searchState = .searching
-        Task { [weak self] in
+        searchTask = Task { [weak self] in
             guard let self else { return }
             do {
                 let results = try await repository.searchSales(query: query)
+                if Task.isCancelled { return }
                 self.searchState = .results(results)
                 AppLog.pos.info("ReprintSearchVM: \(results.count, privacy: .public) results for query")
+            } catch is CancellationError {
+                return
+            } catch let urlErr as URLError where urlErr.code == .cancelled {
+                return
             } catch {
+                if Task.isCancelled { return }
                 let message = (error as? AppError)?.localizedDescription ?? error.localizedDescription
                 self.searchState = .error(message)
                 AppLog.pos.error("ReprintSearchVM: search failed — \(message, privacy: .public)")
