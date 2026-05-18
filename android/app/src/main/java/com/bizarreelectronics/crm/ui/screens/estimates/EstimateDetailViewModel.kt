@@ -233,22 +233,29 @@ class EstimateDetailViewModel @Inject constructor(
     fun approveEstimate() {
         _state.value = _state.value.copy(showApproveConfirm = false, isActionInProgress = true)
         viewModelScope.launch {
-            runCatching { estimateApi.approveEstimate(estimateId) }
-                .onSuccess {
-                    _state.value = _state.value.copy(
-                        isActionInProgress = false,
-                        actionMessage = "Estimate approved",
-                    )
-                    loadEstimate()
+            try {
+                estimateApi.approveEstimate(estimateId)
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Estimate approved",
+                )
+                loadEstimate()
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: approveEstimate is a POST that mutates
+                // the estimate row (status -> approved) and may fire server
+                // side effects (notification, audit). runCatching swallowed
+                // cancellation and painted "Failed to approve" — tempting a
+                // re-tap that would double-POST if the first request landed.
+                _state.value = _state.value.copy(isActionInProgress = false)
+                throw e
+            } catch (e: Exception) {
+                val msg = if (e is HttpException && e.code() == 404) {
+                    "Approve not available yet"
+                } else {
+                    e.message ?: "Failed to approve estimate"
                 }
-                .onFailure { e ->
-                    val msg = if (e is HttpException && e.code() == 404) {
-                        "Approve not available yet"
-                    } else {
-                        e.message ?: "Failed to approve estimate"
-                    }
-                    _state.value = _state.value.copy(isActionInProgress = false, actionMessage = msg)
-                }
+                _state.value = _state.value.copy(isActionInProgress = false, actionMessage = msg)
+            }
         }
     }
 
@@ -274,25 +281,29 @@ class EstimateDetailViewModel @Inject constructor(
         }
         _state.value = _state.value.copy(showRejectDialog = false, isActionInProgress = true)
         viewModelScope.launch {
-            runCatching {
+            try {
                 estimateApi.rejectEstimate(estimateId, mapOf("reason" to reason))
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Estimate rejected",
+                    rejectReason = "",
+                )
+                loadEstimate()
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: rejectEstimate is a POST that mutates
+                // status -> rejected with an auditable reason. Same re-tap
+                // risk as approve — silent cancel swallowing tempted a
+                // duplicate POST. Re-throw to preserve structured concurrency.
+                _state.value = _state.value.copy(isActionInProgress = false)
+                throw e
+            } catch (e: Exception) {
+                val msg = if (e is HttpException && e.code() == 404) {
+                    "Reject not available yet"
+                } else {
+                    e.message ?: "Failed to reject estimate"
+                }
+                _state.value = _state.value.copy(isActionInProgress = false, actionMessage = msg)
             }
-                .onSuccess {
-                    _state.value = _state.value.copy(
-                        isActionInProgress = false,
-                        actionMessage = "Estimate rejected",
-                        rejectReason = "",
-                    )
-                    loadEstimate()
-                }
-                .onFailure { e ->
-                    val msg = if (e is HttpException && e.code() == 404) {
-                        "Reject not available yet"
-                    } else {
-                        e.message ?: "Failed to reject estimate"
-                    }
-                    _state.value = _state.value.copy(isActionInProgress = false, actionMessage = msg)
-                }
         }
     }
 
