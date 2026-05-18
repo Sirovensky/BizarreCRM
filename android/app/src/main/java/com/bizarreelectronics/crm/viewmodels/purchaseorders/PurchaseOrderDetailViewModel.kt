@@ -11,6 +11,7 @@ import com.bizarreelectronics.crm.data.remote.dto.PurchaseOrderRow
 import com.bizarreelectronics.crm.data.remote.dto.PurchaseOrderUpdateRequest
 import com.bizarreelectronics.crm.data.repository.PurchaseOrderRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -129,6 +130,15 @@ class PurchaseOrderDetailViewModel @Inject constructor(
                     items = detail.items,
                     receiveEntries = newEntries,
                 )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: receivePurchaseOrder increments stock
+                // and creates stock_movements rows — no idempotency key. A
+                // "Failed to receive" toast tempted a re-tap that doubled
+                // the received qty. Reload the PO so the entries reflect
+                // the truth before the user retries.
+                _state.value = _state.value.copy(isReceiving = false)
+                load()
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "submitReceive($poId) failed: ${e.message}")
                 _state.value = _state.value.copy(
