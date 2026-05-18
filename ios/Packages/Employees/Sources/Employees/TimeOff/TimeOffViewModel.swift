@@ -93,6 +93,12 @@ public final class TimeOffViewModel {
             let created = try await api.submitTimeOff(body)
             requests.insert(created, at: 0)
             submitState = .submitted
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: submitTimeOff creates a row. A "cancelled"
+            // banner tempts a re-tap that produces a second request when the
+            // original POST already landed. Reset to idle so the user must
+            // reload before another attempt.
+            submitState = .idle
         } catch {
             AppLog.ui.error("TimeOff submit failed: \(error.localizedDescription, privacy: .public)")
             submitState = .failed(error.localizedDescription)

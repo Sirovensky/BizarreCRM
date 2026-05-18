@@ -93,6 +93,13 @@ public final class ShiftsViewModel {
             shifts = (shifts + [created]).sorted { $0.startAt < $1.startAt }
             writeState = .saved
             return created
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: createShift is a row write. A "cancelled"
+            // banner tempted a re-tap that produced a second shift if the
+            // original POST landed. Reset to idle and let the next loadWeek
+            // surface the truth.
+            writeState = .idle
+            return nil
         } catch {
             AppLog.ui.error("Shift create failed: \(error.localizedDescription, privacy: .public)")
             writeState = .failed(error.localizedDescription)
