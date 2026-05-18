@@ -195,6 +195,13 @@ public final class PaymentLinkRefundViewModel {
             try await api.refundPaymentLink(linkId: link.id, request: req)
             BrandHaptics.success()
             showSuccess = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: refund Task cancelled (sheet dismissed mid
+            // -call). Bare catch surfaced "Could not process refund." which
+            // invites a retry that could double-refund the payment link. The
+            // PaymentLink detail screen reloads on appear and reflects the
+            // true refund state; stay silent here.
+            return
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription
                 ?? "Could not process refund."
