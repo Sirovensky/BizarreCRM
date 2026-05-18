@@ -534,6 +534,9 @@ public struct AutoReorderRuleCard: View {
             )
             withAnimation { savedSuccess = true }
             Task { try? await Task.sleep(nanoseconds: 2_000_000_000); await MainActor.run { savedSuccess = false } }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: reorder-rule update is idempotent overwrite; silent on cancellation.
+            return
         } catch {
             saveError = "Failed to save: \(error.localizedDescription)"
             AppLog.ui.error("Reorder rule save failed: \(error.localizedDescription, privacy: .public)")
@@ -624,6 +627,9 @@ public struct BinLocationCard: View {
             try await api.updateInventoryBinLocation(id: item.id, binLocation: trimmed)
             withAnimation { savedSuccess = true }
             Task { try? await Task.sleep(nanoseconds: 2_000_000_000); await MainActor.run { savedSuccess = false } }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: bin-location update is idempotent overwrite; silent on cancellation.
+            return
         } catch {
             saveError = "Failed to save: \(error.localizedDescription)"
             AppLog.ui.error("Bin location save failed: \(error.localizedDescription, privacy: .public)")
