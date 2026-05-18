@@ -146,6 +146,13 @@ public final class CustomerEditViewModel {
                 try await saveCustomFields()
             }
             didSave = true
+        } catch let e where AppError.isCancellation(e) {
+            // User dismissed the edit sheet mid-PUT. updateCustomer is
+            // idempotent so a retry is safe, but the "cancelled" toast
+            // looks like a real failure and tempts the user to re-tap an
+            // edit they intentionally abandoned. Leave isSubmitting reset
+            // via the outer defer and bail.
+            return
         } catch {
             // 409 Conflict = concurrent edit or system-protected record.
             if let transport = error as? APITransportError,
