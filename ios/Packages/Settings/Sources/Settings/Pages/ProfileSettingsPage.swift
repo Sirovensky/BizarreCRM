@@ -134,6 +134,13 @@ public final class ProfileSettingsViewModel: Sendable {
             _ = try await api.updateUserProfile(body)
             successMessage = "Profile saved."
             errorMessage = nil
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: updateUserProfile writes an audit row
+            // ("profile_update") per request. A cancellation banner here
+            // tempts a re-tap that, if the PATCH already landed, double-
+            // audits and may overwrite a freshly-saved value (the second
+            // tap re-sends the original local snapshot). Stay silent.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -169,6 +176,15 @@ public final class ProfileSettingsViewModel: Sendable {
             confirmPassword = ""
             showPasswordSection = false
             errorMessage = nil
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: changePassword rotates the password hash
+            // AND emits a "password_changed" audit + security email. A
+            // cancellation banner provokes a re-tap that — if the original
+            // POST committed — sends the (now stale) currentPassword a
+            // SECOND time. Server rejects with "incorrect password" even
+            // though the rotation actually succeeded; user is locked in
+            // panic. Stay silent on cancellation.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
