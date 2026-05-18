@@ -364,6 +364,12 @@ public struct CustomerAddNoteSheet: View {
                                 TextField("Ticket ID", text: $linkedTicketIdInput)
                                     .multilineTextAlignment(.trailing)
                                     .font(.brandMono(size: 14))
+                                    // BUGHUNT-2026-05-18: ticket IDs are
+                                    // numeric — no need for the default
+                                    // text keyboard with autocaps.
+                                    #if canImport(UIKit)
+                                    .keyboardType(.numberPad)
+                                    #endif
                                     .accessibilityLabel("Ticket ID to link this note to")
                                     .accessibilityHint("Enter a ticket ID number to create a backlink")
                             }
