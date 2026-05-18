@@ -3163,7 +3163,13 @@ router.post(
 // This is intentional: the session row is the revocation mechanism.
 const IMPERSONATION_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
+// BUGHUNT-2026-05-17: wrap bare-async handler in try/catch. The handler does
+// `await getTenantDb`, `await tenantAsyncDb.run`, then `jwt.sign` + auditLog +
+// a fire-and-forget `getTenantDb(...).then(...)`. Inner try/catches return for
+// the DB ops, but a throw from jwt.sign (bad secret) or from auditLog (write
+// path failure to master_audit_log) would escape as an unhandledRejection.
 router.post('/tenants/:slug/impersonate', async (req: Request, res: Response) => {
+  try {
   const slug = String(req.params.slug);
   if (!/^[a-z0-9-]{1,64}$/.test(slug)) {
     return res.status(400).json({ success: false, message: 'invalid tenant slug' });
@@ -3286,6 +3292,15 @@ router.post('/tenants/:slug/impersonate', async (req: Request, res: Response) =>
       target_user: { id: targetUser.id, username: targetUser.username, role: targetUser.role },
     },
   });
+  } catch (e: unknown) {
+    logger.error('super_admin_impersonate_error', {
+      error: e instanceof Error ? e.message : String(e),
+      slug: req.params.slug,
+    });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_GENERIC, message: 'Impersonation failed' });
+    }
+  }
 });
 
 // ─── POST /tenants/:slug/impersonate/:jti/end ────────────────────────────────
@@ -3301,7 +3316,11 @@ router.post('/tenants/:slug/impersonate', async (req: Request, res: Response) =>
 //  - Deletes only the row whose id = `impersonate-<jti>`, so a super-admin
 //    cannot accidentally revoke a real user's session.
 //  - Full audit in both master_audit_log and tenant audit_logs.
+// BUGHUNT-2026-05-17: wrap bare-async handler in try/catch. Inner try/catches
+// only cover the two DB ops. A throw from auditLog (master DB write) or the
+// fire-and-forget tenant audit chain would escape.
 router.post('/tenants/:slug/impersonate/:jti/end', async (req: Request, res: Response) => {
+  try {
   const slug = String(req.params.slug);
   const jti = String(req.params.jti);
 
@@ -3383,6 +3402,15 @@ router.post('/tenants/:slug/impersonate/:jti/end', async (req: Request, res: Res
   });
 
   res.json({ success: true, data: { revoked: true, session_id: sessionId } });
+  } catch (e: unknown) {
+    logger.error('super_admin_impersonate_end_error', {
+      error: e instanceof Error ? e.message : String(e),
+      slug: req.params.slug,
+    });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_GENERIC, message: 'Failed to end impersonation' });
+    }
+  }
 });
 
 export default router;
