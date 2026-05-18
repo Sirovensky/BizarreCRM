@@ -29,7 +29,16 @@ public final class EstimateSendViewModel {
     }
 
     public func send() async {
+        // BUGHUNT-2026-05-17: Re-entry guard — every send() call dispatches
+        // SMS and/or email to the customer. Without this guard a rapid
+        // double-tap from staff can send two messages before the first POST
+        // completes. TCPA exposure is non-trivial.
+        guard !isSending else { return }
         guard sendSms || sendEmail else { return }
+        // Block re-send once the response has been recorded — the toggle stays
+        // visible in the sheet while the "Done" button shows, and a stray tap
+        // on Send would re-dispatch.
+        if didSend { return }
         isSending = true
         errorMessage = nil
         defer { isSending = false }
@@ -41,6 +50,13 @@ public final class EstimateSendViewModel {
             )
             approvalLink = response.approvalLink
             didSend = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: Customer-facing SMS/email send. If the
+            // user dismisses the sheet mid-flight, the messages may have
+            // already been queued server-side. Painting an error tempts a
+            // retap that double-texts/double-emails the customer — direct
+            // TCPA exposure. Stay silent on cancellation.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
