@@ -298,7 +298,9 @@ public struct LoginFlowView: View {
             }
             BrandTextField(label: "Shop name", text: $flow.registerShopName,
                            placeholder: "Main Street Repair",
-                           systemImage: "signpost.right")
+                           systemImage: "signpost.right",
+                           contentType: .organizationName,
+                           autocapitalize: .words)
             BrandTextField(label: "Admin email", text: $flow.registerEmail,
                            placeholder: "owner@example.com",
                            systemImage: "envelope",
