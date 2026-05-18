@@ -122,6 +122,13 @@ class GiftCardViewModel @Inject constructor(
                 } else {
                     _uiState.value = GiftCardUiState.Error(e.message() ?: "Server error")
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // BUGHUNT-2026-05-17: issuing a gift card creates a card
+                // with a real balance and may charge a customer card. A
+                // re-tap after a mid-flight cancel could mint a second
+                // card the customer was never told about. Re-throw so the
+                // UI doesn't surface a misleading failure state.
+                throw e
             } catch (e: Exception) {
                 Timber.e(e, "GiftCardViewModel.issueGiftCard")
                 _uiState.value = GiftCardUiState.Error(e.message ?: "Unknown error")
@@ -148,6 +155,11 @@ class GiftCardViewModel @Inject constructor(
                 } else {
                     GiftCardUiState.Error("Redeem returned empty data")
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Redeeming decrements card balance. A re-tap after
+                // mid-flight cancel double-decrements; the customer's
+                // card balance comes up short with no audit trail.
+                throw e
             } catch (e: Exception) {
                 Timber.e(e, "GiftCardViewModel.redeemGiftCard")
                 _uiState.value = GiftCardUiState.Error(e.message ?: "Unknown error")
