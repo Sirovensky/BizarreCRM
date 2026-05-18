@@ -117,15 +117,105 @@ public struct UpdateInventoryItemRequest: Codable, Sendable {
 // MARK: - §6.1 Import CSV/JSON
 
 /// `POST /api/v1/inventory/import-csv` request body.
-/// `csvData` is a raw CSV string with header row (name,sku,quantity,retail_price).
+///
+/// BUGHUNT-2026-05-17: server destructures `{ items: [...] }` from the body
+/// (see inventory.routes.ts ~L246) — it does NOT accept a raw CSV string.
+/// Previous iOS code sent `{ csv_data: "name,sku,..." }` so the import
+/// always failed with "items array is required". Parse the CSV client-side
+/// here at the encoder boundary so the public Sheet API (which still passes
+/// `csvData:`) doesn't have to change.
 public struct InventoryImportCSVRequest: Encodable, Sendable {
     public let csvData: String
 
     public init(csvData: String) { self.csvData = csvData }
 
     enum CodingKeys: String, CodingKey {
-        case csvData = "csv_data"
+        case items
     }
+
+    /// One row of the parsed CSV, mapped to the server's `ValidatedRow`
+    /// expected by the import handler. Server fields:
+    /// `name`, `sku`, `item_type`, `in_stock`, `retail_price`, `cost_price`,
+    /// `reorder_level`, `category`, `manufacturer`, `description`, `supplier_id`.
+    /// We only emit the columns the legacy UI writes plus a fallback `item_type`.
+    private struct ImportItem: Encodable, Sendable {
+        let name: String
+        let sku: String?
+        let in_stock: Int?
+        let retail_price: Double?
+        let item_type: String
+
+        enum CodingKeys: String, CodingKey {
+            case name, sku, in_stock, retail_price, item_type
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        let items = Self.parse(csv: csvData)
+        try c.encode(items, forKey: .items)
+    }
+
+    /// Parse the legacy `name,sku,quantity,retail_price` CSV shape into the
+    /// server's expected item rows. Empty / malformed rows are skipped — the
+    /// server validates again and reports per-row errors.
+    private static func parse(csv: String) -> [ImportItem] {
+        let lines = csv.split(omittingEmptySubsequences: true, whereSeparator: { $0.isNewline })
+        guard lines.count > 1 else { return [] }
+        // First line is the header; we know its shape from the sheet
+        // (`name,sku,quantity,retail_price`), so we hard-map by index.
+        var rows: [ImportItem] = []
+        for line in lines.dropFirst() {
+            let cols = splitCSVLine(String(line))
+            guard !cols.isEmpty else { continue }
+            let name = unquote(cols[safe: 0] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else { continue }
+            let sku = unquote(cols[safe: 1] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let qty = Int(unquote(cols[safe: 2] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+            let priceStr = unquote(cols[safe: 3] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let price = Double(priceStr) ?? 0
+            rows.append(ImportItem(
+                name: name,
+                sku: sku.isEmpty ? nil : sku,
+                in_stock: qty,
+                retail_price: price,
+                item_type: "product"
+            ))
+        }
+        return rows
+    }
+
+    private static func splitCSVLine(_ line: String) -> [String] {
+        // Minimal RFC-4180-ish split that respects quoted commas. Same
+        // approximation the import sheet uses on the parse side.
+        var out: [String] = []
+        var current = ""
+        var inQuotes = false
+        for ch in line {
+            if ch == "\"" {
+                inQuotes.toggle()
+                current.append(ch)
+            } else if ch == "," && !inQuotes {
+                out.append(current)
+                current = ""
+            } else {
+                current.append(ch)
+            }
+        }
+        out.append(current)
+        return out
+    }
+
+    private static func unquote(_ s: String) -> String {
+        var t = s
+        if t.hasPrefix("\"") { t.removeFirst() }
+        if t.hasSuffix("\"") { t.removeLast() }
+        return t.replacingOccurrences(of: "\"\"", with: "\"")
+    }
+}
+
+private extension Array {
+    subscript(safe idx: Int) -> Element? { indices.contains(idx) ? self[idx] : nil }
 }
 
 /// Response from `POST /api/v1/inventory/import-csv`.
