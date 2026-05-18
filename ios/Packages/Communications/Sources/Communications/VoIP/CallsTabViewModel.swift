@@ -86,6 +86,11 @@ public final class CallsTabViewModel {
     /// Initiate a click-to-call via `POST /api/v1/voice/call`.
     /// On success, `activeOutboundCallId` is set so the UI can show an active-call banner.
     public func initiateCall(to phoneNumber: String, customerId: Int64? = nil) async {
+        // BUGHUNT-2026-05-17: guard re-entry. Without this, a double-tap on
+        // the "Call" button (no UI-level disable while the POST is in flight)
+        // could issue two `POST /voice/call` requests and dial the customer
+        // twice — the endpoint has no idempotency key server-side.
+        guard activeOutboundCallId == nil else { return }
         do {
             let callId = try await repo.initiateCall(to: phoneNumber, customerId: customerId)
             activeOutboundCallId = callId
@@ -95,6 +100,13 @@ public final class CallsTabViewModel {
             } else {
                 errorMessage = "Could not start call: \(err.localizedDescription)"
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: initiateCall is a real-action POST — the
+            // VoIP provider dials the customer's phone on success. A
+            // `errorMessage = "cancelled"` toast tempted a re-tap that could
+            // dial the customer a second time. Stay silent on cancellation;
+            // the call log refresh (load()) reveals whether the dial landed.
+            return
         } catch {
             errorMessage = "Could not start call: \(error.localizedDescription)"
         }
