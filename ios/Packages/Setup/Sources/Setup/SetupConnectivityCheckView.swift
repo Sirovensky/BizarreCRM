@@ -131,6 +131,11 @@ public final class SetupConnectivityCheckViewModel {
             } else {
                 serverStatus = .failed(reason: "Server responded with status \(code). Check your server URL.")
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: re-running the connectivity check cancels
+            // the prior probe. Leave status alone so the newer probe sets
+            // .ok / .failed cleanly instead of flashing a misleading reason.
+            return
         } catch {
             serverStatus = .failed(reason: "Can't reach your server. Verify the URL and your network.")
         }

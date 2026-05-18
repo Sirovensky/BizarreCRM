@@ -72,6 +72,9 @@ public final class RolesMatrixViewModel {
         errorMessage = nil
         do {
             roles = try await repository.fetchAll()
+        } catch let e where AppError.isCancellation(e) {
+            isLoading = false
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -88,6 +91,8 @@ public final class RolesMatrixViewModel {
             if let idx = roles.firstIndex(where: { $0.id == id }) {
                 roles[idx] = role
             }
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: role swap cancel
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -230,6 +235,8 @@ public final class RolesMatrixViewModel {
     private func refresh() async {
         do {
             roles = try await repository.refresh()
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: refresh cancel
         } catch {
             errorMessage = error.localizedDescription
         }
