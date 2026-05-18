@@ -129,6 +129,10 @@ public struct ExpenseContextMenu: View {
         do {
             let resp = try await api.createExpense(body)
             onDuplicated?(resp.id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: duplicate cancelled mid-flight; server
+            // may have created the dup. Retap creates yet another copy.
+            return
         } catch {
             AppLog.ui.error(
                 "Expense duplicate failed: \(error.localizedDescription, privacy: .public)"
@@ -148,6 +152,10 @@ public struct ExpenseContextMenu: View {
         do {
             try await api.deleteExpense(id: expense.id)
             onDeleted?()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: delete may have committed; retap 404s
+            // and audit-logs a confusing delete attempt.
+            return
         } catch {
             AppLog.ui.error(
                 "Expense delete failed: \(error.localizedDescription, privacy: .public)"
