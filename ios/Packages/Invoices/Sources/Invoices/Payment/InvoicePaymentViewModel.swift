@@ -227,6 +227,16 @@ public final class InvoicePaymentViewModel {
             )
             do {
                 lastResponse = try await api.recordPayment(invoiceId: invoiceId, body: body)
+            } catch let e where AppError.isCancellation(e) {
+                // BUGHUNT-2026-05-17: a multi-leg split-tender record was
+                // cancelled mid-flight. Earlier legs may have committed
+                // server-side. Reset to .idle (don't paint .failed) so the
+                // operator re-enters the flow and the server-side
+                // transactionId idempotency window collapses a re-try of
+                // the same per-leg UUID. Painting a banner here tempted a
+                // re-tap with a NEW session UUID = duplicate payment.
+                state = .idle
+                return
             } catch {
                 AppLog.ui.error("Payment leg failed: \(error.localizedDescription, privacy: .public)")
                 handleError(AppError.from(error))
