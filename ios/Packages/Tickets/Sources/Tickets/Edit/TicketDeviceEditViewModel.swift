@@ -110,6 +110,16 @@ public final class TicketDeviceEditViewModel {
             }
 
             didSave = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: device save is a POST/PUT (row create or
+            // sparse update) potentially followed by a checklist PUT. If the
+            // edit sheet is dismissed mid-flight the broad catch was painting
+            // "cancelled" into `errorMessage`, hiding the fact that the
+            // device row may have already been created server-side. On the
+            // .add path that means tapping save again would create a SECOND
+            // device on the ticket. Suppress cancel-as-failure; the next
+            // ticket-detail refresh will reconcile.
+            return
         } catch {
             AppLog.ui.error("Device save failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = AppError.from(error).errorDescription ?? error.localizedDescription
