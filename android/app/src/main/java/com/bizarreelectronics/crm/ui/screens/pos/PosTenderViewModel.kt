@@ -124,9 +124,17 @@ class PosTenderViewModel @Inject constructor(
         if (remaining <= 0L || _uiState.value.isProcessing) return
         _uiState.update { it.copy(isProcessing = true, errorMessage = null) }
         viewModelScope.launch {
-            runCatching {
-                posApi.redeemGiftCard(PosGiftCardRedeemRequest(code = code.trim(), amountCents = remaining))
-            }.onSuccess { resp ->
+            // BUGHUNT-2026-05-17: gift card redeem has NO idempotency key on
+            // either client or server, and runCatching wraps CancellationException
+            // via kotlin.Result/Throwable. A cancelled redeem (e.g. user
+            // backgrounded mid-flight) formerly painted "Gift card error" and
+            // tempted a re-tap that would double-deduct the gift card balance
+            // if the server already accepted the first POST. Use try/catch with
+            // an explicit cancellation re-throw, and surface a verification
+            // hint for non-cancellation network failures instead of a generic
+            // error that invites another tap.
+            try {
+                val resp = posApi.redeemGiftCard(PosGiftCardRedeemRequest(code = code.trim(), amountCents = remaining))
                 val data = resp.data
                 if (resp.success && data != null) {
                     val remainingOnCard = data.remainingCents
@@ -142,8 +150,15 @@ class PosTenderViewModel @Inject constructor(
                 } else {
                     _uiState.update { it.copy(isProcessing = false, errorMessage = resp.message ?: "Gift card redemption failed") }
                 }
-            }.onFailure { e ->
-                _uiState.update { it.copy(isProcessing = false, errorMessage = e.message ?: "Gift card error") }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isProcessing = false,
+                        errorMessage = "Gift card error: ${e.message ?: "network failure"}. Verify the gift card balance before retrying — the redemption may have already been recorded.",
+                    )
+                }
             }
         }
     }
