@@ -65,11 +65,28 @@ public final class SurveyResponsesViewModel {
     public init(api: APIClient) { self.api = api }
 
     public func load() async {
+        // BUGHUNT-2026-05-17: capture the kind at the moment this load
+        // begins and guard the write so a rapid sequence of kind-picker
+        // taps (All → CSAT → NPS) doesn't race concurrent GETs whose
+        // out-of-order responses can leave the list displaying the wrong
+        // kind. Without the guard, the slowest tap could overwrite the
+        // most-recent filter's results.
+        let kind = selectedKind
         if responses.isEmpty { isLoading = true }
         defer { isLoading = false }
         errorMessage = nil
-        do { responses = try await api.surveyResponses(kind: selectedKind) }
-        catch { errorMessage = error.localizedDescription }
+        do {
+            let rows = try await api.surveyResponses(kind: kind)
+            guard selectedKind == kind else { return }
+            responses = rows
+        } catch let e where AppError.isCancellation(e) {
+            // Cancellation is normal when the user taps a new filter
+            // mid-load (or the View disappears) — leave the prior
+            // responses in place and don't paint a "cancelled" toast.
+        } catch {
+            guard selectedKind == kind else { return }
+            errorMessage = error.localizedDescription
+        }
     }
 }
 
