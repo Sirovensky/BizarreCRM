@@ -31,6 +31,12 @@ public final class PTORequestSheetViewModel {
             errorMessage = "End date must be on or after start date."
             return
         }
+        // BUGHUNT-2026-05-17: re-entry guard. The toolbar swaps Submit for a
+        // ProgressView while isSaving, but the surrounding Task is untracked
+        // — if the user backgrounds + foregrounds the app while a submit is
+        // in flight, the State view re-renders with the button visible
+        // briefly between renders. Guard at the VM layer.
+        guard !isSaving else { return }
         isSaving = true
         defer { isSaving = false }
         errorMessage = nil
@@ -44,6 +50,13 @@ public final class PTORequestSheetViewModel {
             )
             let created = try await api.createPTORequest(req)
             onSaved(created)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: createPTORequest POST may have already
+            // landed when the task was cancelled. Painting "cancelled" as an
+            // error message tempts a retap that creates a duplicate PTO
+            // request row. Clear the message; the parent list refresh will
+            // surface the actual server state on dismiss.
+            errorMessage = nil
         } catch {
             AppLog.ui.error("PTORequestSheet submit failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
