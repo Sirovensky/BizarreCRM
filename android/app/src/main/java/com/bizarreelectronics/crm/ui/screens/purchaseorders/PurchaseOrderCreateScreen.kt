@@ -159,13 +159,59 @@ fun PurchaseOrderCreateScreen(
             }
 
             // ── Expected date ────────────────────────────────────────────────
+            // BUGHUNT-2026-05-18: replaced free-text "YYYY-MM-DD" field with
+            // a DatePickerDialog so typos can't break the parse. State still
+            // stores ISO yyyy-MM-dd; "Clear" button restores the optional
+            // nature.
             item {
+                var showDatePicker by remember { mutableStateOf(false) }
+                if (showDatePicker) {
+                    val initialMillis = state.expectedDate
+                        .takeIf { it.isNotBlank() }
+                        ?.let {
+                            runCatching {
+                                java.time.LocalDate.parse(it)
+                                    .atStartOfDay(java.time.ZoneId.systemDefault())
+                                    .toInstant()
+                                    .toEpochMilli()
+                            }.getOrNull()
+                        } ?: System.currentTimeMillis()
+                    val pickerState = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
+                    DatePickerDialog(
+                        onDismissRequest = { showDatePicker = false },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                pickerState.selectedDateMillis?.let { ms ->
+                                    val iso = java.time.Instant.ofEpochMilli(ms)
+                                        .atZone(java.time.ZoneId.systemDefault())
+                                        .toLocalDate()
+                                        .toString()
+                                    viewModel.onExpectedDateChanged(iso)
+                                }
+                                showDatePicker = false
+                            }) { Text("OK") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
+                        },
+                    ) { DatePicker(state = pickerState) }
+                }
                 OutlinedTextField(
                     value = state.expectedDate,
-                    onValueChange = { viewModel.onExpectedDateChanged(it) },
-                    label = { Text("Expected date (YYYY-MM-DD, optional)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Expected date (optional)") },
+                    placeholder = { Text("Pick a date") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showDatePicker = true },
+                    trailingIcon = {
+                        if (state.expectedDate.isNotBlank()) {
+                            IconButton(onClick = { viewModel.onExpectedDateChanged("") }) {
+                                Icon(Icons.Default.Delete, contentDescription = "Clear expected date")
+                            }
+                        }
+                    },
                 )
             }
 
