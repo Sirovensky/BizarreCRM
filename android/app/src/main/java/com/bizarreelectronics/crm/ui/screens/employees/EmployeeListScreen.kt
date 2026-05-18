@@ -39,6 +39,8 @@ import com.bizarreelectronics.crm.ui.screens.employees.components.EmployeeFilter
 import com.bizarreelectronics.crm.ui.screens.employees.components.PresenceBadge
 import com.bizarreelectronics.crm.ui.screens.employees.components.PresenceStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -97,13 +99,19 @@ class EmployeeListViewModel @Inject constructor(
     )
     val state = _state.asStateFlow()
 
+    // BUGHUNT-2026-05-17: track latest load so refresh/init races converge
+    // on the latest result. A slower initial load could otherwise overwrite
+    // a fast manual refresh.
+    private var loadJob: Job? = null
+
     init {
         loadEmployees()
         observePresence()
     }
 
     fun loadEmployees() {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null, isOffline = false)
             try {
                 val response = settingsApi.getEmployees()
@@ -114,6 +122,10 @@ class EmployeeListViewModel @Inject constructor(
                     isLoading = false,
                     isRefreshing = false,
                 )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: don't paint a fake "Offline — no cached
+                // data" error when this load was superseded by a newer refresh.
+                throw e
             } catch (e: Exception) {
                 val cached = cachedEmployees
                 if (cached != null) {
