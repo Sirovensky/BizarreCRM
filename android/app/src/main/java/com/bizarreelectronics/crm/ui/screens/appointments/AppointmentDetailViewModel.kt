@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.dto.AppointmentItem
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -178,15 +179,23 @@ class AppointmentDetailViewModel @Inject constructor(
 
     fun sendReminder() {
         viewModelScope.launch {
-            runCatching { repository.sendReminder(appointmentId) }
-                .onSuccess { sent ->
-                    val msg = if (sent) "Reminder sent" else "Reminder send failed"
-                    _state.update { it.copy(toastMessage = msg) }
+            // BUGHUNT-2026-05-17: sendReminder POSTs an SMS — no idempotency
+            // key on either client or server. runCatching swallowed
+            // CancellationException and painted "Reminder unavailable" which
+            // tempted a re-tap that would send a SECOND SMS to the customer
+            // if the original POST already landed. Use try/catch with a
+            // verification hint on real failures.
+            try {
+                val sent = repository.sendReminder(appointmentId)
+                val msg = if (sent) "Reminder sent" else "Reminder send failed"
+                _state.update { it.copy(toastMessage = msg) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                _state.update {
+                    it.copy(toastMessage = "Reminder request interrupted — check the appointment timeline before retrying.")
                 }
-                .onFailure {
-                    // 404 tolerated
-                    _state.update { it.copy(toastMessage = "Reminder unavailable") }
-                }
+            }
         }
     }
 
