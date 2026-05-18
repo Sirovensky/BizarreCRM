@@ -32,6 +32,14 @@ public final class LiveAuthorizationController: NSObject, AuthorizationControlle
                 cont.resume(throwing: AppError.cancelled)
                 return
             }
+            // BUGHUNT-2026-05-17: a prior performRequests in flight would have
+            // its continuation overwritten here, leaking the suspended task
+            // forever (checked continuations crash at deinit if not resumed).
+            // Cancel any in-flight prior before installing the new one.
+            if let prior = self.continuation {
+                prior.resume(throwing: AppError.cancelled)
+            }
+            self.controller?.cancel()
             self.continuation = cont
             let ctrl = ASAuthorizationController(authorizationRequests: requests)
             ctrl.delegate = self
