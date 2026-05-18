@@ -28,8 +28,10 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.paging.LoadState
@@ -651,6 +653,12 @@ fun TicketListScreen(
                     label = { Text("Label name") },
                     singleLine = true,
                     placeholder = { Text("e.g. urgent, VIP, warranty") },
+                    keyboardOptions = KeyboardOptions(
+                        // Labels are short identifiers — let the user choose
+                        // their own case style without IME interference.
+                        capitalization = KeyboardCapitalization.None,
+                        autoCorrect = false,
+                    ),
                 )
             },
             confirmButton = {
