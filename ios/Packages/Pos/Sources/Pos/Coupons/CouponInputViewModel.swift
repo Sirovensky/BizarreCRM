@@ -89,8 +89,13 @@ public final class CouponInputViewModel {
         let request = CouponApplyRequest(code: trimmed, cartId: cartId())
 
         do {
+            // BUGHUNT-2026-05-18: baseURL does NOT include /api/v1 (see
+            // AuthRefresher comment about /auth/refresh 404). Server mounts
+            // every route under /api/v1/<feature>, so a coupon endpoint
+            // would land at /api/v1/coupons/apply — the previous path
+            // `/coupons/apply` would 404 as soon as the server route ships.
             let response = try await api.post(
-                "/coupons/apply",
+                "/api/v1/coupons/apply",
                 body: request,
                 as: CouponApplyResponse.self
             )
