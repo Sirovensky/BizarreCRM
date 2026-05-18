@@ -499,7 +499,10 @@ public struct CustomerLinkRelationshipSheet: View {
                 .foregroundStyle(.bizarreOnSurfaceMuted)
                 .accessibilityHidden(true)
             TextField("Search by name or phone…", text: $searchText)
-                .textInputAutocapitalization(.words)
+                // BUGHUNT-2026-05-18: `.words` capitalized phone digits' leading
+                // characters in scanned/pasted strings; switch to `.never` for
+                // search-bar convention.
+                .textInputAutocapitalization(.never)
                 .disableAutocorrection(true)
                 .onChange(of: searchText) { _, q in
                     Task { await search(query: q) }

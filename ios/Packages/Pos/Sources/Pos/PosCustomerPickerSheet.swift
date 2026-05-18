@@ -71,7 +71,11 @@ struct PosCustomerPickerSheet: View {
                 .foregroundStyle(.bizarreOnSurfaceMuted)
                 .accessibilityHidden(true)
             TextField("Name, email, or phone", text: $query)
-                .textInputAutocapitalization(.words)
+                // BUGHUNT-2026-05-18: `.words` capitalized "john@x.com" to
+                // "John@x.com" mid-type, which silently broke email lookups
+                // against the lowercase server column. `.never` matches
+                // the standard iOS search-bar convention.
+                .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .onChange(of: query) { _, _ in onQueryChange() }
                 .accessibilityIdentifier("pos.customerPicker.search")
