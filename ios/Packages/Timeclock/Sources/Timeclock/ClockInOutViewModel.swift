@@ -84,6 +84,11 @@ public final class ClockInOutViewModel {
                 // stays usable while the endpoint is unavailable.
                 state = .idle
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: nav cancel on dashboard refresh — don't
+            // flip the tile to a red .failed banner just because the user
+            // scrolled away mid-fetch. The next .task re-fires refresh.
+            return
         } catch {
             AppLog.ui.error("Timeclock refresh failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)
