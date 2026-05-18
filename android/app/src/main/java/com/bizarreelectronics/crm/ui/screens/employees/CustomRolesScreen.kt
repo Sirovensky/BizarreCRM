@@ -73,6 +73,8 @@ class CustomRolesViewModel @Inject constructor(
                     )
                 }
                 .onFailure { t ->
+                    // BUGHUNT-2026-05-18: rethrow cancel so we don't paint a torn-down-screen error.
+                    if (t is CancellationException) throw t
                     val is404 = t is retrofit2.HttpException && t.code() == 404
                     _state.value = _state.value.copy(
                         isLoading = false,

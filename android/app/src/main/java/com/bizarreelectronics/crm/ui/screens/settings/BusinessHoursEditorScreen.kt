@@ -47,6 +47,7 @@ import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -157,10 +158,12 @@ class BusinessHoursEditorViewModel @Inject constructor(
                                else parseBusinessHoursJson(json)
                     _uiState.value = BusinessHoursState(days = days, isLoading = false)
                 }
-                .onFailure {
+                .onFailure { e ->
+                    // BUGHUNT-2026-05-18: rethrow cancel so we don't paint a torn-down-screen error.
+                    if (e is CancellationException) throw e
                     _uiState.value = BusinessHoursState(
                         isLoading = false,
-                        errorMessage = "Could not load hours: ${it.message}",
+                        errorMessage = "Could not load hours: ${e.message}",
                     )
                 }
         }
@@ -192,10 +195,12 @@ class BusinessHoursEditorViewModel @Inject constructor(
                 settingsApi.putStore(mapOf("business_hours" to toBusinessHoursJson(s.days)))
             }
                 .onSuccess { _uiState.value = _uiState.value.copy(isSaving = false, savedOk = true) }
-                .onFailure {
+                .onFailure { e ->
+                    // BUGHUNT-2026-05-18: rethrow cancel so we don't paint a torn-down-screen error.
+                    if (e is CancellationException) throw e
                     _uiState.value = _uiState.value.copy(
                         isSaving = false,
-                        errorMessage = "Save failed: ${it.message}",
+                        errorMessage = "Save failed: ${e.message}",
                     )
                 }
         }

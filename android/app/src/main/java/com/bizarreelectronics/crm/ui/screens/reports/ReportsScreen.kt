@@ -416,7 +416,9 @@ class ReportsViewModel @Inject constructor(
                     } ?: emptyList()
                     _state.update { it.copy(isScheduledLoading = false, scheduledReports = parsed) }
                 }
-                .onFailure {
+                .onFailure { e ->
+                    // BUGHUNT-2026-05-18: rethrow cancel so we don't paint a torn-down-screen error.
+                    if (e is CancellationException) throw e
                     // 404 or any error → silently show empty list
                     _state.update { it.copy(isScheduledLoading = false, scheduledReports = emptyList()) }
                 }
@@ -452,6 +454,8 @@ class ReportsViewModel @Inject constructor(
             runCatching { reportApi.patchScheduledReport(id, mapOf("paused" to true)) }
                 .onSuccess { loadScheduledReports() }
                 .onFailure { e ->
+                    // BUGHUNT-2026-05-18: rethrow cancel so we don't paint a torn-down-screen error.
+                    if (e is CancellationException) throw e
                     _state.update { it.copy(scheduleSnackbar = "Failed to pause: ${e.message}") }
                 }
         }
@@ -463,6 +467,8 @@ class ReportsViewModel @Inject constructor(
             runCatching { reportApi.patchScheduledReport(id, mapOf("paused" to false)) }
                 .onSuccess { loadScheduledReports() }
                 .onFailure { e ->
+                    // BUGHUNT-2026-05-18: rethrow cancel so we don't paint a torn-down-screen error.
+                    if (e is CancellationException) throw e
                     _state.update { it.copy(scheduleSnackbar = "Failed to resume: ${e.message}") }
                 }
         }
@@ -474,6 +480,8 @@ class ReportsViewModel @Inject constructor(
             runCatching { reportApi.deleteScheduledReport(id) }
                 .onSuccess { loadScheduledReports() }
                 .onFailure { e ->
+                    // BUGHUNT-2026-05-18: rethrow cancel so we don't paint a torn-down-screen error.
+                    if (e is CancellationException) throw e
                     _state.update { it.copy(scheduleSnackbar = "Failed to delete: ${e.message}") }
                 }
         }
@@ -504,6 +512,8 @@ class ReportsViewModel @Inject constructor(
                     _state.update { it.copy(isEmployeesReportLoading = false, employeePerformanceItems = items) }
                 }
                 .onFailure { e ->
+                    // BUGHUNT-2026-05-18: rethrow cancel so we don't paint a torn-down-screen error.
+                    if (e is CancellationException) throw e
                     // 404 → empty list; any other error surfaces in the UI
                     val isNotFound = e.message?.contains("404") == true || e.message?.contains("Not Found") == true
                     _state.update {
@@ -564,6 +574,8 @@ class ReportsViewModel @Inject constructor(
                     _state.update { it.copy(isTicketsReportLoading = false, ticketsReport = report) }
                 }
                 .onFailure { e ->
+                    // BUGHUNT-2026-05-18: rethrow cancel so we don't paint a torn-down-screen error.
+                    if (e is CancellationException) throw e
                     val isNotFound = e.message?.contains("404") == true
                         || e.message?.contains("Not Found") == true
                     _state.update {
@@ -625,6 +637,8 @@ class ReportsViewModel @Inject constructor(
                     _state.update { it.copy(isBusyHoursLoading = false, busyHoursData = grid) }
                 }
                 .onFailure { e ->
+                    // BUGHUNT-2026-05-18: rethrow cancel so we don't paint a torn-down-screen error.
+                    if (e is CancellationException) throw e
                     val isNotFound = e.message?.contains("404") == true || e.message?.contains("Not Found") == true
                     _state.update {
                         it.copy(
