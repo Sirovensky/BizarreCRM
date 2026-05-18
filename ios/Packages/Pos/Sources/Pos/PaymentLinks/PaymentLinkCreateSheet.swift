@@ -479,6 +479,13 @@ public final class PaymentLinkCreateViewModel {
             let link = try await apiClient.createPaymentLink(request)
             createdLink = link
             phase = .ready(link)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismissed mid-create cancelled the
+            // Task. Painting "Could not create payment link" prompts a retry
+            // that would create a duplicate link (no idempotency key on the
+            // create endpoint). Revert to .editing so any retry is intentional.
+            phase = .editing
+            return
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription
                 ?? "Could not create payment link. Please try again."
