@@ -582,10 +582,15 @@ public struct AppointmentDetailView: View {
             let rawS = vm.appointment.startTime,
             let rawE = vm.appointment.endTime
         else { return "—" }
-        let iso = ISO8601DateFormatter()
+        // BUGHUNT-2026-05-18: was `ISO8601DateFormatter()` with default options.
+        // Server returns Node Date.toISOString() with millisecond precision,
+        // which the default formatter rejects, then sqlDate (which expects
+        // "yyyy-MM-dd HH:mm:ss") also misses on ISO input. Both parses
+        // returned nil, so the Duration row showed "—" for every appointment.
+        // Use the same fractional → plain → sql chain as formattedDate.
         guard
-            let s = iso.date(from: rawS) ?? sqlDate(rawS),
-            let e = iso.date(from: rawE) ?? sqlDate(rawE)
+            let s = Self.parseStart(rawS),
+            let e = Self.parseStart(rawE)
         else { return "—" }
         let secs = e.timeIntervalSince(s)
         let mins = Int(secs / 60)
@@ -593,6 +598,32 @@ public struct AppointmentDetailView: View {
         let hours = mins / 60
         let rem   = mins % 60
         return rem == 0 ? "\(hours) hr" : "\(hours) hr \(rem) min"
+    }
+
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private static let sqlUtc: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    private static func parseStart(_ raw: String) -> Date? {
+        isoFractional.date(from: raw)
+            ?? isoPlain.date(from: raw)
+            ?? sqlUtc.date(from: raw)
     }
 
     private func sqlDate(_ raw: String) -> Date? {
