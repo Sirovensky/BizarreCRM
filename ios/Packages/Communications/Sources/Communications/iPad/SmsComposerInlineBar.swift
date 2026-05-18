@@ -266,6 +266,11 @@ public struct SmsComposerInlineBar: View {
             try await onSend(phone, body)
             vm.draft = ""
             composerFocused = false
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: SMS send is real money + a customer-visible
+            // text. If the server accepted before cancel, retrying double-charges
+            // and double-texts. Keep draft populated; don't paint sendError.
+            return
         } catch {
             sendError = error.localizedDescription
         }
