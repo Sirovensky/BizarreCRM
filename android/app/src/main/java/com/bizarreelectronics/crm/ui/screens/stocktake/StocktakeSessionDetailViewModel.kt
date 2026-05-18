@@ -236,6 +236,13 @@ class StocktakeSessionDetailViewModel @Inject constructor(
                 }
                 Log.w(TAG, "POST /stocktake/$sessionId/commit HTTP ${e.code()}: ${e.message()}")
                 _state.value = _state.value.copy(isCommitting = false, error = msg)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // BUGHUNT-2026-05-17: stocktake commit applies real inventory
+                // variance. A re-tap after a misleading "Network error"
+                // would re-apply the variance and trash on-hand counts.
+                // Re-throw so committed state stays Loading; the user must
+                // back out + refresh to see whether the original committed.
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "commitSession failed: ${e.message}")
                 _state.value = _state.value.copy(isCommitting = false, error = "Network error — commit not saved")
