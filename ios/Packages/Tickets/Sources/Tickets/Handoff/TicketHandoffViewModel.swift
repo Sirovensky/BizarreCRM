@@ -76,6 +76,11 @@ public final class TicketHandoffViewModel {
         defer { isLoadingEmployees = false }
         do {
             employees = try await api.ticketAssigneeCandidates()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: handoff sheet dismissed mid-load — keep
+            // any prior employees list intact and don't paint an error
+            // banner that's about to disappear anyway.
+            return
         } catch {
             errorMessage = "Could not load employees: \(error.localizedDescription)"
         }
@@ -117,6 +122,15 @@ public final class TicketHandoffViewModel {
             )
 
             didSucceed = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: handoff PUT mid-flight cancellation. PUT
+            // /tickets/:id may have committed (assigned_to changed +
+            // server-side notification fired to the new assignee). A
+            // banner here would tempt a re-submit that PUTs the SAME
+            // assignment again — server-side notification re-fires →
+            // assignee gets two pings AND another audit row. Stay silent;
+            // the next list refresh shows whether the assignment landed.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
