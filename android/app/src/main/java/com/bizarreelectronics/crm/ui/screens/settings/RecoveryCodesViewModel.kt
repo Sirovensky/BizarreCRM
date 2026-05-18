@@ -18,6 +18,7 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
 import com.bizarreelectronics.crm.util.AppError
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -118,6 +119,23 @@ class RecoveryCodesViewModel @Inject constructor(
                 }
             } catch (e: IOException) {
                 _uiState.value = RecoveryCodesUiState.Error(AppError.from(e))
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation. POST
+                // /auth/2fa/recovery-codes/regenerate is destructive
+                // server-side - it invalidates the user's PREVIOUS
+                // recovery codes regardless of whether the client
+                // reads the response. The previous broad
+                // `catch (e: Exception)` arm routed cancellation
+                // through Error(AppError.from(e)), which (a) hid the
+                // fact that the rotation may have actually happened
+                // and (b) tempted the user to re-tap Regenerate. A
+                // second regenerate would invalidate the first set of
+                // codes the user MIGHT have read off-screen. Don't
+                // touch state on cancellation - propagate and let
+                // structured concurrency dismantle the VM. Re-opening
+                // the screen will return to Idle and a fresh
+                // regenerate goes through normally.
+                throw e
             } catch (e: Exception) {
                 _uiState.value = RecoveryCodesUiState.Error(AppError.from(e))
             }
