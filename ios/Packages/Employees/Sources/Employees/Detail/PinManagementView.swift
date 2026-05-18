@@ -58,12 +58,26 @@ public final class PinManagementViewModel {
             errorMessage = "PIN must be exactly 4 digits."
             return
         }
+        // BUGHUNT-2026-05-17: re-entry guard. setPin is fired automatically
+        // by appendPinDigit on the 4th digit — no UI gate exists. If the
+        // user fat-fingers a 5th digit during the brief network round-trip
+        // (or re-opens the sheet mid-flight), a second POST fires.
+        guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
         do {
             try await api.setEmployeePin(employeeId: employeeId, pin: pin)
             pinState = .isSet
             successMessage = "PIN updated."
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: setEmployeePin POST may have already
+            // landed when the task was cancelled. Painting "cancelled" as
+            // errorMessage misleads the admin into a retap; the PIN may
+            // already be set to the cancelled-attempt's value, and a retap
+            // could overwrite it with a new (different) attempt. Suppress
+            // the error and reload to surface the actual server state.
+            errorMessage = nil
+            await load()
         } catch {
             AppLog.ui.error("PinManagement set: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -73,12 +87,20 @@ public final class PinManagementViewModel {
     }
 
     public func clearPin() async {
+        // BUGHUNT-2026-05-17: re-entry guard.
+        guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
         do {
             try await api.clearEmployeePin(employeeId: employeeId)
             pinState = .notSet
             successMessage = "PIN removed."
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: clearEmployeePin DELETE may have already
+            // landed. A retap would hit a 404 (PIN already cleared) and
+            // surface a confusing error. Reload to get the truth.
+            errorMessage = nil
+            await load()
         } catch {
             AppLog.ui.error("PinManagement clear: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription

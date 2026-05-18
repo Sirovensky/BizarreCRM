@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import DesignSystem
 import Networking
 
@@ -48,6 +49,14 @@ public final class NPSSurveyViewModel {
             errorMessage = "Please select a score from 0 to 10."
             return
         }
+        // BUGHUNT-2026-05-17: synchronous re-entry guard. A double-tap on
+        // Submit can fire two Tasks before SwiftUI re-renders the
+        // `.disabled(vm.isSubmitting)` button — the in-method `isSubmitting`
+        // flip is async-after-await, so both Tasks could pass and POST
+        // `/surveys/nps` twice. The server treats each as a distinct
+        // response row, so an enthusiastic double-tap from a customer ends
+        // up double-counting the same NPS submission and skewing trend math.
+        guard !isSubmitting else { return }
         isSubmitting = true
         errorMessage = nil
         let body = NPSSubmitRequest(
@@ -59,6 +68,14 @@ public final class NPSSurveyViewModel {
         do {
             _ = try await api.submitNPS(body)
             didSubmit = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: the sheet has a "Not Now" cancellation
+            // action that calls `dismiss()` mid-submit. Without this branch
+            // the catch-all painted "cancelled" as the customer-facing error
+            // and reset `isSubmitting`, inviting a re-tap that could double-
+            // record the survey response server-side if the original POST
+            // had already landed.
+            errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
         }
