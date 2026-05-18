@@ -68,6 +68,9 @@ public struct ItemSerialsCard: View {
         defer { isLoading = false }
         do {
             serials = try await api.listSerials(parentSKU: sku)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: parent-item nav cancellation; keep last-loaded serials visible.
+            return
         } catch {
             AppLog.ui.error("ItemSerialsCard load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = "Couldn't load serials: \(error.localizedDescription)"
