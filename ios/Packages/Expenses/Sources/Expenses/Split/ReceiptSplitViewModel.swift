@@ -144,6 +144,14 @@ public final class ReceiptSplitViewModel {
                 as: SplitExpenseResponse.self
             )
             savedExpenseIds = response.expenseIds
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: receipt-split creates N expense rows
+            // atomically server-side, but no idempotency key is sent.
+            // If the user dismisses mid-flight and re-taps save, the
+            // server may double-create N more rows. Surface a hint
+            // pointing them at the Expenses list rather than a
+            // cancellation error that tempts a blind retry.
+            errorMessage = "Submission was interrupted. Check Expenses to confirm the split saved before retrying."
         } catch {
             AppLog.ui.error("Receipt split save failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
