@@ -29,12 +29,23 @@ public final class PTOManagerApprovalViewModel {
     }
 
     public func approve(requestId: Int64) async {
+        // BUGHUNT-2026-05-17: VM-level re-entry guard. The view swaps the
+        // action HStack for a ProgressView while isProcessing, but a rapid
+        // double-tap before SwiftUI re-renders fires two POSTs.
+        guard !isProcessing else { return }
         isProcessing = true
         defer { isProcessing = false }
         errorMessage = nil
         do {
             processedRequest = try await api.approveTimeOff(id: requestId)
             AppLog.ui.info("PTO approved: id=\(requestId, privacy: .public)")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: approve POST may have landed before
+            // cancellation. Painting "cancelled" as an error tempts the
+            // manager to retap Approve, double-approving the PTO request
+            // (or hitting a 409 that looks confusing). Clear the message;
+            // the parent list refresh on dismiss will reveal true state.
+            errorMessage = nil
         } catch {
             AppLog.ui.error("PTO approve failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -42,6 +53,8 @@ public final class PTOManagerApprovalViewModel {
     }
 
     public func deny(requestId: Int64) async {
+        // BUGHUNT-2026-05-17: matching re-entry guard for deny.
+        guard !isProcessing else { return }
         isProcessing = true
         defer { isProcessing = false }
         errorMessage = nil
@@ -51,6 +64,11 @@ public final class PTOManagerApprovalViewModel {
                 reason: denialReason.isEmpty ? nil : denialReason
             )
             AppLog.ui.info("PTO denied: id=\(requestId, privacy: .public)")
+        } catch let e where AppError.isCancellation(e) {
+            // Same reasoning as approve — the deny POST may have landed
+            // server-side. Don't paint the error; defer truth to the list
+            // refresh after dismiss.
+            errorMessage = nil
         } catch {
             AppLog.ui.error("PTO deny failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
