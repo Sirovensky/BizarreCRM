@@ -52,6 +52,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.util.ExifStripper
 import com.bizarreelectronics.crm.util.MultipartUpload
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -168,6 +169,8 @@ fun PhotoAnnotateScreen(
                                         contentType = "image/jpeg",
                                     )
                                     withContext(Dispatchers.Main) { onSaved() }
+                                } catch (e: CancellationException) {
+                                    throw e  // BUGHUNT-2026-05-17: rethrow for structured concurrency
                                 } catch (e: Exception) {
                                     Timber.tag("PhotoAnnotate").e(e, "Save failed")
                                     withContext(Dispatchers.Main) { onBack() }

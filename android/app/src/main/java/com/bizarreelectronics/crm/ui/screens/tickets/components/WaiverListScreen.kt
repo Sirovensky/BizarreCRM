@@ -55,6 +55,7 @@ import com.bizarreelectronics.crm.data.remote.dto.SubmitSignatureRequest
 import com.bizarreelectronics.crm.data.remote.dto.WaiverTemplateDto
 import com.bizarreelectronics.crm.util.MultipartUpload
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -167,6 +168,8 @@ class WaiverListViewModel @Inject constructor(
                 } else {
                     _state.value = _state.value.copy(isLoading = false, error = "Failed to load waivers: ${e.message}")
                 }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: rethrow for structured concurrency
             } catch (e: Exception) {
                 _state.value = _state.value.copy(isLoading = false, error = "Failed to load waivers: ${e.message}")
             }
@@ -240,6 +243,8 @@ class WaiverListViewModel @Inject constructor(
                 val msg = if (e.code() == 404) "Waiver submission not supported by server" else "Submission failed: ${e.message}"
                 Timber.tag("WaiverList").w(e, "submitSignature failed (HTTP %d)", e.code())
                 _state.value = _state.value.copy(isSubmitting = false, actionMessage = msg)
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: rethrow for structured concurrency
             } catch (e: Exception) {
                 Timber.tag("WaiverList").e(e, "submitSignature failed")
                 _state.value = _state.value.copy(isSubmitting = false, actionMessage = "Submission failed: ${e.message}")

@@ -76,6 +76,7 @@ import com.bizarreelectronics.crm.util.ImageUploadPolicy
 import com.bizarreelectronics.crm.util.MultipartUpload
 import com.bizarreelectronics.crm.util.draggableItem
 import com.bizarreelectronics.crm.util.uriClipData
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -176,6 +177,8 @@ fun TicketPhotoGallery(
                         idempotencyKey = key,
                         contentType = "image/jpeg",
                     )
+                } catch (e: CancellationException) {
+                    throw e  // BUGHUNT-2026-05-17: rethrow for structured concurrency
                 } catch (e: Exception) {
                     Timber.tag("PhotoGallery").e(e, "Enqueue failed for %s", fileName)
                 } finally {

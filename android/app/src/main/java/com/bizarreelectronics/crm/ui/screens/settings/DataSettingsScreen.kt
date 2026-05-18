@@ -52,6 +52,7 @@ import com.bizarreelectronics.crm.data.sync.SyncManager
 import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -89,6 +90,8 @@ class DataSettingsViewModel @Inject constructor(
                     ?.forEach { it.deleteRecursively() }
                 appPreferences.clearRecentSearches()
                 _event.value = DataSettingsEvent.CacheCleared
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: rethrow for structured concurrency
             } catch (e: Exception) {
                 _event.value = DataSettingsEvent.Error("Failed to clear cache: ${e.message}")
             }
@@ -110,6 +113,8 @@ class DataSettingsViewModel @Inject constructor(
                 appPreferences.keepScreenOn = false
                 appPreferences.clearRecentSearches()
                 _event.value = DataSettingsEvent.DefaultsReset
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: rethrow for structured concurrency
             } catch (e: Exception) {
                 _event.value = DataSettingsEvent.Error("Reset failed: ${e.message}")
             }

@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.bizarreelectronics.crm.data.local.db.entities.TicketEntity
 import com.bizarreelectronics.crm.ui.screens.tickets.TicketListUiState
 import com.bizarreelectronics.crm.ui.screens.tickets.applySortOrder
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -151,6 +152,8 @@ private suspend fun writeCsv(context: Context, uri: Uri, state: TicketListUiStat
                 stream.write(csv.toByteArray(Charsets.UTF_8))
             }
             Log.d(TAG, "CSV exported: ${state.tickets.size} rows → $uri")
+        } catch (e: CancellationException) {
+            throw e  // BUGHUNT-2026-05-17: rethrow for structured concurrency
         } catch (e: Exception) {
             Log.e(TAG, "CSV export failed: ${e.message}", e)
         }

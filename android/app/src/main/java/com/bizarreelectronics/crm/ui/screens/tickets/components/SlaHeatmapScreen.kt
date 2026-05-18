@@ -46,6 +46,7 @@ import com.bizarreelectronics.crm.data.remote.api.SlaApi
 import com.bizarreelectronics.crm.data.remote.api.SlaHeatmapRow
 import com.bizarreelectronics.crm.util.SlaCalculator
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -83,6 +84,8 @@ class SlaHeatmapViewModel @Inject constructor(
                 val resp = slaApi.getHeatmap()
                 val rows = resp.data?.rows ?: emptyList()
                 _state.value = _state.value.copy(isLoading = false, rows = sort(rows, _state.value.sortByRed))
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: rethrow for structured concurrency
             } catch (e: Exception) {
                 _state.value = _state.value.copy(isLoading = false, error = e.message)
             }
