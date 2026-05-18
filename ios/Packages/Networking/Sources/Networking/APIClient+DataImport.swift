@@ -30,6 +30,13 @@ import Foundation
 ///
 /// This file is append-only — add new import endpoints below, never change
 /// existing signatures.
+///
+/// BUGHUNT-2026-05-17: every wrapper below was POSTing/GETing under
+/// `/import/...` (no /api/v1 prefix). The file's own doc-comment above
+/// describes the server mount as `/api/v1/import` but the calls didn't
+/// match — so the entire DataImport wizard (test-connection, start,
+/// status, cancel, history for all three providers) immediately 404'd
+/// from iOS, surfacing as "wizard stuck on Connecting…" forever.
 public extension APIClient {
 
     // MARK: - RepairDesk
@@ -38,7 +45,7 @@ public extension APIClient {
     /// Validates a RepairDesk API key without persisting it.
     func testRepairDeskConnection(apiKey: String) async throws -> ImportConnectionTestResponse {
         let body = ImportAPIKeyBody(apiKey: apiKey, entities: nil)
-        return try await post("/import/repairdesk/test-connection", body: body, as: ImportConnectionTestResponse.self)
+        return try await post("/api/v1/import/repairdesk/test-connection", body: body, as: ImportConnectionTestResponse.self)
     }
 
     /// POST /import/repairdesk/start
@@ -48,17 +55,17 @@ public extension APIClient {
     ///   - entities: Non-empty array from ["customers","tickets","invoices","inventory","sms"].
     func startRepairDeskImport(apiKey: String, entities: [String]) async throws -> ImportStartResponse {
         let body = ImportAPIKeyBody(apiKey: apiKey, entities: entities)
-        return try await post("/import/repairdesk/start", body: body, as: ImportStartResponse.self)
+        return try await post("/api/v1/import/repairdesk/start", body: body, as: ImportStartResponse.self)
     }
 
     /// GET /import/repairdesk/status
     func repairDeskImportStatus() async throws -> ImportStatusResponse {
-        return try await get("/import/repairdesk/status", as: ImportStatusResponse.self)
+        return try await get("/api/v1/import/repairdesk/status", as: ImportStatusResponse.self)
     }
 
     /// POST /import/repairdesk/cancel
     func cancelRepairDeskImport() async throws -> ImportCancelResponse {
-        return try await post("/import/repairdesk/cancel", body: ImportEmptyBody(), as: ImportCancelResponse.self)
+        return try await post("/api/v1/import/repairdesk/cancel", body: ImportEmptyBody(), as: ImportCancelResponse.self)
     }
 
     // MARK: - Shopr (RepairShopr)
@@ -66,23 +73,23 @@ public extension APIClient {
     /// POST /import/repairshopr/test-connection
     func testShoprConnection(apiKey: String, subdomain: String) async throws -> ImportConnectionTestResponse {
         let body = ImportShoprBody(apiKey: apiKey, subdomain: subdomain, entities: nil)
-        return try await post("/import/repairshopr/test-connection", body: body, as: ImportConnectionTestResponse.self)
+        return try await post("/api/v1/import/repairshopr/test-connection", body: body, as: ImportConnectionTestResponse.self)
     }
 
     /// POST /import/repairshopr/start
     func startShoprImport(apiKey: String, subdomain: String, entities: [String]) async throws -> ImportStartResponse {
         let body = ImportShoprBody(apiKey: apiKey, subdomain: subdomain, entities: entities)
-        return try await post("/import/repairshopr/start", body: body, as: ImportStartResponse.self)
+        return try await post("/api/v1/import/repairshopr/start", body: body, as: ImportStartResponse.self)
     }
 
     /// GET /import/repairshopr/status
     func shoprImportStatus() async throws -> ImportStatusResponse {
-        return try await get("/import/repairshopr/status", as: ImportStatusResponse.self)
+        return try await get("/api/v1/import/repairshopr/status", as: ImportStatusResponse.self)
     }
 
     /// POST /import/repairshopr/cancel
     func cancelShoprImport() async throws -> ImportCancelResponse {
-        return try await post("/import/repairshopr/cancel", body: ImportEmptyBody(), as: ImportCancelResponse.self)
+        return try await post("/api/v1/import/repairshopr/cancel", body: ImportEmptyBody(), as: ImportCancelResponse.self)
     }
 
     // MARK: - MyRepairApp (MRA)
@@ -90,23 +97,23 @@ public extension APIClient {
     /// POST /import/myrepairapp/test-connection
     func testMRAConnection(apiKey: String) async throws -> ImportConnectionTestResponse {
         let body = ImportAPIKeyBody(apiKey: apiKey, entities: nil)
-        return try await post("/import/myrepairapp/test-connection", body: body, as: ImportConnectionTestResponse.self)
+        return try await post("/api/v1/import/myrepairapp/test-connection", body: body, as: ImportConnectionTestResponse.self)
     }
 
     /// POST /import/myrepairapp/start
     func startMRAImport(apiKey: String, entities: [String]) async throws -> ImportStartResponse {
         let body = ImportAPIKeyBody(apiKey: apiKey, entities: entities)
-        return try await post("/import/myrepairapp/start", body: body, as: ImportStartResponse.self)
+        return try await post("/api/v1/import/myrepairapp/start", body: body, as: ImportStartResponse.self)
     }
 
     /// GET /import/myrepairapp/status
     func mraImportStatus() async throws -> ImportStatusResponse {
-        return try await get("/import/myrepairapp/status", as: ImportStatusResponse.self)
+        return try await get("/api/v1/import/myrepairapp/status", as: ImportStatusResponse.self)
     }
 
     /// POST /import/myrepairapp/cancel
     func cancelMRAImport() async throws -> ImportCancelResponse {
-        return try await post("/import/myrepairapp/cancel", body: ImportEmptyBody(), as: ImportCancelResponse.self)
+        return try await post("/api/v1/import/myrepairapp/cancel", body: ImportEmptyBody(), as: ImportCancelResponse.self)
     }
 
     // MARK: - History
@@ -118,7 +125,7 @@ public extension APIClient {
             URLQueryItem(name: "page", value: String(page)),
             URLQueryItem(name: "pagesize", value: String(pageSize))
         ]
-        return try await get("/import/history", query: query, as: ImportHistoryResponse.self)
+        return try await get("/api/v1/import/history", query: query, as: ImportHistoryResponse.self)
     }
 
     // MARK: - CSV (STUB — server endpoints not yet implemented)

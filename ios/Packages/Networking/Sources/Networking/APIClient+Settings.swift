@@ -174,30 +174,38 @@ public struct UserPreferencesResponse: Codable, Sendable {
 public extension APIClient {
 
     // MARK: Business profile (store config)
+    //
+    // BUGHUNT-2026-05-17: the four wrappers below all used `/settings/...`
+    // bare paths. The iOS APIClient base URL is the shop origin (no
+    // /api/v1 suffix); server mounts at `/api/v1/settings` (index.ts
+    // L1678). The Business Profile editor (store name / address / hours)
+    // and the per-user Preferences screen both fetched 404 silently on
+    // first paint, then the "Save" button stayed disabled because the
+    // form was never seeded.
 
-    /// GET /settings/store — full store config key-value map
+    /// GET /api/v1/settings/store — full store config key-value map
     func fetchStoreConfig() async throws -> StoreConfigResponse {
         // Server returns a flat Record<string,string>; decode into typed struct
-        try await get("/settings/store", as: StoreConfigResponse.self)
+        try await get("/api/v1/settings/store", as: StoreConfigResponse.self)
     }
 
-    /// PUT /settings/store — upsert store config fields (admin only)
+    /// PUT /api/v1/settings/store — upsert store config fields (admin only)
     @discardableResult
     func updateStoreConfig(_ body: StoreConfigRequest) async throws -> StoreConfigResponse {
-        try await put("/settings/store", body: body, as: StoreConfigResponse.self)
+        try await put("/api/v1/settings/store", body: body, as: StoreConfigResponse.self)
     }
 
     // MARK: User preferences
 
-    /// GET /settings/preferences — all preferences for the current user
+    /// GET /api/v1/settings/preferences — all preferences for the current user
     func fetchPreferences() async throws -> UserPreferencesResponse {
-        try await get("/settings/preferences", as: UserPreferencesResponse.self)
+        try await get("/api/v1/settings/preferences", as: UserPreferencesResponse.self)
     }
 
-    /// PUT /settings/preferences — bulk upsert preferences for the current user
+    /// PUT /api/v1/settings/preferences — bulk upsert preferences for the current user
     @discardableResult
     func updatePreferences(_ body: UserPreferencesResponse) async throws -> UserPreferencesResponse {
-        try await put("/settings/preferences", body: body, as: UserPreferencesResponse.self)
+        try await put("/api/v1/settings/preferences", body: body, as: UserPreferencesResponse.self)
     }
 }
 

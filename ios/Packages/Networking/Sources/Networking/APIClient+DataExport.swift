@@ -220,19 +220,28 @@ private struct TemplateApplyResponseRaw: Decodable, Sendable {
 
 extension APIClient {
 
+    // BUGHUNT-2026-05-17: every relative "/tenant/...", "/data-export/...",
+    // and "/api/v1/settings-ext/..." path below resolved against the bare base URL
+    // (origin only — see APIClient.setBaseURL contract) and 404'd. Server
+    // mounts these at `/api/v1/tenant/export`, `/api/v1/data-export`, and
+    // `/api/v1/settings-ext` (index.ts:1685, 1691-1692, 1681, 1748). Same
+    // class of slip fixed previously in AuthRefresher. Admin tenant-export
+    // job, GDPR PII erasure, recurring-schedule CRUD, and full settings
+    // backup/restore were all silently 404 on every call.
+
     /// POST /api/v1/tenant/export — start async encrypted full-tenant export job.
     /// Requires admin role + step-up TOTP (enforced server-side).
     /// Body: { passphrase: String } (≥12 chars).
     /// Returns jobId for polling via `pollTenantExportJobRaw(jobId:)`.
     public func startTenantExportJobRaw(passphrase: String) async throws -> StartTenantExportRawResponse {
         let body = StartTenantExportBodyRaw(passphrase: passphrase)
-        return try await post("/tenant/export", body: body, as: StartTenantExportRawResponse.self)
+        return try await post("/api/v1/tenant/export", body: body, as: StartTenantExportRawResponse.self)
     }
 
     /// GET /api/v1/tenant/export/:jobId — poll tenant export job status.
     /// Admin-only. Returns current status, byte_size, and download_url when complete.
     public func pollTenantExportJobRaw(jobId: Int) async throws -> TenantExportJobRaw {
-        return try await get("/tenant/export/\(jobId)", as: TenantExportJobRaw.self)
+        return try await get("/api/v1/tenant/export/\(jobId)", as: TenantExportJobRaw.self)
     }
 }
 
@@ -244,7 +253,7 @@ extension APIClient {
     /// Returns rate-limit window state so the UI can render "last exported at"
     /// and "next allowed in N seconds" without triggering a real export attempt.
     public func fetchDataExportRateStatusRaw() async throws -> DataExportRateStatusRaw {
-        return try await get("/data-export/export-all-data/status", as: DataExportRateStatusRaw.self)
+        return try await get("/api/v1/data-export/export-all-data/status", as: DataExportRateStatusRaw.self)
     }
 
     /// POST /api/v1/data-export/erase-customer-pii
@@ -253,7 +262,7 @@ extension APIClient {
     public func eraseCustomerPIIRaw(customerId: Int, confirmName: String) async throws {
         let body = PIIEraseRequestRaw(customer_id: customerId, confirm_name: confirmName)
         let _: PIIEraseResponseRaw = try await post(
-            "/data-export/erase-customer-pii",
+            "/api/v1/data-export/erase-customer-pii",
             body: body,
             as: PIIEraseResponseRaw.self
         )
@@ -266,26 +275,26 @@ extension APIClient {
 
     /// GET /api/v1/data-export/schedules — list all recurring export schedules.
     public func listExportSchedulesRaw() async throws -> [DataExportScheduleRaw] {
-        return try await get("/data-export/schedules", as: [DataExportScheduleRaw].self)
+        return try await get("/api/v1/data-export/schedules", as: [DataExportScheduleRaw].self)
     }
 
     /// POST /api/v1/data-export/schedules — create a new schedule.
     /// Required body fields: name, export_type, interval_kind, interval_count, start_date.
     /// Optional: delivery_email.
     public func createExportScheduleRaw(_ body: CreateExportScheduleBodyRaw) async throws -> DataExportScheduleRaw {
-        return try await post("/data-export/schedules", body: body, as: DataExportScheduleRaw.self)
+        return try await post("/api/v1/data-export/schedules", body: body, as: DataExportScheduleRaw.self)
     }
 
     /// PATCH /api/v1/data-export/schedules/:id — partial update.
     /// All fields are optional; at least one must be provided.
     public func updateExportScheduleRaw(id: Int, body: UpdateExportScheduleBodyRaw) async throws -> DataExportScheduleRaw {
-        return try await patch("/data-export/schedules/\(id)", body: body, as: DataExportScheduleRaw.self)
+        return try await patch("/api/v1/data-export/schedules/\(id)", body: body, as: DataExportScheduleRaw.self)
     }
 
     /// POST /api/v1/data-export/schedules/:id/pause — pause an active schedule.
     public func pauseExportScheduleRaw(id: Int) async throws {
         let _: ScheduleActionRaw = try await post(
-            "/data-export/schedules/\(id)/pause",
+            "/api/v1/data-export/schedules/\(id)/pause",
             body: EmptyBodyRaw(),
             as: ScheduleActionRaw.self
         )
@@ -294,7 +303,7 @@ extension APIClient {
     /// POST /api/v1/data-export/schedules/:id/resume — resume a paused schedule.
     public func resumeExportScheduleRaw(id: Int) async throws {
         let _: ScheduleActionRaw = try await post(
-            "/data-export/schedules/\(id)/resume",
+            "/api/v1/data-export/schedules/\(id)/resume",
             body: EmptyBodyRaw(),
             as: ScheduleActionRaw.self
         )
@@ -303,7 +312,7 @@ extension APIClient {
     /// POST /api/v1/data-export/schedules/:id/cancel — permanently cancel a schedule.
     public func cancelExportScheduleRaw(id: Int) async throws {
         let _: ScheduleActionRaw = try await post(
-            "/data-export/schedules/\(id)/cancel",
+            "/api/v1/data-export/schedules/\(id)/cancel",
             body: EmptyBodyRaw(),
             as: ScheduleActionRaw.self
         )
@@ -317,7 +326,7 @@ extension APIClient {
     /// GET /api/v1/settings-ext/export.json — download sanitized shop settings backup.
     /// Response is JSON attachment; secrets (API keys, SMTP passwords) are stripped server-side.
     public func fetchSettingsExportRaw() async throws -> SettingsExportPayloadRaw {
-        return try await get("/settings-ext/export.json", as: SettingsExportPayloadRaw.self)
+        return try await get("/api/v1/settings-ext/export.json", as: SettingsExportPayloadRaw.self)
     }
 
     /// POST /api/v1/settings-ext/import — restore settings from a backup.
@@ -325,12 +334,12 @@ extension APIClient {
     /// Unknown keys and blacklisted keys are skipped; result reports counts.
     public func importSettingsRaw(settings: [String: String]) async throws -> SettingsImportResultRaw {
         let body = SettingsImportBodyRaw(settings: settings)
-        return try await post("/settings-ext/import", body: body, as: SettingsImportResultRaw.self)
+        return try await post("/api/v1/settings-ext/import", body: body, as: SettingsImportResultRaw.self)
     }
 
     /// GET /api/v1/settings-ext/templates — list available shop-type templates.
     public func fetchShopTemplatesRaw() async throws -> [ShopTemplateRaw] {
-        return try await get("/settings-ext/templates", as: [ShopTemplateRaw].self)
+        return try await get("/api/v1/settings-ext/templates", as: [ShopTemplateRaw].self)
     }
 
     /// POST /api/v1/settings-ext/templates/apply — apply a template by ID.
@@ -339,7 +348,7 @@ extension APIClient {
     public func applyShopTemplateRaw(templateId: String) async throws {
         let body = ShopTemplateApplyBodyRaw(template_id: templateId)
         let _: TemplateApplyResponseRaw = try await post(
-            "/settings-ext/templates/apply",
+            "/api/v1/settings-ext/templates/apply",
             body: body,
             as: TemplateApplyResponseRaw.self
         )
