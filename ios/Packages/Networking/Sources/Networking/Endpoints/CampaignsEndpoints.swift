@@ -201,44 +201,52 @@ private struct EmptyEncoding: Encodable, Sendable {}
 
 public extension APIClient {
 
-    // MARK: Campaigns (real server endpoints under /campaigns)
+    // MARK: Campaigns (server endpoints mounted at /api/v1/campaigns)
+    //
+    // BUGHUNT-2026-05-17: every wrapper below used a leading-bare path
+    // ("campaigns", "sms/groups", …) instead of the full `/api/v1/...`
+    // form that every other Endpoints file in this module uses. The iOS
+    // APIClient base URL is the shop origin (no /api/v1 suffix), so each
+    // call resolved to `https://<shop>/campaigns` and got a 404 from the
+    // SPA router. Server mounts (index.ts L1769/L1750) are
+    // `/api/v1/campaigns` and `/api/v1/sms/groups`.
 
     func listCampaignsServer() async throws -> [CampaignServerRow] {
-        try await get("campaigns", as: [CampaignServerRow].self)
+        try await get("/api/v1/campaigns", as: [CampaignServerRow].self)
     }
 
     func getCampaignServer(id: Int) async throws -> CampaignServerRow {
-        try await get("campaigns/\(id)", as: CampaignServerRow.self)
+        try await get("/api/v1/campaigns/\(id)", as: CampaignServerRow.self)
     }
 
     func createCampaignServer(_ body: CreateCampaignServerRequest) async throws -> CampaignServerRow {
-        try await post("campaigns", body: body, as: CampaignServerRow.self)
+        try await post("/api/v1/campaigns", body: body, as: CampaignServerRow.self)
     }
 
     func patchCampaignServer(id: Int, _ body: PatchCampaignServerRequest) async throws -> CampaignServerRow {
-        try await patch("campaigns/\(id)", body: body, as: CampaignServerRow.self)
+        try await patch("/api/v1/campaigns/\(id)", body: body, as: CampaignServerRow.self)
     }
 
     func deleteCampaignServer(id: Int) async throws {
-        try await delete("campaigns/\(id)")
+        try await delete("/api/v1/campaigns/\(id)")
     }
 
     func previewCampaignAudience(id: Int) async throws -> CampaignAudiencePreview {
-        try await post("campaigns/\(id)/preview", body: EmptyEncoding(), as: CampaignAudiencePreview.self)
+        try await post("/api/v1/campaigns/\(id)/preview", body: EmptyEncoding(), as: CampaignAudiencePreview.self)
     }
 
     func runCampaignNow(id: Int) async throws -> CampaignRunNowResult {
-        try await post("campaigns/\(id)/run-now", body: EmptyEncoding(), as: CampaignRunNowResult.self)
+        try await post("/api/v1/campaigns/\(id)/run-now", body: EmptyEncoding(), as: CampaignRunNowResult.self)
     }
 
     func getCampaignStats(id: Int) async throws -> CampaignStats {
-        try await get("campaigns/\(id)/stats", as: CampaignStats.self)
+        try await get("/api/v1/campaigns/\(id)/stats", as: CampaignStats.self)
     }
 
     // MARK: SMS Groups (for audience picker)
 
     // Note: sms/groups returns { success, data: [...] } — direct array unwrap.
     func listSmsGroups() async throws -> [SmsGroup] {
-        try await get("sms/groups", as: [SmsGroup].self)
+        try await get("/api/v1/sms/groups", as: [SmsGroup].self)
     }
 }
