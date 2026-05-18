@@ -48,6 +48,7 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
@@ -830,8 +831,17 @@ class SyncManager @Inject constructor(
                     // N3: only mark as "sent" after the server has confirmed delivery.
                     // If the call throws, the local row stays as "queued" so the next
                     // flush can retry it and the UI does not show a false positive.
+                    //
+                    // BUGHUNT-2026-05-17: wrap the status flip in NonCancellable so
+                    // a coroutine cancellation between sendSms() success and the
+                    // local update can't strand the row in "queued" status. Without
+                    // this guard the next flush would re-send the SMS to the
+                    // customer because no idempotency key is plumbed through to
+                    // the server's /sms/send route.
                     if (entry.entityId < 0) {
-                        smsDao.updateStatus(entry.entityId, "sent")
+                        withContext(NonCancellable) {
+                            smsDao.updateStatus(entry.entityId, "sent")
+                        }
                     }
                 } catch (e: Exception) {
                     // Make sure the UI reflects that the message is still in flight —
