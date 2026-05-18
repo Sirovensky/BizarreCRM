@@ -363,7 +363,13 @@ function CloseShiftModal({ shift, onClose, onClosed }: CloseShiftModalProps) {
         <div className="space-y-3 p-5">
           <div className="flex items-center gap-2 rounded-lg bg-surface-50 p-3 text-xs text-surface-600 dark:bg-surface-800 dark:text-surface-400">
             <DollarSign className="h-4 w-4" />
-            Opened at {new Date(shift.opened_at).toLocaleTimeString()} · float {formatCents(shift.opening_float_cents)}
+            {/* BUGHUNT-2026-05-17: shift.opened_at is the SQLite datetime('now')
+                UTC string (no 'Z' suffix). new Date(...) on V8 parses it as
+                LOCAL time, so this label was off by the operator's UTC offset
+                (e.g. shows "Opened at 2pm" when the row is at 8am local). The
+                two title attrs above already normalize via the
+                includes('T')|endsWith('Z') check — apply the same here. */}
+            Opened at {new Date(shift.opened_at.includes('T') || shift.opened_at.endsWith('Z') ? shift.opened_at : `${shift.opened_at.replace(' ', 'T')}Z`).toLocaleTimeString()} · float {formatCents(shift.opening_float_cents)}
           </div>
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-surface-600 dark:text-surface-400">Counted Cash ($)</span>
