@@ -53,6 +53,9 @@ public final class MessageTemplateListViewModel {
         errorMessage = nil
         do {
             templates = try await api.listMessageTemplates()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: refresh cancels load; keep prior list.
+            return
         } catch {
             AppLog.ui.error("Templates load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -65,6 +68,11 @@ public final class MessageTemplateListViewModel {
         templates.removeAll { $0.id == id }
         do {
             try await api.deleteMessageTemplate(id: id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels DELETE; server may have
+            // committed. Keep optimistic-removed state — reverting would
+            // lie about server truth and tempt re-delete that 404s.
+            return
         } catch {
             AppLog.ui.error("Template delete failed: \(error.localizedDescription, privacy: .public)")
             // Revert on failure

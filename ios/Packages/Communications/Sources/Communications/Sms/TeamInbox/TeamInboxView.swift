@@ -219,6 +219,10 @@ public final class TeamInboxViewModel {
         do {
             conversations = try await api.listSmsConversations(keyword: nil, includeArchived: false)
             lastSyncedAt = Date()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: refresh / filter swap cancels prior
+            // fetch; keep prior list visible.
+            return
         } catch {
             AppLog.ui.error("TeamInbox load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -231,6 +235,10 @@ public final class TeamInboxViewModel {
     public func assignToMe(phone: String) async {
         do {
             try await api.assignInboxConversation(phone: phone)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels assign; server may have
+            // committed. Stay silent.
+            return
         } catch {
             AppLog.ui.error("Assign failed: \(error.localizedDescription, privacy: .public)")
         }

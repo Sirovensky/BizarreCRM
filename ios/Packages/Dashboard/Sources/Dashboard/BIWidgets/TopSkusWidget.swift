@@ -1,5 +1,6 @@
 import SwiftUI
 import Observation
+import Core
 import Networking
 import DesignSystem
 
@@ -52,6 +53,11 @@ public final class TopSkusViewModel {
         do {
             let payload = try await api.fetchDashboardTopServices()
             state = .loaded(payload.topServices)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: dashboard refresh cancels load; reset
+            // to .idle so reload() can retry.
+            state = .idle
+            return
         } catch {
             state = .failed(error.localizedDescription)
         }

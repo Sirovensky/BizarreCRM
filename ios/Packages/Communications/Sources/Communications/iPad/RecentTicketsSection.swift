@@ -1,5 +1,6 @@
 import SwiftUI
 import Observation
+import Core
 import Networking
 import DesignSystem
 
@@ -88,6 +89,11 @@ public final class RecentTicketsViewModel {
             tickets = Array(filtered)
             loadedForCustomerId = customerId
             state = .loaded
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: customer-swap cancels prior fetch; reset
+            // to noCustomer-like state so the next load fires for the new
+            // selection.
+            return
         } catch {
             let msg = error.localizedDescription
             state = .error(msg)

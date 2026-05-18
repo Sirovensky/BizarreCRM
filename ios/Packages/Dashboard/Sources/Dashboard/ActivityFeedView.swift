@@ -32,6 +32,11 @@ public final class ActivityFeedViewModel {
         do {
             let events = try await api.activityFeed(limit: 20)
             state = .loaded(events)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: dashboard refresh cancels load; reset
+            // to .idle so reload() can retry without sticking in .loading.
+            state = .idle
+            return
         } catch {
             AppLog.ui.error("ActivityFeed load failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)

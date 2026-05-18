@@ -50,6 +50,8 @@ public final class EmailTemplateListViewModel {
         errorMessage = nil
         do {
             templates = try await api.listEmailTemplates()
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: refresh cancel
         } catch {
             AppLog.ui.error("Email templates load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -61,6 +63,10 @@ public final class EmailTemplateListViewModel {
         templates.removeAll { $0.id == id }
         do {
             try await api.deleteEmailTemplate(id: id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels DELETE; keep optimistic
+            // remove since server may have committed.
+            return
         } catch {
             AppLog.ui.error("Email template delete failed: \(error.localizedDescription, privacy: .public)")
             await load()
