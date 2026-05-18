@@ -292,14 +292,26 @@ export async function recalculateAllCustomerHealth(
   batchSize = 200,
   signal?: AbortSignal,
 ): Promise<{ total: number; updated: number; aborted: boolean }> {
-  const ids = await adb.all<{ id: number }>(
-    `SELECT id FROM customers ORDER BY id ASC`,
-  );
+  // BUGHUNT-2026-05-17: previously did a single `SELECT id FROM customers`
+  // with no LIMIT, materialising EVERY customer id into a JS array up-front.
+  // A tenant with 500k+ customers (consolidated multi-shop import, decade-
+  // old install) would allocate ~10 MB of `{id:number}` objects in one
+  // shot just to start the recalc — and the cron is supposed to be
+  // batchSize-bounded. Switch to keyset pagination so peak memory is
+  // O(batchSize), independent of total customer count.
   let updated = 0;
   let aborted = false;
-  for (let i = 0; i < ids.length; i += batchSize) {
+  let total = 0;
+  let lastId = 0;
+  for (;;) {
     if (signal?.aborted) { aborted = true; break; }
-    const batch = ids.slice(i, i + batchSize);
+    const batch = await adb.all<{ id: number }>(
+      `SELECT id FROM customers WHERE id > ? ORDER BY id ASC LIMIT ?`,
+      lastId,
+      batchSize,
+    );
+    if (batch.length === 0) break;
+    total += batch.length;
     for (const row of batch) {
       if (signal?.aborted) { aborted = true; break; }
       try {
@@ -312,8 +324,10 @@ export async function recalculateAllCustomerHealth(
         });
       }
     }
+    lastId = batch[batch.length - 1].id;
+    if (aborted) break;
   }
-  return { total: ids.length, updated, aborted };
+  return { total, updated, aborted };
 }
 
 /**
