@@ -9,6 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Star, Trash2, Loader2, ShieldOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
+import { confirm } from '@/stores/confirmStore';
 import { useHasRole } from '@/hooks/useHasRole';
 import { formatDate } from '@/utils/format';
 
@@ -208,7 +209,13 @@ export function PerformanceReviewsPage() {
                       </div>
                       <button
                         className="text-red-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-                        onClick={() => deleteMut.mutate(r.id)}
+                        onClick={async () => {
+                          const ok = await confirm(
+                            `Delete this performance review by ${r.reviewer_first ?? ''} ${r.reviewer_last ?? ''}? This cannot be undone.`,
+                            { title: 'Delete review', confirmLabel: 'Delete', danger: true },
+                          );
+                          if (ok) deleteMut.mutate(r.id);
+                        }}
                         disabled={deleteMut.isPending && deleteMut.variables === r.id}
                         aria-label="Delete review"
                       >

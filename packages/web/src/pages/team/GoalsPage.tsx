@@ -9,6 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Target, Trash2, Plus, Loader2, Pencil } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
+import { confirm } from '@/stores/confirmStore';
 import { formatCurrency, toLocalDateString } from '@/utils/format';
 // FA-L4: CommissionPeriodLock gives managers a visible control to freeze
 // payroll windows once commissions are finalized. Goals + payroll live in
@@ -238,7 +239,15 @@ export function GoalsPage() {
                   </button>
                   <button
                     className="text-red-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-                    onClick={() => deleteMut.mutate(g.id)}
+                    onClick={async () => {
+                      const fullName = `${g.first_name ?? ''} ${g.last_name ?? ''}`.trim() || 'this employee';
+                      const ok = await confirm(`Delete the ${g.metric} goal for ${fullName}? This cannot be undone.`, {
+                        title: 'Delete goal',
+                        confirmLabel: 'Delete',
+                        danger: true,
+                      });
+                      if (ok) deleteMut.mutate(g.id);
+                    }}
                     disabled={deleteMut.isPending && deleteMut.variables === g.id}
                     aria-label={`Delete goal for ${g.first_name ?? ''} ${g.last_name ?? ''}`}
                   >
