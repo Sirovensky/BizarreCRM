@@ -23,6 +23,11 @@ public final class AutoResponderListViewModel: Sendable {
         defer { isLoading = false }
         do {
             rules = try await api.listAutoResponders()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: nav-race shouldn't paint a misleading
+            // "The operation couldn't be completed" banner on a read-only
+            // load. .task re-fires on the next reappear.
+            return
         } catch {
             AppLog.ui.error("AutoResponder load: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
