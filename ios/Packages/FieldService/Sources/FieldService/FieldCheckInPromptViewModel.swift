@@ -71,6 +71,14 @@ public final class FieldCheckInPromptViewModel {
                 customerAddress: address
             )
             state = .checkedIn
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: checkIn is POST without an idempotency key.
+            // A `.failed("cancelled")` toast on the geofence-prompt sheet
+            // tempted a re-tap that — if the server had already accepted
+            // the first POST — would persist a duplicate check-in row for
+            // the appointment. Reset to .idle silently; the next geofence
+            // event or manual refresh shows the real state.
+            state = .idle
         } catch {
             state = .failed(error.localizedDescription)
         }
