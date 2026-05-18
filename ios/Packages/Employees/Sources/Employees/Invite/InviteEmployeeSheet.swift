@@ -76,6 +76,15 @@ public final class InviteEmployeeViewModel {
         )
         do {
             createdEmployee = try await api.inviteEmployee(body)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: inviteEmployee POST may have already
+            // created the user row before the task was cancelled. Painting
+            // "cancelled" as submitError tempts the admin to retap Create,
+            // hitting a "username already exists" 409 on the next attempt
+            // (or worse, double-creating on tolerant servers). Clear the
+            // error; if the row landed, the list refresh on dismiss reveals
+            // it, otherwise admin can re-open the sheet cleanly.
+            submitError = nil
         } catch {
             AppLog.ui.error("InviteEmployee failed: \(error.localizedDescription, privacy: .public)")
             submitError = error.localizedDescription
