@@ -209,6 +209,10 @@ public final class PaymentLinksDashboardViewModel {
         defer { isLoading = false }
         do {
             analytics = try await api.getPaymentLinksAnalytics()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: dashboard popped or refresh re-fired mid
+            // -fetch. Don't paint a fake "Could not load" banner.
+            return
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription
                 ?? "Could not load analytics."

@@ -174,6 +174,10 @@ public final class FollowUpScheduleViewModel {
         defer { isLoading = false }
         do {
             followUps = try await api.listFollowUps(linkId: link.id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: view dismissed mid-load. Don't paint a
+            // fake "Could not load" banner — next .task retries.
+            return
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription
                 ?? "Could not load follow-ups."
