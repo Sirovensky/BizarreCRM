@@ -1622,13 +1622,27 @@ router.get('/payment-methods', async (req, res) => {
   res.json({ success: true, data: methods });
 });
 
+// BUGHUNT-2026-05-17: wrap bare-async — AppError on missing name + INSERT can
+// throw on lock or UNIQUE collision.
 router.post('/payment-methods', adminOnly, async (req, res) => {
-  const adb = req.asyncDb;
-  const { name, sort_order = 0 } = req.body;
-  if (!name) throw new AppError('Name required', 400);
-  const result = await adb.run('INSERT INTO payment_methods (name, sort_order) VALUES (?, ?)', name, sort_order);
-  const method = await adb.get<any>('SELECT * FROM payment_methods WHERE id = ?', result.lastInsertRowid);
-  res.status(201).json({ success: true, data: method });
+  try {
+    const adb = req.asyncDb;
+    const { name, sort_order = 0 } = req.body;
+    if (!name) throw new AppError('Name required', 400);
+    const result = await adb.run('INSERT INTO payment_methods (name, sort_order) VALUES (?, ?)', name, sort_order);
+    const method = await adb.get<any>('SELECT * FROM payment_methods WHERE id = ?', result.lastInsertRowid);
+    res.status(201).json({ success: true, data: method });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Bad request' });
+      return;
+    }
+    logger.error('settings_create_payment_method_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to create payment method' });
+    }
+  }
 });
 
 // ==================== Referral Sources ====================
@@ -1639,13 +1653,26 @@ router.get('/referral-sources', async (req, res) => {
   res.json({ success: true, data: sources });
 });
 
+// BUGHUNT-2026-05-17: wrap bare-async — same shape as payment-methods POST.
 router.post('/referral-sources', adminOnly, async (req, res) => {
-  const adb = req.asyncDb;
-  const { name, sort_order = 0 } = req.body;
-  if (!name) throw new AppError('Name required', 400);
-  const result = await adb.run('INSERT INTO referral_sources (name, sort_order) VALUES (?, ?)', name, sort_order);
-  const source = await adb.get<any>('SELECT * FROM referral_sources WHERE id = ?', result.lastInsertRowid);
-  res.status(201).json({ success: true, data: source });
+  try {
+    const adb = req.asyncDb;
+    const { name, sort_order = 0 } = req.body;
+    if (!name) throw new AppError('Name required', 400);
+    const result = await adb.run('INSERT INTO referral_sources (name, sort_order) VALUES (?, ?)', name, sort_order);
+    const source = await adb.get<any>('SELECT * FROM referral_sources WHERE id = ?', result.lastInsertRowid);
+    res.status(201).json({ success: true, data: source });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Bad request' });
+      return;
+    }
+    logger.error('settings_create_referral_source_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to create referral source' });
+    }
+  }
 });
 
 // ==================== Customer Groups ====================
@@ -1656,52 +1683,93 @@ router.get('/customer-groups', async (req, res) => {
   res.json({ success: true, data: groups });
 });
 
+// BUGHUNT-2026-05-17: wrap bare-async — AppError on missing name + DB writes.
 router.post('/customer-groups', adminOnly, async (req, res) => {
-  const adb = req.asyncDb;
-  const { name, discount_pct = 0, discount_type = 'percentage', auto_apply = 1, description } = req.body;
-  if (!name) throw new AppError('Name required', 400);
-  const result = await adb.run(
-    'INSERT INTO customer_groups (name, discount_pct, discount_type, auto_apply, description) VALUES (?, ?, ?, ?, ?)',
-    name, discount_pct, discount_type, auto_apply ? 1 : 0, description || null);
-  const group = await adb.get<any>('SELECT * FROM customer_groups WHERE id = ?', result.lastInsertRowid);
-  res.status(201).json({ success: true, data: group });
+  try {
+    const adb = req.asyncDb;
+    const { name, discount_pct = 0, discount_type = 'percentage', auto_apply = 1, description } = req.body;
+    if (!name) throw new AppError('Name required', 400);
+    const result = await adb.run(
+      'INSERT INTO customer_groups (name, discount_pct, discount_type, auto_apply, description) VALUES (?, ?, ?, ?, ?)',
+      name, discount_pct, discount_type, auto_apply ? 1 : 0, description || null);
+    const group = await adb.get<any>('SELECT * FROM customer_groups WHERE id = ?', result.lastInsertRowid);
+    res.status(201).json({ success: true, data: group });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Bad request' });
+      return;
+    }
+    logger.error('settings_create_customer_group_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to create customer group' });
+    }
+  }
 });
 
+// BUGHUNT-2026-05-17: wrap bare-async — AppError on 404 + DB write.
 router.put('/customer-groups/:id', adminOnly, async (req, res) => {
-  const adb = req.asyncDb;
-  const { name, discount_pct, discount_type, auto_apply, description } = req.body;
-  const existing = await adb.get<any>('SELECT * FROM customer_groups WHERE id = ?', req.params.id);
-  if (!existing) throw new AppError('Customer group not found', 404);
+  try {
+    const adb = req.asyncDb;
+    const { name, discount_pct, discount_type, auto_apply, description } = req.body;
+    const existing = await adb.get<any>('SELECT * FROM customer_groups WHERE id = ?', req.params.id);
+    if (!existing) throw new AppError('Customer group not found', 404);
 
-  await adb.run(`
-    UPDATE customer_groups SET
-      name = COALESCE(?, name),
-      discount_pct = COALESCE(?, discount_pct),
-      discount_type = COALESCE(?, discount_type),
-      auto_apply = COALESCE(?, auto_apply),
-      description = COALESCE(?, description),
-      updated_at = datetime('now')
-    WHERE id = ?
-  `,
-    name ?? null,
-    discount_pct ?? null,
-    discount_type ?? null,
-    auto_apply !== undefined ? (auto_apply ? 1 : 0) : null,
-    description !== undefined ? description : null,
-    req.params.id
-  );
-  const group = await adb.get<any>('SELECT * FROM customer_groups WHERE id = ?', req.params.id);
-  res.json({ success: true, data: group });
+    await adb.run(`
+      UPDATE customer_groups SET
+        name = COALESCE(?, name),
+        discount_pct = COALESCE(?, discount_pct),
+        discount_type = COALESCE(?, discount_type),
+        auto_apply = COALESCE(?, auto_apply),
+        description = COALESCE(?, description),
+        updated_at = datetime('now')
+      WHERE id = ?
+    `,
+      name ?? null,
+      discount_pct ?? null,
+      discount_type ?? null,
+      auto_apply !== undefined ? (auto_apply ? 1 : 0) : null,
+      description !== undefined ? description : null,
+      req.params.id
+    );
+    const group = await adb.get<any>('SELECT * FROM customer_groups WHERE id = ?', req.params.id);
+    res.json({ success: true, data: group });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Bad request' });
+      return;
+    }
+    logger.error('settings_update_customer_group_error', { error: e instanceof Error ? e.message : String(e), id: req.params.id });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to update customer group' });
+    }
+  }
 });
 
+// BUGHUNT-2026-05-17: wrap bare-async — AppError on 404 and two DB writes.
+// The previous unlink+delete combo isn't transactional, but at minimum the
+// catch prevents an unhandledRejection on a missing group lookup.
 router.delete('/customer-groups/:id', adminOnly, async (req, res) => {
-  const adb = req.asyncDb;
-  const existing = await adb.get<any>('SELECT * FROM customer_groups WHERE id = ?', req.params.id);
-  if (!existing) throw new AppError('Customer group not found', 404);
-  // Unlink customers first
-  await adb.run('UPDATE customers SET customer_group_id = NULL WHERE customer_group_id = ?', req.params.id);
-  await adb.run('DELETE FROM customer_groups WHERE id = ?', req.params.id);
-  res.json({ success: true, data: { message: 'Customer group deleted' } });
+  try {
+    const adb = req.asyncDb;
+    const existing = await adb.get<any>('SELECT * FROM customer_groups WHERE id = ?', req.params.id);
+    if (!existing) throw new AppError('Customer group not found', 404);
+    // Unlink customers first
+    await adb.run('UPDATE customers SET customer_group_id = NULL WHERE customer_group_id = ?', req.params.id);
+    await adb.run('DELETE FROM customer_groups WHERE id = ?', req.params.id);
+    res.json({ success: true, data: { message: 'Customer group deleted' } });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Bad request' });
+      return;
+    }
+    logger.error('settings_delete_customer_group_error', { error: e instanceof Error ? e.message : String(e), id: req.params.id });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to delete customer group' });
+    }
+  }
 });
 
 // ==================== Users ====================
@@ -2820,35 +2888,49 @@ router.post('/notification-templates/test', adminOnly, async (req, res, next) =>
   }
 });
 
+// BUGHUNT-2026-05-17: wrap bare-async — AppError on 404 was previously
+// unhandled, crashing the server on every "template not found" request.
 router.put('/notification-templates/:id', adminOnly, async (req, res) => {
-  const adb = req.asyncDb;
-  const { subject, email_body, sms_body, send_email_auto, send_sms_auto, is_active, show_in_canned } = req.body;
-  const existing = await adb.get<any>('SELECT * FROM notification_templates WHERE id = ?', req.params.id);
-  if (!existing) throw new AppError('Notification template not found', 404);
+  try {
+    const adb = req.asyncDb;
+    const { subject, email_body, sms_body, send_email_auto, send_sms_auto, is_active, show_in_canned } = req.body;
+    const existing = await adb.get<any>('SELECT * FROM notification_templates WHERE id = ?', req.params.id);
+    if (!existing) throw new AppError('Notification template not found', 404);
 
-  await adb.run(`
-    UPDATE notification_templates SET
-      subject = COALESCE(?, subject),
-      email_body = COALESCE(?, email_body),
-      sms_body = COALESCE(?, sms_body),
-      send_email_auto = COALESCE(?, send_email_auto),
-      send_sms_auto = COALESCE(?, send_sms_auto),
-      is_active = COALESCE(?, is_active),
-      show_in_canned = COALESCE(?, show_in_canned),
-      updated_at = datetime('now')
-    WHERE id = ?
-  `,
-    subject ?? null,
-    email_body ?? null,
-    sms_body ?? null,
-    send_email_auto ?? null,
-    send_sms_auto ?? null,
-    is_active ?? null,
-    show_in_canned ?? null,
-    req.params.id
-  );
-  const template = await adb.get<any>('SELECT * FROM notification_templates WHERE id = ?', req.params.id);
-  res.json({ success: true, data: template });
+    await adb.run(`
+      UPDATE notification_templates SET
+        subject = COALESCE(?, subject),
+        email_body = COALESCE(?, email_body),
+        sms_body = COALESCE(?, sms_body),
+        send_email_auto = COALESCE(?, send_email_auto),
+        send_sms_auto = COALESCE(?, send_sms_auto),
+        is_active = COALESCE(?, is_active),
+        show_in_canned = COALESCE(?, show_in_canned),
+        updated_at = datetime('now')
+      WHERE id = ?
+    `,
+      subject ?? null,
+      email_body ?? null,
+      sms_body ?? null,
+      send_email_auto ?? null,
+      send_sms_auto ?? null,
+      is_active ?? null,
+      show_in_canned ?? null,
+      req.params.id
+    );
+    const template = await adb.get<any>('SELECT * FROM notification_templates WHERE id = ?', req.params.id);
+    res.json({ success: true, data: template });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Bad request' });
+      return;
+    }
+    logger.error('settings_update_notification_template_error', { error: e instanceof Error ? e.message : String(e), id: req.params.id });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to update notification template' });
+    }
+  }
 });
 
 // ==================== Checklist Templates ====================
@@ -2862,33 +2944,66 @@ router.get('/checklist-templates', async (req, res) => {
   res.json({ success: true, data: templates });
 });
 
+// BUGHUNT-2026-05-17: wrap bare-async — AppError throw on missing name and
+// the INSERT can throw on DB lock. JSON.stringify on a circular `items` value
+// can also throw.
 router.post('/checklist-templates', adminOnly, async (req, res) => {
-  const adb = req.asyncDb;
-  const { name, device_type, items } = req.body;
-  if (!name) throw new AppError('Name required', 400);
-  const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-  const result = await adb.run(
-    'INSERT INTO checklist_templates (name, device_type, items, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
-    name, device_type || null, JSON.stringify(items || []), now, now);
-  const template = await adb.get<any>('SELECT * FROM checklist_templates WHERE id = ?', result.lastInsertRowid);
-  res.status(201).json({ success: true, data: template });
+  try {
+    const adb = req.asyncDb;
+    const { name, device_type, items } = req.body;
+    if (!name) throw new AppError('Name required', 400);
+    const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const result = await adb.run(
+      'INSERT INTO checklist_templates (name, device_type, items, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+      name, device_type || null, JSON.stringify(items || []), now, now);
+    const template = await adb.get<any>('SELECT * FROM checklist_templates WHERE id = ?', result.lastInsertRowid);
+    res.status(201).json({ success: true, data: template });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Bad request' });
+      return;
+    }
+    logger.error('settings_create_checklist_template_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to create checklist template' });
+    }
+  }
 });
 
+// BUGHUNT-2026-05-17: wrap bare-async — JSON.stringify can throw on circular
+// objects; the UPDATE can throw on DB lock.
 router.put('/checklist-templates/:id', adminOnly, async (req, res) => {
-  const adb = req.asyncDb;
-  const { name, device_type, items } = req.body;
-  const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-  await adb.run(
-    'UPDATE checklist_templates SET name = COALESCE(?, name), device_type = COALESCE(?, device_type), items = COALESCE(?, items), updated_at = ? WHERE id = ?',
-    name ?? null, device_type ?? null, items ? JSON.stringify(items) : null, now, req.params.id);
-  const template = await adb.get<any>('SELECT * FROM checklist_templates WHERE id = ?', req.params.id);
-  res.json({ success: true, data: template });
+  try {
+    const adb = req.asyncDb;
+    const { name, device_type, items } = req.body;
+    const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    await adb.run(
+      'UPDATE checklist_templates SET name = COALESCE(?, name), device_type = COALESCE(?, device_type), items = COALESCE(?, items), updated_at = ? WHERE id = ?',
+      name ?? null, device_type ?? null, items ? JSON.stringify(items) : null, now, req.params.id);
+    const template = await adb.get<any>('SELECT * FROM checklist_templates WHERE id = ?', req.params.id);
+    res.json({ success: true, data: template });
+  } catch (e: unknown) {
+    logger.error('settings_update_checklist_template_error', { error: e instanceof Error ? e.message : String(e), id: req.params.id });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to update checklist template' });
+    }
+  }
 });
 
+// BUGHUNT-2026-05-17: wrap bare-async — DELETE can throw on FK constraint or
+// DB lock. Without try/catch every failed delete crashes the server.
 router.delete('/checklist-templates/:id', adminOnly, async (req, res) => {
-  const adb = req.asyncDb;
-  await adb.run('DELETE FROM checklist_templates WHERE id = ?', req.params.id);
-  res.json({ success: true, data: { id: Number(req.params.id) } });
+  try {
+    const adb = req.asyncDb;
+    await adb.run('DELETE FROM checklist_templates WHERE id = ?', req.params.id);
+    res.json({ success: true, data: { id: Number(req.params.id) } });
+  } catch (e: unknown) {
+    logger.error('settings_delete_checklist_template_error', { error: e instanceof Error ? e.message : String(e), id: req.params.id });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to delete checklist template' });
+    }
+  }
 });
 
 // ==================== Logo Upload ====================
