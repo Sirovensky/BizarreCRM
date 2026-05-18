@@ -24,7 +24,17 @@ public final class OneShotLocationCapture: NSObject, LocationCapture, CLLocation
                 continuation: continuation,
                 timeoutSeconds: timeoutSeconds
             )
-            // Keep delegate alive for the duration.
+            // BUGHUNT-2026-05-18: `CLLocationManager.delegate` is `weak`, and
+            // the local `delegate` reference above goes out of scope the
+            // moment this closure returns. Previously the delegate deinit-ed
+            // before `didUpdateLocations` could fire, the manager was left
+            // delegate-less, and the continuation was released without being
+            // resumed — field service check-in / job captures hung forever
+            // (until DEBUG runtime fatal-errored on the leaked continuation).
+            // Have the delegate retain itself across the async boundary and
+            // release that self-reference in resolve()/fail(). Classic
+            // CLLocationManager-with-async-callback pattern.
+            delegate.retainSelf()
             delegate.start()
         }
     }
@@ -39,12 +49,17 @@ private final class _Delegate: NSObject, CLLocationManagerDelegate, @unchecked S
     private var timeoutTask: Task<Void, Never>?
     private let timeoutSeconds: Double
     private var resolved = false
+    private var selfRetention: _Delegate?
 
     init(continuation: CheckedContinuation<CLLocation, Error>, timeoutSeconds: Double) {
         self.continuation = continuation
         self.timeoutSeconds = timeoutSeconds
         super.init()
     }
+
+    /// Holds a strong reference to self until the continuation is resumed.
+    /// See the BUGHUNT comment in OneShotLocationCapture.captureCurrentLocation.
+    func retainSelf() { selfRetention = self }
 
     func start() {
         manager.delegate = self
@@ -79,6 +94,7 @@ private final class _Delegate: NSObject, CLLocationManagerDelegate, @unchecked S
         manager.stopUpdatingLocation()
         continuation?.resume(returning: location)
         continuation = nil
+        selfRetention = nil
     }
 
     private func fail(_ error: Error) {
@@ -88,5 +104,6 @@ private final class _Delegate: NSObject, CLLocationManagerDelegate, @unchecked S
         manager.stopUpdatingLocation()
         continuation?.resume(throwing: error)
         continuation = nil
+        selfRetention = nil
     }
 }
