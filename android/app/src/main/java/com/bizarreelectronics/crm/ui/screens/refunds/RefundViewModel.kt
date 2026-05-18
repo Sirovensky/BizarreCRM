@@ -147,6 +147,11 @@ class RefundViewModel @Inject constructor(
                         e.message() ?: "Server error (${e.code()})"
                     )
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // BUGHUNT-2026-05-17: refund creation is a real money write.
+                // Surfacing a "cancelled" error tempts a retry that would
+                // double-refund if the server already accepted the POST.
+                throw e
             } catch (e: Exception) {
                 Timber.e(e, "RefundViewModel.createRefund")
                 _uiState.value = RefundUiState.Error(e.message ?: "Unknown error")
@@ -165,6 +170,11 @@ class RefundViewModel @Inject constructor(
                 _uiState.value = RefundUiState.Error(
                     e.message() ?: "Approve failed (${e.code()})"
                 )
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Approving a refund commits the spend. Don't paint
+                // "cancelled" as an error — the user might re-approve
+                // and double-credit the customer.
+                throw e
             } catch (e: Exception) {
                 Timber.e(e, "RefundViewModel.approveRefund")
                 _uiState.value = RefundUiState.Error(e.message ?: "Approve failed")
@@ -181,6 +191,8 @@ class RefundViewModel @Inject constructor(
                 _uiState.value = RefundUiState.Error(
                     e.message() ?: "Decline failed (${e.code()})"
                 )
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Timber.e(e, "RefundViewModel.declineRefund")
                 _uiState.value = RefundUiState.Error(e.message ?: "Decline failed")
