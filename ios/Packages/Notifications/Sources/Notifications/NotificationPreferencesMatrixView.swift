@@ -103,6 +103,11 @@ public final class NotificationPreferencesMatrixViewModel {
             if let idx = preferences.firstIndex(where: { $0.event == saved.event }) {
                 applyOptimistically(saved, at: idx)
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: per-toggle PUT cancellation; the
+            // server may have committed. Optimistic local update already
+            // shows the new state; banner would mislead. Silent return.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
