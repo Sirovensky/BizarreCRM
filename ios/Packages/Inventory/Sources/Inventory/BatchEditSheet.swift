@@ -205,6 +205,9 @@ public struct BatchEditSheet: View {
 
                 Section("Category") {
                     TextField("New category", text: $vm.reassignCategory)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.words)
+                        #endif
                         .accessibilityLabel("New category for selected items")
                 }
 

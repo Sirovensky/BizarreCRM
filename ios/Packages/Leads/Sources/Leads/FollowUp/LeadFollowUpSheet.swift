@@ -76,6 +76,9 @@ public struct LeadFollowUpSheet: View {
                     Section("Note") {
                         TextEditor(text: $vm.note)
                             .frame(minHeight: 80)
+                            #if canImport(UIKit)
+                            .textInputAutocapitalization(.sentences)
+                            #endif
                             .accessibilityLabel("Follow-up note")
                     }
                     if case .failed(let msg) = vm.state {

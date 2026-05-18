@@ -186,6 +186,9 @@ public struct LostReasonSheet: View {
                 .padding(BrandSpacing.sm)
                 .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5))
+                #if canImport(UIKit)
+                .textInputAutocapitalization(.sentences)
+                #endif
         }
     }
 

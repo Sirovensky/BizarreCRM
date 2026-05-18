@@ -182,6 +182,9 @@ private struct LeadQuickSMSSheet: View {
                     .padding(BrandSpacing.sm)
                     .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 10))
                     .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5))
+                    #if canImport(UIKit)
+                    .textInputAutocapitalization(.sentences)
+                    #endif
                     .accessibilityLabel("SMS message body")
                 if let err = error {
                     Text(err).font(.brandLabelSmall()).foregroundStyle(.bizarreError)
@@ -242,11 +245,17 @@ private struct LeadQuickEmailSheet: View {
                     Text("To: \(email)")
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                     TextField("Subject", text: $subject)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.sentences)
+                        #endif
                         .accessibilityLabel("Email subject")
                 }
                 Section("Body") {
                     TextEditor(text: $bodyText)
                         .frame(minHeight: 100)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.sentences)
+                        #endif
                         .accessibilityLabel("Email body")
                 }
                 if let err = error {

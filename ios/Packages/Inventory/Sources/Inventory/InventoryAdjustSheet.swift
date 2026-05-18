@@ -293,6 +293,9 @@ public struct InventoryAdjustSheet: View {
                 .lineLimit(3...6)
                 .padding(BrandSpacing.sm)
                 .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 10))
+                #if canImport(UIKit)
+                .textInputAutocapitalization(.sentences)
+                #endif
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
                         .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)

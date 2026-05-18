@@ -204,6 +204,9 @@ private struct LeadAddNoteSheet: View {
                     .padding(BrandSpacing.sm)
                     .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 10))
                     .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5))
+                    #if canImport(UIKit)
+                    .textInputAutocapitalization(.sentences)
+                    #endif
                     .accessibilityLabel("Note body")
 
                 if let err = error {

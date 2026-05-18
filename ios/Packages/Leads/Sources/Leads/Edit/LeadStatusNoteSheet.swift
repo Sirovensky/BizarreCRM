@@ -197,6 +197,9 @@ public struct LeadStatusNoteSheet: View {
                 .frame(minHeight: 100, maxHeight: 200)
                 .scrollContentBackground(.hidden)
                 .background(Color.clear)
+                #if canImport(UIKit)
+                .textInputAutocapitalization(.sentences)
+                #endif
                 .accessibilityLabel("Status change note")
                 .overlay(alignment: .topLeading) {
                     if vm.note.isEmpty {

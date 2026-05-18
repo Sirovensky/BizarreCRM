@@ -344,6 +344,10 @@ public struct SettingsExportView: View {
                     .padding(8)
                     .background(Color(.systemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
                     .padding(.horizontal)
+                    #if canImport(UIKit)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    #endif
                     .accessibilityLabel("Settings JSON input")
 
                 if let result = viewModel.importResult {

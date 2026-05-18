@@ -207,6 +207,9 @@ public struct LeadEditView: View {
                 .frame(minHeight: 120, maxHeight: 240)
                 .scrollContentBackground(.hidden)
                 .background(Color.clear)
+                #if canImport(UIKit)
+                .textInputAutocapitalization(.sentences)
+                #endif
                 .accessibilityLabel("Lead notes")
                 .overlay(alignment: .topLeading) {
                     if vm.notes.isEmpty {

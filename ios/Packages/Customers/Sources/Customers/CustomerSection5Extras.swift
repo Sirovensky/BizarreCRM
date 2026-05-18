@@ -211,6 +211,10 @@ public struct CustomerCSVImportSheet: View {
                             .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
                     )
                     .padding(.horizontal, BrandSpacing.base)
+                    #if canImport(UIKit)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    #endif
                     .accessibilityLabel("Paste CSV text here")
                     .accessibilityIdentifier("customerCSVImport.pasteField")
 

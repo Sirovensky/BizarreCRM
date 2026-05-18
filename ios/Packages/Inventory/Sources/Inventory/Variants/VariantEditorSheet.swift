@@ -123,7 +123,8 @@ public struct VariantEditorSheet: View {
             TextField("Values, comma-separated (e.g. Red, Blue, Green)", text: valuesBinding)
                 .font(.brandLabelLarge())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
-                .textInputAutocapitalization(.never)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
         }
         .listRowBackground(Color.bizarreSurface1)
     }
