@@ -32,6 +32,9 @@ public final class InventoryLowStockViewModel {
             state = .loaded(items)
         } catch APITransportError.notImplemented {
             state = .comingSoon
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav-away cancellation flipped state to .failed, painting "Failed" over previously-loaded data. Silent return preserves last-good state.
+            return
         } catch {
             AppLog.ui.error("Low-stock load failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)
