@@ -352,6 +352,13 @@ public final class TicketCreateFlowViewModel {
             createdTicketId = PendingSyncTicketId
             queuedOffline = true
             errorMessage = nil
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: enqueue may have partially landed when
+            // the task is cancelled mid-write. Don't paint a false
+            // "Could not save offline" toast on the sheet the user left;
+            // the draft is preserved so the next session re-enqueues
+            // idempotently. Mirrors TicketEditDeepViewModel.enqueueOffline.
+            return
         } catch {
             // BUGHUNT-2026-05-17: surface the queue failure so the full-create
             // flow doesn't claim the ticket was saved offline when it wasn't.
