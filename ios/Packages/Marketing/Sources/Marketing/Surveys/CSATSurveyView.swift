@@ -173,6 +173,9 @@ public struct CSATSurveyView: View {
                 .frame(minHeight: 80)
                 .padding(BrandSpacing.sm)
                 .background(Color.bizarreSurface2, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
+                #if canImport(UIKit)
+                .textInputAutocapitalization(.sentences)
+                #endif
                 .accessibilityLabel("Optional comment")
         }
     }

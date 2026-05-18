@@ -124,6 +124,9 @@ public struct CreditNoteComposeSheet: View {
                 Section("Reason") {
                     TextEditor(text: $vm.reason)
                         .frame(minHeight: 80)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.sentences)
+                        #endif
                         .accessibilityLabel("Reason for credit note")
                 }
 

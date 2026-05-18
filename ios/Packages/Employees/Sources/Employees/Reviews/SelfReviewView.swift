@@ -87,18 +87,27 @@ public struct SelfReviewView: View {
                 Section("What are your strengths?") {
                     TextEditor(text: $vm.strengths)
                         .frame(minHeight: 80)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.sentences)
+                        #endif
                         .accessibilityLabel("Strengths field")
                 }
 
                 Section("Growth areas") {
                     TextEditor(text: $vm.growthAreas)
                         .frame(minHeight: 80)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.sentences)
+                        #endif
                         .accessibilityLabel("Growth areas field")
                 }
 
                 Section("Goals for next period") {
                     TextEditor(text: $vm.nextGoals)
                         .frame(minHeight: 80)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.sentences)
+                        #endif
                         .accessibilityLabel("Next period goals field")
                 }
 

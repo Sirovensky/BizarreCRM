@@ -274,6 +274,9 @@ public struct NPSSurveyView: View {
                 .frame(minHeight: 80)
                 .padding(BrandSpacing.sm)
                 .background(Color.bizarreSurface2, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
+                #if canImport(UIKit)
+                .textInputAutocapitalization(.sentences)
+                #endif
                 .accessibilityLabel("Additional feedback text field")
         }
     }

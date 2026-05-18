@@ -215,6 +215,9 @@ public struct AssetReturnSheet: View {
         Section("Notes") {
             TextEditor(text: $vm.notes)
                 .frame(minHeight: 80)
+                #if canImport(UIKit)
+                .textInputAutocapitalization(.sentences)
+                #endif
                 .accessibilityLabel("Inspection notes")
         }
     }

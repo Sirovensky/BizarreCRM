@@ -131,6 +131,9 @@ public struct EstimateRejectSheet: View {
                                     )
                             )
                             .focused($reasonFocused)
+                            #if canImport(UIKit)
+                            .textInputAutocapitalization(.sentences)
+                            #endif
                             .accessibilityLabel("Rejection reason. Required.")
 
                         Text("Explain why the estimate is being rejected. This is visible in the history timeline.")

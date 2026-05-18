@@ -126,6 +126,10 @@ public struct InventoryImportCSVSheet: View {
                                 .font(.brandMono(size: 12))
                                 .frame(minHeight: 140)
                                 .scrollContentBackground(.hidden)
+                                #if canImport(UIKit)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                #endif
                                 .accessibilityLabel("Paste CSV content here")
                                 .onChange(of: vm.rawText) { _, new in vm.parseText(new) }
                         }

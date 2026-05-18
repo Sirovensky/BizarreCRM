@@ -99,6 +99,9 @@ public struct PerformanceReviewComposeView: View {
                 Section("Manager Notes") {
                     TextEditor(text: $vm.managerDraft)
                         .frame(minHeight: 120)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.sentences)
+                        #endif
                         .accessibilityLabel("Manager draft notes")
                 }
 

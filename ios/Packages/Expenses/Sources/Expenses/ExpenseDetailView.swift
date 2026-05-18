@@ -210,6 +210,9 @@ public struct ExpenseDetailView: View {
                         .padding(BrandSpacing.sm)
                         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 12))
                         .padding(.horizontal)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.sentences)
+                        #endif
                         .accessibilityLabel("Denial reason")
                     Spacer()
                 }
