@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -20,14 +21,18 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.data.local.prefs.SavedDashboard
@@ -136,6 +141,16 @@ private fun SavedDashboardNameDialog(
     onDismiss: () -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
+    val nameFocus = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        runCatching { nameFocus.requestFocus() }
+    }
+
+    val submit: () -> Unit = {
+        val trimmed = name.trim()
+        if (trimmed.isNotBlank()) onConfirm(trimmed)
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -149,15 +164,18 @@ private fun SavedDashboardNameDialog(
                 singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 8.dp),
+                    .padding(top = 8.dp)
+                    .focusRequester(nameFocus),
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.Sentences,
+                    imeAction = ImeAction.Done,
                 ),
+                keyboardActions = KeyboardActions(onDone = { submit() }),
             )
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(name.trim()) },
+                onClick = submit,
                 enabled = name.isNotBlank(),
             ) { Text("Save") }
         },
