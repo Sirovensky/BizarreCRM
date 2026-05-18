@@ -91,6 +91,13 @@ public final class LeadEditViewModel {
         do {
             let updated = try await api.updateLead(id: leadId, body: body)
             state = .saved(updated)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: lead PUT may have committed when sheet
+            // was dismissed. Reset to .idle so retap is intentional;
+            // banner would tempt double-PUT (audit row noise + status
+            // change can trigger workflow SMS hooks).
+            state = .idle
+            return
         } catch {
             AppLog.ui.error("Lead edit failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)
