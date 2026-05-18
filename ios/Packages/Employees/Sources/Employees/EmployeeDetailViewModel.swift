@@ -99,12 +99,22 @@ public final class EmployeeDetailViewModel {
     /// Confirmed role assignment.
     public func confirmRoleChange() async {
         guard let roleId = pendingRoleId else { return }
+        // BUGHUNT-2026-05-17: re-entry guard. Confirmation dialog dismisses
+        // on tap but a quick double-tap can fire two PUTs.
+        if case .loading = actionState { return }
         actionState = .loading
         do {
             try await api.assignEmployeeRole(userId: employeeId, roleId: roleId)
             // Reload to reflect updated role in UI.
             await load()
             actionState = .loaded
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PUT may have landed before cancellation.
+            // Painting .failed would tempt the admin to retap the same
+            // role — server may either no-op or double-stamp the audit
+            // log. Reload to reflect the actual server-side role state.
+            actionState = .idle
+            await load()
         } catch {
             AppLog.ui.error("Role assignment failed: \(error.localizedDescription, privacy: .public)")
             actionState = .failed(error.localizedDescription)
@@ -116,6 +126,8 @@ public final class EmployeeDetailViewModel {
     // MARK: - Deactivate / reactivate
 
     public func confirmDeactivate() async {
+        // BUGHUNT-2026-05-17: re-entry guard.
+        if case .loading = actionState { return }
         actionState = .loading
         showDeactivateConfirm = false
         do {
@@ -125,6 +137,12 @@ public final class EmployeeDetailViewModel {
                 detail = updatedDetail(existing, isActive: updated.isActive ?? 0)
             }
             actionState = .loaded
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PUT may have landed. Painting .failed
+            // tempts a retap that double-stamps the deactivate audit log.
+            // Reload to sync detail.isActive with the server.
+            actionState = .idle
+            await load()
         } catch {
             AppLog.ui.error("Employee deactivate failed: \(error.localizedDescription, privacy: .public)")
             actionState = .failed(error.localizedDescription)
@@ -132,6 +150,8 @@ public final class EmployeeDetailViewModel {
     }
 
     public func confirmReactivate() async {
+        // BUGHUNT-2026-05-17: re-entry guard.
+        if case .loading = actionState { return }
         actionState = .loading
         showReactivateConfirm = false
         do {
@@ -140,6 +160,10 @@ public final class EmployeeDetailViewModel {
                 detail = updatedDetail(existing, isActive: updated.isActive ?? 1)
             }
             actionState = .loaded
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: same reasoning as deactivate.
+            actionState = .idle
+            await load()
         } catch {
             AppLog.ui.error("Employee reactivate failed: \(error.localizedDescription, privacy: .public)")
             actionState = .failed(error.localizedDescription)
