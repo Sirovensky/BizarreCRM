@@ -254,6 +254,36 @@ export async function runDunningOnce(
     return summary;
   }
 
+  // BUGHUNT-2026-05-17 [crash-recovery]: claim-first design (see below)
+  // writes outcome='in_progress' BEFORE dispatching. If the worker
+  // process crashes between the claim INSERT and the outcome UPDATE,
+  // the row stays 'in_progress' forever and the LEFT JOIN below will
+  // skip this invoice — so the customer NEVER receives the reminder.
+  // Recovery: at the top of every run flip any 'in_progress' row older
+  // than 1 hour to 'failed' so the next tick can either move past it
+  // (since the step row exists) or an operator can manually delete it
+  // to retry. 1h is well above any realistic SMS/SMTP timeout.
+  try {
+    const stale = db
+      .prepare(
+        `UPDATE dunning_runs
+            SET outcome = 'failed'
+          WHERE outcome = 'in_progress'
+            AND executed_at <= datetime('now', '-1 hour')`,
+      )
+      .run() as { changes: number };
+    if (stale.changes > 0) {
+      logger.warn('dunning recovery: flipped stale in_progress rows to failed', {
+        count: stale.changes,
+      });
+    }
+  } catch (recoveryErr) {
+    // Recovery best-effort — older DBs may not have any rows at all.
+    logger.warn('dunning recovery sweep failed', {
+      err: recoveryErr instanceof Error ? recoveryErr.message : String(recoveryErr),
+    });
+  }
+
   // Load store config once per run for template interpolation (store_name,
   // store_phone, etc.). We read all relevant keys in a single query.
   const storeRows = db
