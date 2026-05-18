@@ -45,9 +45,14 @@ public enum ShiftScheduleConflictChecker {
         existingShifts: [ScheduledShift],
         ptoBlocks: [PTOBlock]
     ) -> [ScheduleConflict] {
-        let parser = ISO8601DateFormatter()
-        guard let propStart = parser.date(from: proposed.startAt),
-              let propEnd   = parser.date(from: proposed.endAt),
+        // BUGHUNT-2026-05-18: bare ISO8601DateFormatter() rejects both Node
+        // fractional ISO and SQLite SQL-style timestamps. With a `continue` in
+        // the overlap loop, an unparseable existing shift / PTO row silently
+        // dropped out of conflict detection — meaning the manager could book
+        // a double shift on top of a fractional-stored existing one without a
+        // warning. Route everything through ShiftTimestampParser.
+        guard let propStart = ShiftTimestampParser.parse(proposed.startAt),
+              let propEnd   = ShiftTimestampParser.parse(proposed.endAt),
               propEnd > propStart
         else { return [] }
 
@@ -56,8 +61,8 @@ public enum ShiftScheduleConflictChecker {
         // 1. Double-booking check
         let sameEmployee = existingShifts.filter { $0.employeeId == proposed.employeeId }
         for existing in sameEmployee {
-            guard let exStart = parser.date(from: existing.startAt),
-                  let exEnd   = parser.date(from: existing.endAt)
+            guard let exStart = ShiftTimestampParser.parse(existing.startAt),
+                  let exEnd   = ShiftTimestampParser.parse(existing.endAt)
             else { continue }
             if overlaps(aStart: propStart, aEnd: propEnd, bStart: exStart, bEnd: exEnd) {
                 conflicts.append(.doubleBooking(
@@ -72,8 +77,8 @@ public enum ShiftScheduleConflictChecker {
         // 2. PTO overlap check
         let empPTO = ptoBlocks.filter { $0.employeeId == proposed.employeeId }
         for pto in empPTO {
-            guard let ptoStart = parser.date(from: pto.startAt),
-                  let ptoEnd   = parser.date(from: pto.endAt)
+            guard let ptoStart = ShiftTimestampParser.parse(pto.startAt),
+                  let ptoEnd   = ShiftTimestampParser.parse(pto.endAt)
             else { continue }
             if overlaps(aStart: propStart, aEnd: propEnd, bStart: ptoStart, bEnd: ptoEnd) {
                 conflicts.append(.ptoOverlap(

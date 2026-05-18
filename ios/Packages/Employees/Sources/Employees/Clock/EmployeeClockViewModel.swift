@@ -199,7 +199,23 @@ public final class EmployeeClockViewModel {
         return f
     }()
 
+    /// BUGHUNT-2026-05-18: `clock_entries.clock_in` historically held two
+    /// shapes — `new Date().toISOString()` (fractional ISO) and SQLite's
+    /// `datetime('now')` SQL-style `YYYY-MM-DD HH:MM:SS` (no T, no Z). The
+    /// server has `parseSqliteTs` (employees.routes.ts:22) to normalise both;
+    /// iOS needs the same fallback or the running-elapsed pin-at-zero bug
+    /// reappears for any clock-in that landed in the SQL shape.
+    private static let sqlUTC: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f
+    }()
+
     private static func parseIso(_ raw: String) -> Date? {
-        isoFractional.date(from: raw) ?? isoPlain.date(from: raw)
+        isoFractional.date(from: raw)
+            ?? isoPlain.date(from: raw)
+            ?? sqlUTC.date(from: raw)
     }
 }

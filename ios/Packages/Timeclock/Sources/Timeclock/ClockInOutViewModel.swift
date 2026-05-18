@@ -201,19 +201,10 @@ public final class ClockInOutViewModel {
         runningElapsed = now().timeIntervalSince(date)
     }
 
-    private static let isoFractional: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
-
-    private static let isoPlain: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime]
-        return f
-    }()
-
     private static func parseIso(_ raw: String) -> Date? {
-        isoFractional.date(from: raw) ?? isoPlain.date(from: raw)
+        // Delegate to the shared timeclock-domain parser so SQL-style clock
+        // rows (`datetime('now')` default) don't reintroduce the elapsed-at-0
+        // bug for shifts that pre-date the toISOString switchover.
+        ShiftTimestampParser.parse(raw)
     }
 }
