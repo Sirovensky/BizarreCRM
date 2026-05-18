@@ -2357,7 +2357,12 @@ function tokenMatchScore(invName: string, catName: string): number {
   return matches / invTokens.length;
 }
 
+// BUGHUNT-2026-05-17: wrap bare-async handler. The reconcile loop runs many
+// `await adb.get/run` calls — any DB lock contention mid-loop bubbles out
+// as an unhandledRejection and crashes the server with a partial reconcile
+// already applied.
 router.post('/reconcile-cogs', adminOnly, async (req, res) => {
+  try {
   const adb = req.asyncDb;
   type AnyRow = Record<string, any>;
 
@@ -2497,6 +2502,12 @@ router.post('/reconcile-cogs', adminOnly, async (req, res) => {
       matches: matches.slice(0, 50),
     },
   });
+  } catch (e: unknown) {
+    logger.error('settings_reconcile_cogs_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'COGS reconciliation failed' });
+    }
+  }
 });
 
 // ==================== Condition Templates ====================
@@ -3288,10 +3299,20 @@ router.post('/sms/test-send', adminOnly, async (req, res, next) => {
 
 // POST /settings/sms/reload — Hot-reload SMS provider from store_config
 // Note: reloadSmsProvider uses sync db internally, keep req.db
+// BUGHUNT-2026-05-17: wrap bare-async — reloadSmsProvider can throw on a
+// malformed provider config (missing API key, bad credential decrypt). Without
+// try/catch every misconfigured reload crashes the server.
 router.post('/sms/reload', adminOnly, async (req, res) => {
-  const db = req.db;
-  const providerName = reloadSmsProvider(db);
-  res.json({ success: true, data: { provider: providerName } });
+  try {
+    const db = req.db;
+    const providerName = reloadSmsProvider(db);
+    res.json({ success: true, data: { provider: providerName } });
+  } catch (e: unknown) {
+    logger.error('settings_sms_reload_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'SMS provider reload failed' });
+    }
+  }
 });
 
 // POST /settings/email/test-smtp — WEB-S4-009 / WEB-W1-034
@@ -3334,7 +3355,10 @@ router.post('/email/test-smtp', adminOnly, async (req, res, next) => {
 // SEC-H120: enforce MAX_PAGE_SIZE=100 via pagination utility. Accept either
 // page/pagesize OR limit/offset query parameters. Max offset capped at
 // 1_000_000 to stop DoS via skip-ahead pagination.
+// BUGHUNT-2026-05-17: wrap bare-async — the `Promise.all` rejects on any of
+// the three DB calls, propagating to an unhandledRejection without a catch.
 router.get('/audit-logs', adminOnly, async (req, res) => {
+  try {
   const adb = req.asyncDb;
   const MAX_OFFSET = 1_000_000;
 
@@ -3431,6 +3455,12 @@ router.get('/audit-logs', adminOnly, async (req, res) => {
       },
     },
   });
+  } catch (e: unknown) {
+    logger.error('settings_audit_logs_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to load audit logs' });
+    }
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -3455,36 +3485,51 @@ router.get('/export', adminOnly, requireStepUpTotp('GET /settings-ext/export.jso
 });
 
 // POST /settings/import — Import settings from JSON, validate keys
+// BUGHUNT-2026-05-17: wrap bare-async — `encryptConfigValue` throws on key
+// rotation issues, the transaction throws on lock or constraint violation, and
+// AppError throws on bad body. Each rejects the request handler and crashes.
 router.post('/import', adminOnly, async (req, res) => {
-  const adb = req.asyncDb;
+  try {
+    const adb = req.asyncDb;
 
-  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
-    throw new AppError('Request body must be a JSON object', 400);
-  }
-  // SCAN-648: Reject non-string values — settings are all string-valued.
-  if (!isStringMap(req.body)) {
-    logger.warn('POST /import: non-string value in settings import payload — potential client bug');
-    return res.status(400).json({ success: false, message: 'All settings values must be strings' });
-  }
-  const data = req.body;
-
-  let imported = 0;
-  let skipped = 0;
-  const queries: Array<{ sql: string; params: unknown[] }> = [];
-
-  for (const [key, value] of Object.entries(data)) {
-    if (!ALLOWED_CONFIG_KEYS.has(key)) {
-      skipped++;
-      continue;
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+      throw new AppError('Request body must be a JSON object', 400);
     }
-    const strVal = value;
-    const storedVal = ENCRYPTED_CONFIG_KEYS.has(key) ? encryptConfigValue(strVal) : strVal;
-    queries.push({ sql: 'INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)', params: [key, storedVal] });
-    imported++;
-  }
-  if (queries.length > 0) await adb.transaction(queries);
+    // SCAN-648: Reject non-string values — settings are all string-valued.
+    if (!isStringMap(req.body)) {
+      logger.warn('POST /import: non-string value in settings import payload — potential client bug');
+      return res.status(400).json({ success: false, message: 'All settings values must be strings' });
+    }
+    const data = req.body;
 
-  res.json({ success: true, data: { imported, skipped, total: Object.keys(data).length } });
+    let imported = 0;
+    let skipped = 0;
+    const queries: Array<{ sql: string; params: unknown[] }> = [];
+
+    for (const [key, value] of Object.entries(data)) {
+      if (!ALLOWED_CONFIG_KEYS.has(key)) {
+        skipped++;
+        continue;
+      }
+      const strVal = value;
+      const storedVal = ENCRYPTED_CONFIG_KEYS.has(key) ? encryptConfigValue(strVal) : strVal;
+      queries.push({ sql: 'INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)', params: [key, storedVal] });
+      imported++;
+    }
+    if (queries.length > 0) await adb.transaction(queries);
+
+    res.json({ success: true, data: { imported, skipped, total: Object.keys(data).length } });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Bad request' });
+      return;
+    }
+    logger.error('settings_import_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Settings import failed' });
+    }
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -3817,22 +3862,38 @@ router.put('/receipt-templates/:id', adminOnly, async (req: Request, res: Respon
 });
 
 // POST /webhook-test — fire a synthetic test delivery to the configured URL
+// BUGHUNT-2026-05-17: wrap bare-async — AppError throws on missing config, the
+// dynamic `await import` can throw on a build/module error, and audit() can
+// throw on master_audit_log lock. Without a top-level catch every webhook test
+// is a server-crash vector.
 router.post('/webhook-test', adminOnly, async (req: Request, res: Response) => {
-  const db = req.db;
-  const urlRow = db
-    .prepare("SELECT value FROM store_config WHERE key = 'webhook_url'")
-    .get() as { value?: string } | undefined;
-  if (!urlRow?.value) {
-    throw new AppError('No webhook URL configured', 400);
+  try {
+    const db = req.db;
+    const urlRow = db
+      .prepare("SELECT value FROM store_config WHERE key = 'webhook_url'")
+      .get() as { value?: string } | undefined;
+    if (!urlRow?.value) {
+      throw new AppError('No webhook URL configured', 400);
+    }
+    const { fireWebhook } = await import('../services/webhooks.js');
+    fireWebhook(db, 'ticket_created', {
+      test: true,
+      initiated_by: req.user!.id,
+      message: 'This is a test delivery from BizarreCRM webhook settings.',
+    });
+    audit(db, 'webhook_test', req.user!.id, req.ip || 'unknown', { url: urlRow.value });
+    res.json({ success: true, data: { message: 'Test delivery queued — check dead-letter queue if it does not arrive.' } });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Webhook test failed' });
+      return;
+    }
+    logger.error('settings_webhook_test_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Webhook test failed' });
+    }
   }
-  const { fireWebhook } = await import('../services/webhooks.js');
-  fireWebhook(db, 'ticket_created', {
-    test: true,
-    initiated_by: req.user!.id,
-    message: 'This is a test delivery from BizarreCRM webhook settings.',
-  });
-  audit(db, 'webhook_test', req.user!.id, req.ip || 'unknown', { url: urlRow.value });
-  res.json({ success: true, data: { message: 'Test delivery queued — check dead-letter queue if it does not arrive.' } });
 });
 
 export default router;
