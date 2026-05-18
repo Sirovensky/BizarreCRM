@@ -121,8 +121,15 @@ public final class MagicLinkViewModel {
             while remaining > 0 {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 guard !Task.isCancelled else { return }
+                // BUGHUNT-2026-05-17: was `self?.resendCooldownRemaining = remaining`
+                // inside the loop. If the view model deinits mid-cooldown the
+                // optional chain silently no-ops, but the Task keeps sleeping
+                // and decrementing for the full 60 s — burning a background slot
+                // and a wakeup once a second on a screen that no longer exists.
+                // Break the loop the moment self goes away.
+                guard let self else { break }
                 remaining -= 1
-                await MainActor.run { self?.resendCooldownRemaining = remaining }
+                await MainActor.run { self.resendCooldownRemaining = remaining }
             }
         }
     }
