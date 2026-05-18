@@ -2893,6 +2893,14 @@ router.get('/tenants/:slug/automation-runs', async (req: Request, res: Response)
     ).get() as { total: number; success: number; failure: number; skipped: number; loop_rejected: number };
 
     res.json({ success: true, data: { rows, summary } });
+  } catch (err) {
+    logger.error('super_admin_tenant_automation_runs_query_error', {
+      slug,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Unexpected error' });
+    }
   } finally {
     releaseTenantDb(slug);
   }

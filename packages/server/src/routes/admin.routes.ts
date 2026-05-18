@@ -217,6 +217,7 @@ router.post(
   '/terminate-tenant',
   authMiddleware,
   async (req: Request, res: Response) => {
+    try {
     const tenantDb = req.db;
     if (!tenantDb) {
       return res.status(500).json({ success: false, message: 'Database unavailable' });
@@ -328,6 +329,12 @@ router.post(
     return res
       .status(400)
       .json({ success: false, message: 'Invalid action — must be request, confirm, or finalize' });
+    } catch (e: unknown) {
+      logger.error('terminate_tenant_error', { error: (e as Error).message });
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, message: 'Unexpected error' });
+      }
+    }
   },
 );
 

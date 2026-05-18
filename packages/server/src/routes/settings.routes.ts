@@ -4078,69 +4078,94 @@ interface ReceiptTemplateRow {
 }
 
 router.get('/receipt-templates', async (req: Request, res: Response) => {
-  const rows = await req.asyncDb.all<ReceiptTemplateRow>(
-    'SELECT * FROM receipt_templates ORDER BY is_default DESC, id ASC'
-  );
-  res.json({ success: true, data: rows });
+  try {
+    const rows = await req.asyncDb.all<ReceiptTemplateRow>(
+      'SELECT * FROM receipt_templates ORDER BY is_default DESC, id ASC'
+    );
+    res.json({ success: true, data: rows });
+  } catch (e: unknown) {
+    logger.error('receipt_templates_list_error', { error: (e as Error).message });
+    res.status(500).json({ success: false, message: 'Unexpected error' });
+  }
 });
 
 router.get('/receipt-templates/for-type/:type', async (req: Request, res: Response) => {
-  const type = req.params.type as string;
-  const validTypes = new Set(['default', 'warranty', 'trade_in', 'credit_note']);
-  const safeType = validTypes.has(type) ? type : 'default';
+  try {
+    const type = req.params.type as string;
+    const validTypes = new Set(['default', 'warranty', 'trade_in', 'credit_note']);
+    const safeType = validTypes.has(type) ? type : 'default';
 
-  // 1. Exact type match
-  let tpl = await req.asyncDb.get<ReceiptTemplateRow>(
-    'SELECT * FROM receipt_templates WHERE type = ? LIMIT 1', safeType
-  );
-  // 2. Fallback: default row with is_default=1
-  if (!tpl) {
-    tpl = await req.asyncDb.get<ReceiptTemplateRow>(
-      "SELECT * FROM receipt_templates WHERE type = 'default' AND is_default = 1 LIMIT 1"
+    // 1. Exact type match
+    let tpl = await req.asyncDb.get<ReceiptTemplateRow>(
+      'SELECT * FROM receipt_templates WHERE type = ? LIMIT 1', safeType
     );
-  }
-  // 3. Fallback: any row
-  if (!tpl) {
-    tpl = await req.asyncDb.get<ReceiptTemplateRow>(
-      'SELECT * FROM receipt_templates ORDER BY is_default DESC, id ASC LIMIT 1'
-    );
-  }
+    // 2. Fallback: default row with is_default=1
+    if (!tpl) {
+      tpl = await req.asyncDb.get<ReceiptTemplateRow>(
+        "SELECT * FROM receipt_templates WHERE type = 'default' AND is_default = 1 LIMIT 1"
+      );
+    }
+    // 3. Fallback: any row
+    if (!tpl) {
+      tpl = await req.asyncDb.get<ReceiptTemplateRow>(
+        'SELECT * FROM receipt_templates ORDER BY is_default DESC, id ASC LIMIT 1'
+      );
+    }
 
-  if (!tpl) throw new AppError('No receipt templates found', 404);
-  res.json({ success: true, data: tpl });
+    if (!tpl) throw new AppError('No receipt templates found', 404);
+    res.json({ success: true, data: tpl });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Not found' });
+      return;
+    }
+    logger.error('receipt_templates_for_type_error', { error: (e as Error).message });
+    if (!res.headersSent) res.status(500).json({ success: false, message: 'Unexpected error' });
+  }
 });
 
 router.put('/receipt-templates/:id', adminOnly, async (req: Request, res: Response) => {
-  const id = parseInt(String(req.params.id), 10);
-  if (!Number.isFinite(id)) throw new AppError('Invalid id', 400);
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    if (!Number.isFinite(id)) throw new AppError('Invalid id', 400);
 
-  const { header_text, footer_text, name } = req.body as {
-    header_text?: string;
-    footer_text?: string;
-    name?: string;
-  };
+    const { header_text, footer_text, name } = req.body as {
+      header_text?: string;
+      footer_text?: string;
+      name?: string;
+    };
 
-  const existing = await req.asyncDb.get<ReceiptTemplateRow>(
-    'SELECT * FROM receipt_templates WHERE id = ?', id
-  );
-  if (!existing) throw new AppError('Template not found', 404);
+    const existing = await req.asyncDb.get<ReceiptTemplateRow>(
+      'SELECT * FROM receipt_templates WHERE id = ?', id
+    );
+    if (!existing) throw new AppError('Template not found', 404);
 
-  await req.asyncDb.run(
-    `UPDATE receipt_templates
-       SET header_text = COALESCE(?, header_text),
-           footer_text = COALESCE(?, footer_text),
-           name        = COALESCE(?, name)
-     WHERE id = ?`,
-    header_text ?? null,
-    footer_text ?? null,
-    name ?? null,
-    id
-  );
+    await req.asyncDb.run(
+      `UPDATE receipt_templates
+         SET header_text = COALESCE(?, header_text),
+             footer_text = COALESCE(?, footer_text),
+             name        = COALESCE(?, name)
+       WHERE id = ?`,
+      header_text ?? null,
+      footer_text ?? null,
+      name ?? null,
+      id
+    );
 
-  const updated = await req.asyncDb.get<ReceiptTemplateRow>(
-    'SELECT * FROM receipt_templates WHERE id = ?', id
-  );
-  res.json({ success: true, data: updated });
+    const updated = await req.asyncDb.get<ReceiptTemplateRow>(
+      'SELECT * FROM receipt_templates WHERE id = ?', id
+    );
+    res.json({ success: true, data: updated });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Bad request' });
+      return;
+    }
+    logger.error('receipt_templates_update_error', { error: (e as Error).message });
+    if (!res.headersSent) res.status(500).json({ success: false, message: 'Unexpected error' });
+  }
 });
 
 // POST /webhook-test — fire a synthetic test delivery to the configured URL
