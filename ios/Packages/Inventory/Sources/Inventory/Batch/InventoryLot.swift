@@ -29,7 +29,14 @@ public struct InventoryLot: Identifiable, Sendable, Decodable, Hashable {
 
     public var expiryDate: Date? {
         guard let e = expiry else { return nil }
-        return ISO8601DateFormatter().date(from: e)
+        // BUGHUNT-2026-05-18: ISO8601DateFormatter() default options reject
+        // Node Date.toISOString() (millisecond precision), so this returned
+        // nil on every real server payload. With `expiryDate == nil` the
+        // computed isExpired / isNearExpiry both short-circuit to false —
+        // meaning genuinely expired lots never lit up in the UI. Try
+        // fractional first, then plain, then date-only (some lot rows
+        // serialize as "2026-05-18" without a time component).
+        return Self.parseLotDate(e)
     }
 
     public var isExpired: Bool {
@@ -41,6 +48,32 @@ public struct InventoryLot: Identifiable, Sendable, Decodable, Hashable {
         guard let d = expiryDate else { return false }
         let days30 = Date().addingTimeInterval(30 * 86400)
         return d < days30 && !isExpired
+    }
+
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private static let dateOnly: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(secondsFromGMT: 0)
+        return f
+    }()
+
+    private static func parseLotDate(_ raw: String) -> Date? {
+        isoFractional.date(from: raw)
+            ?? isoPlain.date(from: raw)
+            ?? dateOnly.date(from: String(raw.prefix(10)))
     }
 
     enum CodingKeys: String, CodingKey {
