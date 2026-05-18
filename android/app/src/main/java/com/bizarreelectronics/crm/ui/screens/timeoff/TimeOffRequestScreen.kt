@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -29,6 +30,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -124,7 +126,18 @@ fun TimeOffRequestScreen(
                 state.requests.isEmpty() -> EmptyState(
                     icon = Icons.Default.BeachAccess,
                     title = "No requests yet",
-                    subtitle = "Tap + to submit a time-off request.",
+                    subtitle = "Submit a vacation, sick, or personal-day request for approval.",
+                    action = {
+                        FilledTonalButton(onClick = { viewModel.showRequestDialog() }) {
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.size(8.dp))
+                            Text("Request time off")
+                        }
+                    },
                 )
 
                 else -> LazyColumn(

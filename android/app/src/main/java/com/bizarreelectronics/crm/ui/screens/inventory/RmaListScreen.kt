@@ -199,7 +199,18 @@ fun RmaListScreen(
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         EmptyState(
                             title = "No vendor returns",
-                            subtitle = "Tap + to log a return to a supplier.",
+                            subtitle = "Log a return-to-supplier RMA to track defective stock.",
+                            action = {
+                                FilledTonalButton(onClick = onCreateClick) {
+                                    Icon(
+                                        Icons.Default.Add,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Spacer(Modifier.size(8.dp))
+                                    Text("Log return")
+                                }
+                            },
                         )
                     }
                 }

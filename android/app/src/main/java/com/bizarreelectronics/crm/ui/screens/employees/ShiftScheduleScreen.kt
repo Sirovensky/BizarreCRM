@@ -317,7 +317,20 @@ fun ShiftScheduleScreen(
                 state.shifts.isEmpty() -> EmptyState(
                     icon = Icons.Default.Schedule,
                     title = "No shifts this week",
-                    subtitle = if (state.isManager) "Tap + to add a shift." else "No shifts scheduled.",
+                    subtitle = if (state.isManager) "Schedule shifts so staff can see their week." else "No shifts scheduled.",
+                    action = if (state.isManager) {
+                        {
+                            FilledTonalButton(onClick = { viewModel.showAddDialog() }) {
+                                Icon(
+                                    Icons.Default.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(Modifier.size(8.dp))
+                                Text("Add shift")
+                            }
+                        }
+                    } else null,
                 )
 
                 else -> ShiftWeekGrid(
