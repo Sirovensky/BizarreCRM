@@ -55,6 +55,8 @@ public final class ShiftHistoryViewModel {
             entries = response.entries
             totalHours = response.totalHours
             loadState = .loaded
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             AppLog.ui.error("ShiftHistory loadAll failed: \(error.localizedDescription, privacy: .public)")
             loadState = .failed(error.localizedDescription)
@@ -71,6 +73,8 @@ public final class ShiftHistoryViewModel {
             entries = response.entries
             totalHours = response.totalHours
             loadState = .loaded
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: scope swap cancel
         } catch {
             AppLog.ui.error("ShiftHistory loadCurrentWeek failed: \(error.localizedDescription, privacy: .public)")
             loadState = .failed(error.localizedDescription)

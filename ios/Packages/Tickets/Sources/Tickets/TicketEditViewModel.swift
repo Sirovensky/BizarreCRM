@@ -69,6 +69,12 @@ public final class TicketEditViewModel {
         do {
             _ = try await api.updateTicket(id: ticketId, req)
             didSave = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: see TicketEditDeepViewModel.submit().
+            // Sheet dismiss mid-PATCH cancels response, but server may
+            // have committed. Retap re-PATCHs (audit noise + 409 risk
+            // on stale updated_at). Stay silent.
+            return
         } catch {
             if TicketOfflineQueue.isNetworkError(error) {
                 await enqueueOffline(req)

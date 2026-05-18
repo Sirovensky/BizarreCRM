@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import Core
 import Networking
 
 /// §38 — View-model for `LoyaltyBalanceView`.
@@ -42,6 +43,8 @@ public final class LoyaltyBalanceViewModel {
             let result = try await api.getLoyaltyBalance(customerId: customerId)
             balance = result
             state = .loaded
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: customer-swap cancel
         } catch let transport as APITransportError {
             state = comingSoonOrFailed(transport)
         } catch {
@@ -59,6 +62,10 @@ public final class LoyaltyBalanceViewModel {
         do {
             let data = try await api.fetchLoyaltyPass(customerId: customerId)
             passData = data
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels pass fetch; passData stays
+            // nil, user can retry from the same view.
+            return
         } catch let transport as APITransportError {
             // Demote to coming-soon if the server hasn't shipped the endpoint.
             state = comingSoonOrFailed(transport)

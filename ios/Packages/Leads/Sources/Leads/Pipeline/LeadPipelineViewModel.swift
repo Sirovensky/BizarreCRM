@@ -78,6 +78,8 @@ public final class LeadPipelineViewModel {
             allLeads = try await api.listLeads(pageSize: 200)
             applyFilter()
             state = .loaded
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: filter swap cancel
         } catch {
             AppLog.ui.error("Pipeline load failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)
@@ -134,6 +136,11 @@ public final class LeadPipelineViewModel {
         do {
             let body = LeadStatusUpdateBody(status: destination.rawValue)
             _ = try await api.updateLeadStatus(id: lead.id, body: body)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: drag dismiss / nav cancels PATCH, but
+            // server may have committed. Keep optimistic move (don't
+            // rollback) — reload() would re-fetch and confirm.
+            return
         } catch {
             AppLog.ui.error("Pipeline move failed: \(error.localizedDescription, privacy: .public)")
             // Rollback.
