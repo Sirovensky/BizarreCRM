@@ -65,6 +65,10 @@ final class EstimateVersioningViewModel {
                 as: VersionsResponse.self
             )
             versions = resp.versions ?? []
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: pull-to-refresh / nav cancels prior fetch;
+            // keep prior versions visible.
+            return
         } catch {
             // Graceful degradation: versioning is not yet wired on all installs.
             // Show empty state rather than error if 404.

@@ -43,6 +43,10 @@ final class RepairServicePickerViewModel {
         defer { isLoading = false }
         do {
             services = try await api.listRepairServices()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancels fetch; surfacing
+            // a red banner is misleading when user has already left.
+            return
         } catch {
             errorMessage = "Could not load services: \(error.localizedDescription)"
         }

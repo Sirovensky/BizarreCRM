@@ -36,6 +36,9 @@ public final class EstimateVersionsViewModel {
         defer { isLoading = false }
         do {
             versions = try await api.estimateVersions(estimateId: estimateId)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav-away cancels fetch; keep prior list.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -46,6 +49,11 @@ public final class EstimateVersionsViewModel {
         defer { isLoadingVersion = false }
         do {
             selectedVersion = try await api.estimateVersion(estimateId: estimateId, versionId: version.id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: tapping another version cancels prior
+            // snapshot fetch; leave selectedVersion alone so newer fetch
+            // sets it.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
