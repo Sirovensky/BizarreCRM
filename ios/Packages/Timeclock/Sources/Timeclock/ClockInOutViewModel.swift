@@ -112,6 +112,11 @@ public final class ClockInOutViewModel {
             state = .active(synthetic)
             updateElapsed(from: synthetic)
             AppLog.sync.info("Clock-in queued offline for userId=\(userId, privacy: .private)")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: server may already have accepted the POST.
+            // Painting "Clock-in failed" tempts a retry that creates a
+            // second clock-in row. Refresh from the server instead.
+            await refresh()
         } catch {
             AppLog.ui.error("Clock-in failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)
@@ -133,6 +138,10 @@ public final class ClockInOutViewModel {
             state = .idle
             runningElapsed = 0
             AppLog.sync.info("Clock-out queued offline for userId=\(userId, privacy: .private)")
+        } catch let e where AppError.isCancellation(e) {
+            // Don't paint "Clock-out failed" — the POST may have landed.
+            // Reconcile against the server's current truth.
+            await refresh()
         } catch {
             AppLog.ui.error("Clock-out failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)
