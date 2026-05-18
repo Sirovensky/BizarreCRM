@@ -102,6 +102,14 @@ public final class PurchaseOrderComposeViewModel {
         do {
             _ = try await repo.create(body)
             return true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: purchase-order create has no idempotency
+            // key. A cancellation banner tempted a re-tap that produced a
+            // duplicate PO — a real spending commitment to the supplier.
+            // Clear errorMessage so the user reopens the sheet rather than
+            // re-tapping a misleading toast.
+            errorMessage = nil
+            return false
         } catch {
             AppLog.ui.error("PO compose submit failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
