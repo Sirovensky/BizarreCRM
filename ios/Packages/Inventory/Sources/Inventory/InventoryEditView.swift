@@ -70,6 +70,9 @@ public final class InventoryEditViewModel {
         do {
             _ = try await api.updateInventoryItem(id: itemId, req)
             didSave = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: edit-item update (name/SKU/prices) cancelled mid-flight. Server may have committed; "Failed" banner tempts retry → second update applies the same price/SKU rename on already-renamed row (idempotent for name but still wasteful, and SKU rename can collide if user changed back).
+            return
         } catch {
             if InventoryOfflineQueue.isNetworkError(error) {
                 await enqueueOffline(req)
