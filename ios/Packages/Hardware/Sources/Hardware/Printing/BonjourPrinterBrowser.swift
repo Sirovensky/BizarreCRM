@@ -110,11 +110,27 @@ public actor BonjourPrinterBrowser: BonjourPrinterBrowserProtocol {
                 return
             }
             Task {
-                await self._setStream(continuation)
-                await self._startBrowsing()
+                await self._installStream(continuation)
             }
         }
         return stream
+    }
+
+    private func _installStream(_ continuation: AsyncStream<[DiscoveredPrinter]>.Continuation) {
+        // BUGHUNT-2026-05-18: replace any prior subscriber cleanly and re-arm
+        // browsers from a known-empty state. If discoveryStream() is called
+        // twice (e.g., SwiftUI .task re-fires when the picker re-appears),
+        // the prior consumer's for-await would otherwise block forever
+        // waiting for yields to a continuation we just dropped, and a second
+        // set of NWBrowsers would leak — three additional browsers per re-
+        // entry, all racing into _handleResults and hammering the LAN.
+        self.continuation?.finish()
+        self.continuation = continuation
+        if !browsers.isEmpty {
+            _stopBrowsers()
+            discovered.removeAll()
+        }
+        _startBrowsing()
     }
 
     public func refresh() async {
@@ -133,10 +149,6 @@ public actor BonjourPrinterBrowser: BonjourPrinterBrowserProtocol {
     }
 
     // MARK: - Private
-
-    private func _setStream(_ continuation: AsyncStream<[DiscoveredPrinter]>.Continuation) {
-        self.continuation = continuation
-    }
 
     private func _startBrowsing() {
         for type in Self.serviceTypes {
