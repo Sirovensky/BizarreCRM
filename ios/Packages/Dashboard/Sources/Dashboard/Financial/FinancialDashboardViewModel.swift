@@ -34,6 +34,12 @@ public final class FinancialDashboardViewModel {
     // MARK: - Private
 
     @ObservationIgnored private let repo: FinancialDashboardRepository
+    // BUGHUNT-2026-05-17: rapid period picker swap (e.g. defaultLast30Days
+    // → defaultLast90Days while a load is in flight) spawned concurrent
+    // repo.load calls. The slower response could land second and overwrite
+    // a freshly applied newer snapshot. Track in-flight Task so applyParams
+    // cancels the prior load before kicking the new one.
+    @ObservationIgnored private var loadTask: Task<Void, Never>?
 
     // MARK: - Init
 
@@ -45,6 +51,15 @@ public final class FinancialDashboardViewModel {
 
     /// Load or soft-refresh: keeps existing data visible during re-fetch.
     public func load() async {
+        loadTask?.cancel()
+        let task = Task<Void, Never> { [weak self] in
+            await self?.performLoad()
+        }
+        loadTask = task
+        await task.value
+    }
+
+    private func performLoad() async {
         if case .loaded = state {
             // Soft refresh — don't regress to .loading; keep existing data.
         } else {
@@ -53,7 +68,12 @@ public final class FinancialDashboardViewModel {
 
         do {
             let snapshot = try await repo.load(params: params)
+            if Task.isCancelled { return }
             state = .loaded(snapshot)
+        } catch let e where AppError.isCancellation(e) {
+            // Superseded by a newer load; leave state alone so the newer
+            // task can transition to .loaded.
+            return
         } catch {
             AppLog.ui.error(
                 "FinancialDashboard load failed: \(error.localizedDescription, privacy: .public)"
