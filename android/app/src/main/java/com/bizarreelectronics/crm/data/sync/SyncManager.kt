@@ -235,6 +235,14 @@ class SyncManager @Inject constructor(
         // the newly-pending entry on its own.
         try {
             withContext(Dispatchers.IO) { flushQueue() }
+        } catch (e: CancellationException) {
+            // BUGHUNT-2026-05-17: re-throw cancellation so the caller's
+            // coroutine sees the cancel signal cleanly. The previous broad
+            // catch (e: Exception) was swallowing CancellationException,
+            // letting the ViewModel coroutine that owns this call continue
+            // post-cancel (e.g. emit a fake "Retry submitted" toast on a
+            // screen the user already navigated away from).
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "Immediate flush after retryDeadLetter($id) failed [${e.javaClass.simpleName}]: ${e.message}")
         }
