@@ -103,6 +103,10 @@ public final class BinLocationManagerViewModel {
         isLoading = true; errorMessage = nil
         defer { isLoading = false }
         do { binLocations = try await repo.list() }
+        catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: list reload cancelled; keep existing.
+            return
+        }
         catch { errorMessage = error.localizedDescription }
     }
 
@@ -117,6 +121,9 @@ public final class BinLocationManagerViewModel {
             binLocations.append(bin)
             aisle = ""; shelf = ""; position = ""
             showCreateSheet = false
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: bin create may have committed when sheet was dismissed; retry creates duplicate bin row (aisle/shelf/position triple may not have UNIQUE constraint). Silent return; list refresh shows real state.
+            return
         } catch { errorMessage = error.localizedDescription }
     }
 
@@ -126,6 +133,9 @@ public final class BinLocationManagerViewModel {
         do {
             try await repo.delete(id: id)
             binLocations.removeAll { $0.id == id }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: bin delete may have committed; retry hits 404. Silent return.
+            return
         } catch { errorMessage = error.localizedDescription }
     }
 
@@ -139,6 +149,9 @@ public final class BinLocationManagerViewModel {
             )
             showBatchAssignSheet = false
             selectedItemIds = []
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: batchAssign updates N inventory rows' bin_location_id server-side. Idempotent overwrite (re-assignment to same bin), but a "Failed" banner during nav-away tempts retry — wasteful but not corrupt. Silent return preserves selection for explicit retry.
+            return
         } catch { errorMessage = error.localizedDescription }
     }
 
