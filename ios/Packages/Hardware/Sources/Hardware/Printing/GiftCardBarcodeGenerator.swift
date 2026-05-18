@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Foundation
 import CoreImage
+import CryptoKit
 import UIKit
 import Core
 
@@ -112,8 +113,16 @@ public actor GiftCardBarcodeGenerator {
     /// This helper is used when creating a card locally (e.g. offline) before
     /// the server assigns a permanent ID.
     public func generateCardNumber() -> String {
+        // BUGHUNT-2026-05-17: check SecRandomCopyBytes status. On failure the
+        // buffer stays zero-filled and every locally-generated card lands as
+        // "GC-0000000000000000", which collides at the server uniqueness
+        // index and silently drops the offline-created card on next sync.
         var bytes = [UInt8](repeating: 0, count: 8)
-        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        if status != errSecSuccess {
+            let key = SymmetricKey(size: .init(bitCount: 64))
+            bytes = key.withUnsafeBytes { Array($0) }
+        }
         let hex = bytes.map { String(format: "%02X", $0) }.joined()
         return "GC-\(hex)"
     }

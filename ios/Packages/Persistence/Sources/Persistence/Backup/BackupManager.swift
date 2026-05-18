@@ -275,9 +275,26 @@ public actor BackupManager {
     // MARK: - Private helpers
 
     private static func randomBytes(count: Int) -> [UInt8] {
+        // BUGHUNT-2026-05-17: check the SecRandomCopyBytes return code. The
+        // backup format embeds this as the PBKDF2 salt — a zero-filled
+        // salt across multiple backups means a single passphrase guess
+        // unlocks every export. Fall back to CryptoKit's CSPRNG-backed
+        // SymmetricKey before returning anything but real random bytes.
         var bytes = [UInt8](repeating: 0, count: count)
-        _ = SecRandomCopyBytes(kSecRandomDefault, count, &bytes)
-        return bytes
+        let status = SecRandomCopyBytes(kSecRandomDefault, count, &bytes)
+        if status == errSecSuccess {
+            return bytes
+        }
+        // Best-effort fallback: SymmetricKey gives at most 512-bit keys,
+        // so chunk for larger counts.
+        var out: [UInt8] = []
+        out.reserveCapacity(count)
+        while out.count < count {
+            let need = min(count - out.count, 64)
+            let key = SymmetricKey(size: .init(bitCount: need * 8))
+            out.append(contentsOf: key.withUnsafeBytes { Array($0) })
+        }
+        return out
     }
 
     /// PBKDF2-SHA256 key derivation using CommonCrypto.

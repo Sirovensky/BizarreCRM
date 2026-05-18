@@ -104,10 +104,21 @@ public final class InMemoryRosterStorage: RosterStorage, @unchecked Sendable {
 
 public enum PINHasher {
     /// Generates a cryptographically random 16-byte salt, base64-encoded.
+    ///
+    /// BUGHUNT-2026-05-17: check the SecRandomCopyBytes return code rather
+    /// than discarding it with `_ =`. On failure the buffer stays
+    /// zero-filled, so every PIN of every user in the roster would hash
+    /// against the same all-zero salt — two users with the same PIN would
+    /// collide. Fall back to CryptoKit's CSPRNG-backed SymmetricKey.
     public static func generateSalt() -> String {
         var bytes = [UInt8](repeating: 0, count: 16)
-        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        return Data(bytes).base64EncodedString()
+        let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        if status == errSecSuccess {
+            return Data(bytes).base64EncodedString()
+        }
+        let key = SymmetricKey(size: .bits128)
+        let fallback = key.withUnsafeBytes { Data($0) }
+        return fallback.base64EncodedString()
     }
 
     /// SHA-256 of (salt + pin), returned as lowercase hex.
