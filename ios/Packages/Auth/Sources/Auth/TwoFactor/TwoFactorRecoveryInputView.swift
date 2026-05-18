@@ -78,7 +78,9 @@ public struct TwoFactorRecoveryInputView: View {
                 .foregroundStyle(.bizarreOnSurfaceMuted)
 
             TextField("XXXX-XXXXXXXX", text: $vm.recoveryCodeInput)
-                .autocapitalization(.allCharacters)
+                #if canImport(UIKit)
+                .textInputAutocapitalization(.characters)
+                #endif
                 .disableAutocorrection(true)
                 .font(.system(.body, design: .monospaced))
                 .padding(BrandSpacing.md)
