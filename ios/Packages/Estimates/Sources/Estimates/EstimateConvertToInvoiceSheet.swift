@@ -68,6 +68,14 @@ final class EstimateConvertToInvoiceViewModel {
             )
             convertedInvoiceId = resp.invoiceId
             AppLog.ui.info("Estimate \(self.estimateId) converted to invoice \(resp.invoiceId) due \(isoFormatter.string(from: self.dueDate)).")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: POST /convert-to-invoice creates an invoice
+            // row — money-critical. The server should be idempotent on
+            // "already converted" (returns 409) but if the user dismisses
+            // before the response lands, painting an error tempts a retap
+            // that may race the existing conversion and double-bill. Stay
+            // silent; the list reload on dismiss reveals the new invoice.
+            return
         } catch {
             errorMessage = AppError.from(error).errorDescription ?? error.localizedDescription
             AppLog.ui.error("Estimate convert-to-invoice failed: \(error.localizedDescription, privacy: .public)")
