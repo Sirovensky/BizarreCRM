@@ -191,6 +191,11 @@ public actor BluetoothDeviceManager: BluetoothDeviceManagerProtocol {
         for device in pairedDevices {
             do {
                 try await reconnect(device.id)
+            } catch let e where AppError.isCancellation(e) {
+                // BUGHUNT-2026-05-17: bail on cancel rather than continuing
+                // through the remaining devices. The launch task is being
+                // torn down (user signed out / app suspended).
+                return
             } catch {
                 AppLog.hardware.warning("BluetoothDeviceManager: auto-reconnect failed for \(device.name, privacy: .public) — \(error.localizedDescription, privacy: .public)")
             }
