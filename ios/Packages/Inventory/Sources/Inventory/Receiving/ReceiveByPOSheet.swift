@@ -49,6 +49,14 @@ public final class ReceiveByPOViewModel {
             selectedPO = nil
             BrandHaptics.success()
             return true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: receive bumps inventory and writes
+            // stock_movements rows — no idempotency key. A "failed" toast
+            // tempted a re-tap that doubled the received quantities. Clear
+            // errorMessage and reload so the user sees server truth.
+            errorMessage = nil
+            await load()
+            return false
         } catch {
             errorMessage = error.localizedDescription
             return false
