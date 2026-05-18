@@ -132,10 +132,22 @@ public struct RecurringInvoiceListView: View {
             Text("No recurring rules")
                 .font(.brandTitleMedium())
                 .foregroundStyle(.bizarreOnSurface)
-            Text("Tap + to set up automatic invoice generation.")
+            Text("Set up automatic invoice generation on a schedule.")
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
                 .multilineTextAlignment(.center)
+            // BUGHUNT-2026-05-18: copy said "tap + to set up" but the +
+            // button was a tiny toolbar icon. Add an inline CTA so the
+            // path forward is obvious.
+            Button {
+                vm.editingRule = nil
+                vm.showEditor = true
+            } label: {
+                Label("New rule", systemImage: "plus")
+                    .font(.brandLabelLarge())
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.bizarreOrange)
         }
         .padding(BrandSpacing.xxl)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
