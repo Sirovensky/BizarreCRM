@@ -51,8 +51,14 @@ public actor LoyaltyWalletService {
         // BUGHUNT-2026-05-17: correct path + query param to match the server
         // route in crm.routes.ts. Build via URLComponents so the query is
         // properly escaped.
+        // BUGHUNT-2026-05-18: prepend `/api/v1` — `crmRoutes` is mounted at
+        // `/api/v1/crm` in index.ts L1768. The doc comment above had the
+        // right URL but the appended path here was missing the version
+        // prefix, so requests landed on the SPA catchall and returned HTML
+        // that PKPass parsing rejected — Add-to-Wallet still broken after
+        // the previous fix.
         var components = URLComponents(
-            url: base.appendingPathComponent("/crm/customers/\(customerId)/wallet-pass"),
+            url: base.appendingPathComponent("/api/v1/crm/customers/\(customerId)/wallet-pass"),
             resolvingAgainstBaseURL: false
         )
         components?.queryItems = [URLQueryItem(name: "format", value: "pkpass")]
