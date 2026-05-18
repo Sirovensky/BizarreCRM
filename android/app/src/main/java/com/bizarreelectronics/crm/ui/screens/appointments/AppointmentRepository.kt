@@ -2,6 +2,7 @@ package com.bizarreelectronics.crm.ui.screens.appointments
 
 import com.bizarreelectronics.crm.data.remote.dto.AppointmentItem
 import com.bizarreelectronics.crm.data.remote.api.AppointmentApi
+import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -30,7 +31,19 @@ class AppointmentRepository @Inject constructor(
     }
 
     suspend fun sendReminder(id: Long): Boolean {
-        return runCatching { api.sendReminder(id) }.map { it.success }.getOrDefault(false)
+        // BUGHUNT-2026-05-17: runCatching wrapped CancellationException via
+        // kotlin.Result/Throwable, returning `false` to callers — which made
+        // them paint "Reminder send failed" toast on viewModelScope teardown
+        // and tempted a re-tap that would send a SECOND SMS to the customer.
+        // Re-throw cancellation so the caller's structured concurrency
+        // handles it correctly.
+        return try {
+            api.sendReminder(id).success
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            false
+        }
     }
 
     /** §10.3 Minimal quick-create: POST /appointments with title + start_time + end_time only. */
