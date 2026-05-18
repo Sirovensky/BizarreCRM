@@ -162,8 +162,8 @@ public enum OvertimeCalculator {
         shift: Shift,
         effectiveMinutes: Int
     ) -> [(dayKey: String, minutes: Int, isHoliday: Bool)] {
-        guard let inDate = ISO8601DateFormatter().date(from: shift.clockIn),
-              let outDate = shift.clockOut.flatMap({ ISO8601DateFormatter().date(from: $0) }),
+        guard let inDate = ShiftTimestampParser.parse(shift.clockIn),
+              let outDate = shift.clockOut.flatMap({ ShiftTimestampParser.parse($0) }),
               outDate > inDate
         else {
             // Fallback: put all minutes on the clock-in day
@@ -235,7 +235,7 @@ public enum OvertimeCalculator {
     // MARK: - Date helpers
 
     private static func dayKeyFromISO(_ iso: String) -> String? {
-        guard let d = ISO8601DateFormatter().date(from: iso) else { return nil }
+        guard let d = ShiftTimestampParser.parse(iso) else { return nil }
         return isoDateKey(for: d)
     }
 

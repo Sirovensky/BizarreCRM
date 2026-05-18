@@ -33,10 +33,16 @@ public struct BreakEntry: Decodable, Sendable, Identifiable, Hashable {
 
     /// Computed duration in whole minutes.
     /// Returns `nil` when the break is still ongoing (`endAt` is `nil`).
+    ///
+    /// BUGHUNT-2026-05-18: was `ISO8601DateFormatter()` with default options,
+    /// which rejects both Node `Date.toISOString()` fractional strings AND
+    /// SQLite's `YYYY-MM-DD HH:MM:SS` shape (see [[ios-iso-fractional-parser]]).
+    /// Every server-returned break thus had `duration == nil`, so the timesheet
+    /// row never showed paid-vs-unpaid break time.
     public var duration: Int? {
         guard let end = endAt,
-              let startDate = ISO8601DateFormatter().date(from: startAt),
-              let endDate = ISO8601DateFormatter().date(from: end)
+              let startDate = ShiftTimestampParser.parse(startAt),
+              let endDate = ShiftTimestampParser.parse(end)
         else { return nil }
         return max(0, Int(endDate.timeIntervalSince(startDate) / 60))
     }
