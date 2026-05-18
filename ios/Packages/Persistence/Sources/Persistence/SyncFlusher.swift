@@ -66,6 +66,10 @@ public actor SyncFlusher {
         let due: [SyncQueueRecord]
         do {
             due = try await SyncQueueStore.shared.due(limit: 50)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: don't paint .readError on flush cancel.
+            // The next flush pass will pick up the same rows.
+            return .empty
         } catch {
             AppLog.sync.error("flush() failed to read due rows: \(error.localizedDescription, privacy: .public)")
             return .readError
