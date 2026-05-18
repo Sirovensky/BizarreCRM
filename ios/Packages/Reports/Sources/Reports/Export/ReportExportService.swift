@@ -83,10 +83,17 @@ public actor ReportExportService {
     /// Example: "BizarreCRM Report" + "2025-01-01 – 2025-01-31"
     ///          → `BizarreCRM_Report_2025-01-01_2025-01-31.pdf`
     private static func pdfFilename(for report: ReportSnapshot) -> String {
+        // BUGHUNT-2026-05-17: sanitise was inverted — `components(separatedBy:)`
+        // splits on the chars passed in, so passing the *safe* charset as the
+        // separator stripped all the safe characters and left only the unsafe
+        // ones. Every report PDF was being written to "BizarreCRM_Report.pdf"
+        // (or "–.pdf" when an em-dash slipped through), so a second export
+        // overwrote the temp file while a ShareLink was still reading the
+        // first one. Build the safe charset, then keep only those scalars.
+        let safeChars = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_-"))
         func sanitise(_ s: String) -> String {
-            s.replacingOccurrences(of: " ", with: "_")
-             .components(separatedBy: CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_-")))
-             .joined()
+            let replaced = s.replacingOccurrences(of: " ", with: "_")
+            return String(String.UnicodeScalarView(replaced.unicodeScalars.filter { safeChars.contains($0) }))
         }
         let titlePart  = sanitise(report.title)
         let periodPart = sanitise(report.period)
