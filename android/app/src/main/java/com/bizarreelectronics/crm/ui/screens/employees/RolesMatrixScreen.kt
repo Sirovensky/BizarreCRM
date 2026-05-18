@@ -49,6 +49,7 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -194,31 +195,35 @@ class RolesMatrixViewModel @Inject constructor(
             val updates = cur.pending.map { (key, allowed) ->
                 PermissionEntryDto(key = key, allowed = allowed)
             }
-            runCatching {
+            try {
                 rolesApi.updateRolePermissions(
                     roleId = roleId,
                     body = UpdatePermissionsBody(updates = updates),
                 )
-            }
-                .onSuccess {
-                    _state.value = _state.value.copy(
-                        isSaving = false,
-                        isDirty = false,
-                        actionMessage = "Permissions saved",
-                    )
-                }
-                .onFailure { t ->
-                    val msg = if (t is retrofit2.HttpException) {
-                        when (t.code()) {
-                            400 -> "Bad request — check permission keys"
-                            403 -> "Admin access required"
-                            else -> "Save failed (${t.code()})"
-                        }
-                    } else {
-                        t.message ?: "Save failed"
+                _state.value = _state.value.copy(
+                    isSaving = false,
+                    isDirty = false,
+                    actionMessage = "Permissions saved",
+                )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: runCatching swallowed CancellationException
+                // and painted "Save failed" on back-nav. Permission update is
+                // idempotent server-side, but the admin reads it as "save was
+                // lost" and re-toggles, potentially undoing the persisted
+                // change. Re-throw so the launch dies cleanly.
+                throw e
+            } catch (t: Throwable) {
+                val msg = if (t is retrofit2.HttpException) {
+                    when (t.code()) {
+                        400 -> "Bad request — check permission keys"
+                        403 -> "Admin access required"
+                        else -> "Save failed (${t.code()})"
                     }
-                    _state.value = _state.value.copy(isSaving = false, actionMessage = msg)
+                } else {
+                    t.message ?: "Save failed"
                 }
+                _state.value = _state.value.copy(isSaving = false, actionMessage = msg)
+            }
         }
     }
 
