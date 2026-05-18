@@ -233,6 +233,7 @@ public struct CustomerBirthdayAutomationSheet: View {
     }
 
     private func save() async {
+        guard !isSaving else { return }
         isSaving = true
         errorMessage = nil
         defer { isSaving = false }
@@ -240,6 +241,12 @@ public struct CustomerBirthdayAutomationSheet: View {
             try await api.setCustomerBirthdayPrefs(customerId: customerId, prefs: prefs)
             onSave?()
             dismiss()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: birthday-automation PUT may have committed
+            // server-side. Toggles drive a cron-scheduled birthday SMS;
+            // retap on banner double-flips and could enroll/un-enroll the
+            // customer in error.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
