@@ -38,6 +38,7 @@ import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import com.bizarreelectronics.crm.data.remote.dto.CreateEmployeeRequest
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -111,6 +112,11 @@ class EmployeeCreateViewModel @Inject constructor(
 
     fun save() {
         val current = _state.value
+        // BUGHUNT-2026-05-17: re-entry guard — double-tap on Save would
+        // POST twice before the launch had a chance to set isSubmitting.
+        // The second POST gets a 409 ("That username is already taken") but
+        // only because it raced; the false error confuses the user.
+        if (current.isSubmitting) return
         val username = current.username.trim()
         val firstName = current.firstName.trim()
         val lastName = current.lastName.trim()
@@ -173,6 +179,13 @@ class EmployeeCreateViewModel @Inject constructor(
                     else -> e.message() ?: "Failed to create employee"
                 }
                 _state.value = _state.value.copy(isSubmitting = false, error = message)
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: bare catch (e: Exception) below would
+                // have painted a fake "Failed to create employee" snackbar on
+                // back-nav, tempting a re-tap that would either succeed
+                // (duplicate creation if the original was still in-flight) or
+                // 409 on the username. Re-throw so the launch dies cleanly.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSubmitting = false,
