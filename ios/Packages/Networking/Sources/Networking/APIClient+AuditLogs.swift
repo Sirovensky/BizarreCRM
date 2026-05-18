@@ -35,6 +35,12 @@ public extension APIClient {
         if let entityKind  { items.append(.init(name: "entity_kind",   value: entityKind)) }
         if let cursor      { items.append(.init(name: "cursor",        value: String(cursor))) }
         if let limit       { items.append(.init(name: "limit",         value: String(limit))) }
-        return try await get("/activity", query: items.isEmpty ? nil : items, as: type)
+        // BUGHUNT-2026-05-17: path was a bare `/activity` — iOS APIClient
+        // base URL is the shop origin, no /api/v1 suffix. Server mounts
+        // activity.routes at `/api/v1/activity` (index.ts L1738), so
+        // every audit-log feed fetch from iOS 404'd. Surfaces as the
+        // AuditLog screen showing "No events yet." regardless of the
+        // actual history.
+        return try await get("/api/v1/activity", query: items.isEmpty ? nil : items, as: type)
     }
 }
