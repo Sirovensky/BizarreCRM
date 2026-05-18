@@ -178,10 +178,20 @@ public struct GroupListView: View {
             Text("No customer groups yet")
                 .font(.brandHeadlineMedium())
                 .foregroundStyle(.bizarreOnSurface)
-            Text("Tap + to create your first group.")
+            Text("Bucket customers by segment, VIP tier, or promo eligibility to target campaigns.")
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
                 .multilineTextAlignment(.center)
+            // BUGHUNT-2026-05-18: empty state said 'tap +' but the +
+            // is in the top-right toolbar, easy to miss. Wire the
+            // create flow inline so the path forward is obvious.
+            Button {
+                vm.showingCreate = true
+            } label: {
+                Label("New group", systemImage: "plus")
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(.top, BrandSpacing.sm)
         }
         .padding(BrandSpacing.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -277,11 +287,17 @@ private struct CreateGroupSheet: View {
                     TextField("Group name", text: $vm.newGroupName)
                         .font(.brandBodyMedium())
                         .autocorrectionDisabled()
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.words)
+                        #endif
                         .accessibilityLabel("Group name")
 
                     TextField("Description (optional)", text: $vm.newGroupDescription, axis: .vertical)
                         .font(.brandBodyMedium())
                         .lineLimit(3...6)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.sentences)
+                        #endif
                         .accessibilityLabel("Group description")
                 } header: {
                     Text("Group details")

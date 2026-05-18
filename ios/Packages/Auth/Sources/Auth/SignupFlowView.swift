@@ -329,7 +329,15 @@ public struct SignupFlowView: View {
 
             HStack(spacing: BrandSpacing.sm) {
                 BrandTextField("First name", text: $vm.firstName, hint: "Jane")
+                    #if canImport(UIKit)
+                    .textContentType(.givenName)
+                    .textInputAutocapitalization(.words)
+                    #endif
                 BrandTextField("Last name", text: $vm.lastName, hint: "Smith")
+                    #if canImport(UIKit)
+                    .textContentType(.familyName)
+                    .textInputAutocapitalization(.words)
+                    #endif
             }
 
             BrandTextField(

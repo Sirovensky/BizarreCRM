@@ -159,6 +159,9 @@ public struct CustomerNewComplaintSheet: View {
                     TextEditor(text: $description)
                         .font(.brandBodyMedium())
                         .frame(minHeight: 100)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.sentences)
+                        #endif
                         .accessibilityLabel("Complaint description")
                 }
 
