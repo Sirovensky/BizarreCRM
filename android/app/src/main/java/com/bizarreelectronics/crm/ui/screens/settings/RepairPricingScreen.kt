@@ -47,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -148,7 +149,11 @@ fun RepairPricingScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Search,
+                    capitalization = KeyboardCapitalization.None,
+                    autoCorrect = false,
+                ),
             )
 
             // ── Category filter chips ──────────────────────────────────────
@@ -430,6 +435,9 @@ fun RepairServiceEditDialog(
                     supportingText = if (name.isBlank()) {
                         { Text(stringResource(R.string.error_field_required)) }
                     } else null,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words,
+                    ),
                 )
                 OutlinedTextField(
                     value = category,
@@ -438,6 +446,9 @@ fun RepairServiceEditDialog(
                     placeholder = { Text(stringResource(R.string.repair_pricing_field_category_hint)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words,
+                    ),
                 )
                 OutlinedTextField(
                     value = laborPriceText,
@@ -455,6 +466,9 @@ fun RepairServiceEditDialog(
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 2,
                     maxLines = 3,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                    ),
                 )
                 if (saveError != null) {
                     Text(
