@@ -91,6 +91,10 @@ public final class PeerFeedbackPromptSheetViewModel {
             errorMessage = "Please answer \"What went well?\"."
             return
         }
+        // BUGHUNT-2026-05-17: re-entry guard against a double-tap that
+        // would submit duplicate feedback (the frequency cap also relies
+        // on the recordRequest being called only once).
+        guard !isSaving else { return }
         isSaving = true
         defer { isSaving = false }
         errorMessage = nil
@@ -110,6 +114,16 @@ public final class PeerFeedbackPromptSheetViewModel {
                 toEmployeeId: selectedColleagueId
             )
             onSaved(saved)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: submitFeedback may have landed before
+            // cancellation fired. Painting "cancelled" tempts a retap —
+            // creating a duplicate feedback row, and worse, the frequency
+            // cap recordRequest is NOT called (because the catch returns
+            // before it), so the local cap doesn't reflect that a request
+            // has actually been sent to the server. Suppress the error;
+            // the user/colleague picker will eventually surface this
+            // through the parent list refresh.
+            errorMessage = nil
         } catch {
             AppLog.ui.error("PeerFeedback submit failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription

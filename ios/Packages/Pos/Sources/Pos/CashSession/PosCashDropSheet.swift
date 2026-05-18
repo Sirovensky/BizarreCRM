@@ -207,6 +207,18 @@ final class PosCashDropViewModel {
             let formatted = CartMath.formatCents(cents)
             result = "\(formatted) removed from drawer"
             recordedCents = cents
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: cash drop is a money-mutating POST to
+            // /pos/cash-out (no client idempotency key currently). Bare catch
+            // painted "Task was cancelled" as the inline errorMessage when the
+            // sheet was dismissed mid-write. The POST may have ALREADY landed
+            // on the server — surfacing a fake "Failed" toast tempted the
+            // cashier to retap Drop, double-debiting the drawer (10$ drop
+            // logged twice while only $10 actually left the drawer). Stay
+            // silent on cancellation; the Z-report reconcile reveals the real
+            // state on the next register pull.
+            isSubmitting = false
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
