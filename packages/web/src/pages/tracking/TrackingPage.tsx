@@ -122,6 +122,20 @@ export function TrackingPage() {
   const { t } = usePortalI18n();
 
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
+  // BUGHUNT-2026-05-17: clear the 4s "messageSent" auto-reset timer on
+  // unmount so navigating away from the tracking page (or refreshing the
+  // portal data, which re-renders the tab) doesn't leave a stale
+  // setMessageSent(false) firing on an unmounted component. The
+  // setTimeout was previously fire-and-forget.
+  const messageSentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (messageSentTimerRef.current) {
+        clearTimeout(messageSentTimerRef.current);
+        messageSentTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // Load store config on mount (public endpoint, no auth needed)
   useEffect(() => {
@@ -261,7 +275,14 @@ export function TrackingPage() {
       );
       setMessageText('');
       setMessageSent(true);
-      setTimeout(() => setMessageSent(false), 4000);
+      // BUGHUNT-2026-05-17: track the timer in a ref so the unmount cleanup
+      // (above) can cancel it, and so a second send within 4s replaces (not
+      // races) the previous reset.
+      if (messageSentTimerRef.current) clearTimeout(messageSentTimerRef.current);
+      messageSentTimerRef.current = setTimeout(() => {
+        messageSentTimerRef.current = null;
+        setMessageSent(false);
+      }, 4000);
       // Reload portal data to get updated messages
       await loadPortalData(portalData.order_id, token);
     } catch {
