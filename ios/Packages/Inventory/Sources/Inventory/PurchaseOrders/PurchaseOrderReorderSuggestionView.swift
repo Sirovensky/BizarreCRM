@@ -73,6 +73,10 @@ public final class PurchaseOrderReorderSuggestionViewModel {
             state = .loaded(suggestions)
         case .notImplemented:
             state = .comingSoon
+        case .cancelled:
+            // BUGHUNT-2026-05-18: nav cancel — leave state as it was (still
+            // .loading from line 54). The .task re-fires on reopen.
+            return
         case .failure(let msg):
             state = .failed(msg)
         }
@@ -81,6 +85,7 @@ public final class PurchaseOrderReorderSuggestionViewModel {
     private enum FetchResult: Sendable {
         case success([LowStockItem])
         case notImplemented
+        case cancelled
         case failure(String)
     }
 
@@ -90,6 +95,8 @@ public final class PurchaseOrderReorderSuggestionViewModel {
             return .success(items)
         } catch APITransportError.notImplemented {
             return .notImplemented
+        } catch let e where AppError.isCancellation(e) {
+            return .cancelled
         } catch {
             return .failure(error.localizedDescription)
         }
