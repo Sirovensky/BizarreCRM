@@ -170,6 +170,13 @@ final class PosHoldCartViewModel {
         do {
             let row = try await api.createHeldCart(request)
             status = .saved(row.id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismissed mid-save. Painting .failed
+            // with a "cancelled" message tempts a retry that creates a
+            // duplicate held cart (POST /pos/holds has no idempotency key).
+            // Revert to idle so any retry is intentional.
+            status = .idle
+            return
         } catch let APITransportError.httpStatus(code, _) where code == 404 || code == 501 {
             status = .unavailable("Coming soon — server endpoint pending.")
         } catch {

@@ -211,6 +211,10 @@ final class PosResumeHoldsViewModel {
         do {
             let rows = try await api.listHeldCarts()
             loadState = .loaded(rows)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismissed during load. Don't paint a
+            // misleading "failed" banner — the next .task will retry.
+            return
         } catch let APITransportError.httpStatus(code, _) where code == 404 || code == 501 {
             loadState = .unavailable("Coming soon — server endpoint pending.")
         } catch {
