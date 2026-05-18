@@ -332,6 +332,13 @@ public struct CloseRegisterSheet: View {
             dismiss()
         } catch CashRegisterError.noOpenSession {
             errorMessage = "No open session — reopen the register before closing."
+        } catch let e where AppError.isCancellation(e) {
+            // Mid-flight cancellation on a register close — the server may
+            // have committed the close. Don't show "cancelled" as an error
+            // (the cashier might re-tap and double-close, generating a
+            // second Z-report with bogus variance). Stay silent; the
+            // session list refresh reveals whether the close landed.
+            return
         } catch {
             AppLog.pos.error("POS drawer close failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
