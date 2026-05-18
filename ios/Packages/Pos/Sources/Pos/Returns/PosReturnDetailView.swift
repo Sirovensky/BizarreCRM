@@ -413,6 +413,11 @@ final class PosReturnDetailViewModel {
             status = .sent("Refunded \(CartMath.formatCents(refunded)).")
         } catch let APITransportError.httpStatus(code, _) where code == 404 || code == 501 {
             await fallbackToStoreCredit()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: posReturn lacks an idempotency key, so a
+            // re-tap after a "cancelled" toast could double-refund a line.
+            // Surface a verification hint that points at the refund history.
+            status = .failed("Refund was interrupted. Check the invoice's refund history before retrying — a refund may already have been issued.")
         } catch {
             status = .failed(error.localizedDescription)
         }
