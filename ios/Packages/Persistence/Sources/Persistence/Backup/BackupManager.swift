@@ -343,7 +343,18 @@ public actor BackupManager {
     }
 
     private func iso8601Compact() -> String {
+        // BUGHUNT-2026-05-17: DateFormatter with a custom `dateFormat` honours
+        // the system locale unless an explicit POSIX locale is set. On devices
+        // with an Arabic/Persian/Thai/Burmese locale, the same Date renders
+        // as Arabic-Indic digits or an Islamic-calendar year — producing
+        // filenames like `BizarreCRM_١٤٤٧٠٥١٧_١٢٣٤٥٦.bkup` that look broken in
+        // file pickers and break any tooling that parses the timestamp out.
+        // Also force the Gregorian calendar so non-Gregorian default calendars
+        // (Buddhist, Japanese) don't shift the year component.
         let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.calendar = Calendar(identifier: .gregorian)
+        f.timeZone = TimeZone(identifier: "UTC")
         f.dateFormat = "yyyyMMdd_HHmmss"
         return f.string(from: Date())
     }
