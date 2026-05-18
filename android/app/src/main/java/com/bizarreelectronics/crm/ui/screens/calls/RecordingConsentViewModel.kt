@@ -6,6 +6,7 @@ import com.bizarreelectronics.crm.data.remote.api.RecordingConfigData
 import com.bizarreelectronics.crm.data.remote.api.RecordingConsentRequest
 import com.bizarreelectronics.crm.data.remote.api.VoiceApi
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -71,15 +72,28 @@ class RecordingConsentViewModel @Inject constructor(
     fun saveConsent(callId: Long, consented: Boolean) {
         _state.value = _state.value.copy(isSaving = true)
         viewModelScope.launch {
-            runCatching {
-                voiceApi.postRecordingConsent(RecordingConsentRequest(call_id = callId, consented = consented))
-            }.onSuccess {
+            try {
+                voiceApi.postRecordingConsent(
+                    RecordingConsentRequest(call_id = callId, consented = consented),
+                )
                 _state.value = _state.value.copy(
                     isSaving = false,
                     consentGiven = consented,
                     actionMessage = if (consented) "Recording consent given" else "Recording consent withdrawn",
                 )
-            }.onFailure { e ->
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation. runCatching used
+                // to catch CancellationException and surface it as
+                // "Failed to save consent". Recording-consent is a legal
+                // audit event: a false-fail toast tempts the agent to
+                // re-tap, writing two consent rows server-side for the
+                // same call (or, worse, flipping a previously-recorded
+                // "consented=true" to "consented=false" on retry).
+                // Clear isSaving so the VM state is consistent after the
+                // scope tears down, then propagate.
+                _state.value = _state.value.copy(isSaving = false)
+                throw e
+            } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSaving = false,
                     actionMessage = "Failed to save consent: ${e.message ?: "Unknown error"}",
