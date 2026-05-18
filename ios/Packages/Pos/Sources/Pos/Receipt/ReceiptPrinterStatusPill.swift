@@ -103,8 +103,11 @@ public final class ReceiptPrinterStatusViewModel {
         guard pollTask == nil else { return }
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
-                await self?.checkPrinter()
-                try? await Task.sleep(for: .seconds(self?.pollInterval ?? 30))
+                // BUGHUNT-2026-05-17: break on weak-self deinit so the printer
+                // status poll doesn't spin forever after the pill disappears.
+                guard let strongSelf = self else { break }
+                await strongSelf.checkPrinter()
+                try? await Task.sleep(for: .seconds(strongSelf.pollInterval))
             }
         }
     }

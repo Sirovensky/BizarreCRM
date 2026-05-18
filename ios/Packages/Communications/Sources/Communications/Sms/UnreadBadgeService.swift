@@ -30,7 +30,10 @@ public final class UnreadBadgeService {
         stopPolling()
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
-                await self?.refresh()
+                // BUGHUNT-2026-05-17: break on weak-self deinit so the badge
+                // refresh doesn't spin forever after the service deinits.
+                guard let strongSelf = self else { break }
+                await strongSelf.refresh()
                 try? await Task.sleep(nanoseconds: 30_000_000_000) // 30s
             }
         }
