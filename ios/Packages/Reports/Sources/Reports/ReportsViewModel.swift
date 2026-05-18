@@ -365,6 +365,12 @@ public final class ReportsViewModel {
                 from: priorFrom, to: priorTo, groupBy: granularity.rawValue
             )
             priorRevenue = report.rows
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: don't blank the prior-period chart on a
+            // user-driven cancel (period flip / view dismiss). Leave the
+            // last-known values so the chart doesn't flash empty before the
+            // new range loads.
+            return
         } catch {
             priorRevenue = []
         }
@@ -474,6 +480,8 @@ public final class ReportsViewModel {
             technicianPerf = try await repository.getTechnicianPerformance(
                 from: fromDateString, to: toDateString
             )
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-18: don't blank chart on date-range cancel
         } catch {
             // Endpoint may not exist yet — suppress and leave empty
             technicianPerf = []
@@ -487,6 +495,8 @@ public final class ReportsViewModel {
             taxReport = try await repository.getTaxReport(
                 from: fromDateString, to: toDateString
             )
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-18: don't nil-out tax report on cancel
         } catch {
             // Tax endpoint may not yet be live — leave nil
             taxReport = nil
@@ -500,6 +510,8 @@ public final class ReportsViewModel {
             topCustomers = try await repository.getTopCustomers(
                 from: fromDateString, to: toDateString
             )
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-18: don't blank top-customers on cancel
         } catch {
             // Endpoint may not exist yet — suppress
             topCustomers = []
@@ -531,6 +543,8 @@ public final class ReportsViewModel {
                     priorRevenue: pri.rows[idx].amountDollars
                 )
             }
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-18: don't blank YoY chart on cancel
         } catch {
             yoyPoints = []
         }
@@ -574,12 +588,19 @@ public final class ReportsViewModel {
 
     // MARK: - §15.7 Warranty claims → GET /api/v1/reports/warranty-claims
 
+    // BUGHUNT-2026-05-18: the §15.7/§15.9 loaders below previously blanked
+    // their state on `} catch {`, which fired on date-range / granularity
+    // cancellation (loadAll re-issues the fan-out, cancelling the prior).
+    // Result: tab content flashed empty between Day/Week/Month flips before
+    // the new batch arrived. Each catch now skips state mutation on cancel.
+
     private func loadWarrantyClaims() async {
         do {
             warrantyClaims = try await repository.getWarrantyClaims(
                 from: fromDateString, to: toDateString
             )
-        } catch { warrantyClaims = [] }
+        } catch let e where AppError.isCancellation(e) { return }
+        catch { warrantyClaims = [] }
     }
 
     // MARK: - §15.7 Device models repaired → GET /api/v1/reports/device-models
@@ -589,7 +610,8 @@ public final class ReportsViewModel {
             deviceModelsRepaired = try await repository.getDeviceModelsRepaired(
                 from: fromDateString, to: toDateString
             )
-        } catch { deviceModelsRepaired = [] }
+        } catch let e where AppError.isCancellation(e) { return }
+        catch { deviceModelsRepaired = [] }
     }
 
     // MARK: - §15.7 Parts usage → GET /api/v1/reports/parts-usage
@@ -599,7 +621,8 @@ public final class ReportsViewModel {
             partsUsage = try await repository.getPartsUsage(
                 from: fromDateString, to: toDateString
             )
-        } catch { partsUsage = [] }
+        } catch let e where AppError.isCancellation(e) { return }
+        catch { partsUsage = [] }
     }
 
     // MARK: - §15.7 Tech hours → GET /api/v1/reports/tech-hours
@@ -609,7 +632,8 @@ public final class ReportsViewModel {
             techHours = try await repository.getTechHours(
                 from: fromDateString, to: toDateString
             )
-        } catch { techHours = [] }
+        } catch let e where AppError.isCancellation(e) { return }
+        catch { techHours = [] }
     }
 
     // MARK: - §15.7 Stalled tickets → GET /api/v1/reports/stalled-tickets
@@ -619,7 +643,8 @@ public final class ReportsViewModel {
             stalledTickets = try await repository.getStalledTickets(
                 from: fromDateString, to: toDateString
             )
-        } catch { stalledTickets = nil }
+        } catch let e where AppError.isCancellation(e) { return }
+        catch { stalledTickets = nil }
     }
 
     // MARK: - §15.7 Customer acquisition & churn → GET /api/v1/reports/customer-acquisition
@@ -629,7 +654,8 @@ public final class ReportsViewModel {
             customerAcquisitionChurn = try await repository.getCustomerAcquisitionChurn(
                 from: fromDateString, to: toDateString
             )
-        } catch { customerAcquisitionChurn = nil }
+        } catch let e where AppError.isCancellation(e) { return }
+        catch { customerAcquisitionChurn = nil }
     }
 
     // MARK: - §15.9 Revenue by category → GET /api/v1/reports/revenue-by-category
@@ -639,7 +665,8 @@ public final class ReportsViewModel {
             revenueByCategory = try await repository.getRevenueByCategory(
                 from: fromDateString, to: toDateString
             )
-        } catch { revenueByCategory = [] }
+        } catch let e where AppError.isCancellation(e) { return }
+        catch { revenueByCategory = [] }
     }
 
     // MARK: - §15.9 Repeat customer stats → GET /api/v1/reports/repeat-customers
@@ -649,7 +676,8 @@ public final class ReportsViewModel {
             repeatCustomerStats = try await repository.getRepeatCustomerStats(
                 from: fromDateString, to: toDateString
             )
-        } catch { repeatCustomerStats = nil }
+        } catch let e where AppError.isCancellation(e) { return }
+        catch { repeatCustomerStats = nil }
     }
 
     // MARK: - §15.9 Avg ticket value trend → derived from multiple periods
@@ -659,7 +687,8 @@ public final class ReportsViewModel {
             avgTicketValueTrend = try await repository.getAvgTicketValueTrend(
                 from: fromDateString, to: toDateString
             )
-        } catch { avgTicketValueTrend = [] }
+        } catch let e where AppError.isCancellation(e) { return }
+        catch { avgTicketValueTrend = [] }
     }
 
     // MARK: - §15.9 Conversion funnel → GET /api/v1/reports/conversion-funnel
@@ -669,7 +698,8 @@ public final class ReportsViewModel {
             conversionFunnel = try await repository.getConversionFunnel(
                 from: fromDateString, to: toDateString
             )
-        } catch { conversionFunnel = nil }
+        } catch let e where AppError.isCancellation(e) { return }
+        catch { conversionFunnel = nil }
     }
 
     // MARK: - §15.9 Labor utilization → GET /api/v1/reports/labor-utilization
@@ -679,7 +709,8 @@ public final class ReportsViewModel {
             laborUtilization = try await repository.getLaborUtilization(
                 from: fromDateString, to: toDateString
             )
-        } catch { laborUtilization = [] }
+        } catch let e where AppError.isCancellation(e) { return }
+        catch { laborUtilization = [] }
     }
 
     // MARK: - §15.2 Cohort retention → GET /api/v1/reports/cohort-retention
@@ -689,7 +720,8 @@ public final class ReportsViewModel {
             cohortRetention = try await repository.getCohortRetention(
                 from: fromDateString, to: toDateString
             )
-        } catch { cohortRetention = nil }
+        } catch let e where AppError.isCancellation(e) { return }
+        catch { cohortRetention = nil }
     }
 
     // MARK: - §15.5 Shrinkage trend → GET /api/v1/reports/inventory-shrinkage
@@ -699,7 +731,8 @@ public final class ReportsViewModel {
             shrinkageReport = try await repository.getShrinkageReport(
                 from: fromDateString, to: toDateString
             )
-        } catch { shrinkageReport = nil }
+        } catch let e where AppError.isCancellation(e) { return }
+        catch { shrinkageReport = nil }
     }
 
     // MARK: - §91.3 SLA breaches → GET /api/v1/reports/sla-breaches
