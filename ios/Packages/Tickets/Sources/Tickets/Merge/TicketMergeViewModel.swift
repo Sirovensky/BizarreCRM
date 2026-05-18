@@ -87,6 +87,8 @@ public final class TicketMergeViewModel: Sendable {
             primaryTicket = detail
             buildDefaultPreferences()
             state = .loaded
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-18: nav cancel — leave .loading; reopen re-fires
         } catch {
             state = .failed(error.localizedDescription)
         }
@@ -101,6 +103,8 @@ public final class TicketMergeViewModel: Sendable {
             secondaryTicket = detail
             buildDefaultPreferences()
             state = .loaded
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-18: row-tap canceled by a faster tap on another candidate
         } catch {
             state = .failed(error.localizedDescription)
         }
