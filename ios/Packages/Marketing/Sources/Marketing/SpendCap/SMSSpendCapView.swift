@@ -35,8 +35,17 @@ public final class SMSSpendCapViewModel {
         defer { isLoading = false }
         async let capTask   = try? await api.getSMSSpendCap()
         async let usageTask = try? await api.getSMSSpendCapUsage()
-        capSettings  = await capTask
-        currentUsage = await usageTask
+        let resolvedCap   = await capTask
+        let resolvedUsage = await usageTask
+        // BUGHUNT-2026-05-18: `try?` collapses CancellationError to nil. The
+        // unconditional writes below would blank a previously-loaded cap +
+        // usage when SwiftUI cancels this .task during a nav transition,
+        // leaving the user with empty fields and a zeroed gauge until the
+        // next load completes. Bail early on cancellation so prior state
+        // survives until the next .task fires.
+        if Task.isCancelled { return }
+        capSettings  = resolvedCap
+        currentUsage = resolvedUsage
         if let cap = capSettings {
             capDollarsText = String(format: "%.2f", Double(cap.monthlyCap) / 100.0)
             haltOnCapReached = cap.haltOnCapReached
