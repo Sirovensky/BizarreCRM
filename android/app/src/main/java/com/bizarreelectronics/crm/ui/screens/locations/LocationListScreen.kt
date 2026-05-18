@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.LocationCity
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -152,16 +153,22 @@ fun LocationListScreen(
                             subtitle = stringResource(R.string.locations_empty_subtitle),
                         )
                     } else {
-                        LazyColumn(
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        PullToRefreshBox(
+                            isRefreshing = uiState.isRefreshing,
+                            onRefresh = { viewModel.refresh() },
+                            modifier = Modifier.fillMaxSize(),
                         ) {
-                            items(filtered, key = { it.id }) { loc ->
-                                LocationListItem(
-                                    location = loc,
-                                    onClick = { onLocationClick(loc.id) },
-                                    onDeactivate = { viewModel.requestDeactivate(loc) },
-                                )
+                            LazyColumn(
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                items(filtered, key = { it.id }) { loc ->
+                                    LocationListItem(
+                                        location = loc,
+                                        onClick = { onLocationClick(loc.id) },
+                                        onDeactivate = { viewModel.requestDeactivate(loc) },
+                                    )
+                                }
                             }
                         }
                     }

@@ -23,6 +23,7 @@ data class LocationListUiState(
     val locations: List<LocationDto> = emptyList(),
     val filter: LocationFilter = LocationFilter.ACTIVE,
     val isLoading: Boolean = false,
+    val isRefreshing: Boolean = false,
     val errorMessage: String? = null,
     /** Non-null while the "Deactivate location" ConfirmDialog is open. */
     val pendingDeactivate: LocationDto? = null,
@@ -80,33 +81,51 @@ class LocationListViewModel @Inject constructor(
     }
 
     fun load() {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
-            // BUGHUNT-2026-05-17: runCatching swallows CancellationException.
-            try {
-                val response = locationApi.getLocations(active = null)
-                if (response.success) {
-                    _uiState.value = _uiState.value.copy(
-                        locations = response.data ?: emptyList(),
-                        isLoading = false,
-                    )
-                } else {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        errorMessage = "Failed to load locations.",
-                    )
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
+        viewModelScope.launch { performLoad(isRefresh = false) }
+    }
+
+    /**
+     * BUGHUNT-2026-05-18: pull-to-refresh hook. Keeps the list visible while
+     * the round-trip happens (vs. swap-to-spinner that `load()` does on first
+     * paint).
+     */
+    fun refresh() {
+        viewModelScope.launch { performLoad(isRefresh = true) }
+    }
+
+    private suspend fun performLoad(isRefresh: Boolean) {
+        _uiState.value = _uiState.value.copy(
+            isLoading = !isRefresh && _uiState.value.locations.isEmpty(),
+            isRefreshing = isRefresh,
+            errorMessage = null,
+        )
+        // BUGHUNT-2026-05-17: runCatching swallows CancellationException.
+        try {
+            val response = locationApi.getLocations(active = null)
+            if (response.success) {
+                _uiState.value = _uiState.value.copy(
+                    locations = response.data ?: emptyList(),
+                    isLoading = false,
+                    isRefreshing = false,
+                )
+            } else {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    errorMessage = if (e.message?.contains("404") == true)
-                        "Locations not available on this server version."
-                    else
-                        "Could not load locations. Check your connection.",
+                    isRefreshing = false,
+                    errorMessage = "Failed to load locations.",
                 )
             }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            _uiState.value = _uiState.value.copy(
+                isLoading = false,
+                isRefreshing = false,
+                errorMessage = if (e.message?.contains("404") == true)
+                    "Locations not available on this server version."
+                else
+                    "Could not load locations. Check your connection.",
+            )
         }
     }
 
