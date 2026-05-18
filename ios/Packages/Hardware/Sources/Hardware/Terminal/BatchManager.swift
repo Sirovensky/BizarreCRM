@@ -67,6 +67,19 @@ public final class BatchManager {
             lastClosedAt = result.closedAt
             UserDefaults.standard.set(result.closedAt.timeIntervalSince1970, forKey: Self.lastClosedKey)
             AppLog.hardware.info("BatchManager: batch closed — \(result.transactionCount) txns, batchId=\(result.batchId ?? "n/a", privacy: .public)")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: closeBatch is a money-settling op against
+            // BlockChyp — once the request lands, the batch is closed and
+            // the processor settles to the merchant account. A cancellation
+            // mid-flight (user backgrounded the app between request and
+            // response) tempted a "Try again" retap on the error banner.
+            // The retap returns a confusing 409 because there's no longer
+            // an open batch, OR it closes a tiny new batch that just opened
+            // (a sale that landed in the gap) — wrong batch ID in the
+            // operator's settlement log. Stay silent; the dashboard reload
+            // will reveal whether the original close landed.
+            AppLog.hardware.info("BatchManager: closeBatch cancelled mid-flight; not painting error")
+            return
         } catch {
             errorMessage = error.localizedDescription
             AppLog.hardware.error("BatchManager: batch close failed: \(error.localizedDescription, privacy: .public)")
