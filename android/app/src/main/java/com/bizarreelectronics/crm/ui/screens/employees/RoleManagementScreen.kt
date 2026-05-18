@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -41,10 +42,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -404,6 +410,16 @@ private fun CreateRoleDialog(
 ) {
     var name by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
+    val nameFocus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+
+    LaunchedEffect(Unit) {
+        runCatching { nameFocus.requestFocus() }
+    }
+
+    val submit: () -> Unit = {
+        if (name.isNotBlank()) onConfirm(name, description)
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -415,7 +431,9 @@ private fun CreateRoleDialog(
                     onValueChange = { name = it },
                     label = { Text("Role name *") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(nameFocus),
                     supportingText = {
                         Text(
                             "Lowercase, no spaces (e.g. lead-tech)",
@@ -425,6 +443,10 @@ private fun CreateRoleDialog(
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.None,
                         autoCorrect = false,
+                        imeAction = ImeAction.Next,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = { focusManager.moveFocus(FocusDirection.Down) },
                     ),
                 )
                 OutlinedTextField(
@@ -435,13 +457,15 @@ private fun CreateRoleDialog(
                     modifier = Modifier.fillMaxWidth(),
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.Sentences,
+                        imeAction = ImeAction.Done,
                     ),
+                    keyboardActions = KeyboardActions(onDone = { submit() }),
                 )
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(name, description) },
+                onClick = submit,
                 enabled = name.isNotBlank(),
             ) { Text("Create") }
         },

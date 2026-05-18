@@ -18,11 +18,14 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 
@@ -91,6 +94,17 @@ fun TicketHandoffDialog(
 
     var selectedLocation by remember { mutableStateOf<String?>(null) }
     var locationDropdownExpanded by remember { mutableStateOf(false) }
+
+    val freeTextFocus = remember { FocusRequester() }
+
+    // Focus the free-text field as soon as the user picks OTHER — dropdowns
+    // don't surface the keyboard, so they'd otherwise have to tap into the
+    // newly-revealed field to start typing.
+    LaunchedEffect(selectedReason) {
+        if (selectedReason == HandoffReason.OTHER) {
+            runCatching { freeTextFocus.requestFocus() }
+        }
+    }
 
     // Reason is valid when a category is selected AND (not OTHER, or free-text is filled)
     val reasonIsValid = selectedReason != null &&
@@ -203,7 +217,9 @@ fun TicketHandoffDialog(
                         onValueChange = { freeTextReason = it },
                         label = { Text("Please specify *") },
                         placeholder = { Text("Describe the reason…") },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(freeTextFocus),
                         minLines = 2,
                         maxLines = 4,
                         isError = freeTextReason.isBlank(),
