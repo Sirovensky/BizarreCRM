@@ -386,6 +386,11 @@ public actor BlockChypTerminal: CardTerminal {
             (data, httpResponse) = try await session.data(for: request)
         } catch let urlError as URLError {
             throw AppError.network(underlying: urlError)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: payment-terminal HTTP cancel must surface as
+            // .cancelled, not .unknown. Caller checks for cancellation to know
+            // whether the charge may have committed (auth call is not idempotent).
+            throw AppError.cancelled
         } catch {
             throw AppError.unknown(underlying: error)
         }
