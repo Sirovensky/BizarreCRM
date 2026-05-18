@@ -170,6 +170,12 @@ public final class SegmentEditorViewModel {
         do {
             let req = CreateSegmentRequest(name: trimmedName, rule: rootGroup)
             savedSegment = try await api.createSegment(req)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: createSegment is a row write — a cancelled
+            // banner tempted a re-tap that could produce a duplicate segment
+            // with the same name and rule. Clear errorMessage so the user
+            // must intentionally save again.
+            errorMessage = nil
         } catch {
             AppLog.ui.error("Segment save failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
