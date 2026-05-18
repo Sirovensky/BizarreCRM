@@ -146,6 +146,12 @@ public actor WebSocketManager {
     private var baseURL: URL?
     private var heartbeatTask: Task<Void, Never>?
     private var reconnectTasks: [Topic: Task<Void, Never>] = [:]
+    // BUGHUNT-2026-05-18: track exponential-backoff attempt per topic so
+    // scheduleReconnect can compute the delay. Previously the function took
+    // an `attempt` argument from a caller that didn't exist (zero callers),
+    // so the field was implicit — moving it onto the actor lets us reset on
+    // a successful connect and incrementally back off on repeat failure.
+    private var reconnectAttempts: [Topic: Int] = [:]
 
     /// §21.5 Backpressure — coalesce dashboard KPI events at 1Hz.
     private let backpressure = WSBackpressureFilter(interval: 1.0)
@@ -201,12 +207,30 @@ public actor WebSocketManager {
             return
         }
         let wsURL = makeWSURL(base: base, topic: topic)
-        let conn = WSConnection(url: wsURL, token: token) { [weak self] event in
-            guard let self else { return }
-            Task { await self.handleEvent(event, topic: topic) }
-        }
+        let conn = WSConnection(
+            url: wsURL,
+            token: token,
+            onEvent: { [weak self] event in
+                guard let self else { return }
+                Task { await self.handleEvent(event, topic: topic) }
+            },
+            // BUGHUNT-2026-05-18: wire onDisconnect → scheduleReconnect.
+            // Without this, scheduleReconnect had zero callers and the WS
+            // chain never recovered from a transient drop. The receive()
+            // .failure case in WebSocketConnection now back-channels here.
+            onDisconnect: { [weak self] in
+                guard let self else { return }
+                Task { await self.onChannelDisconnected(topic: topic) }
+            }
+        )
         connections[topic] = conn
         conn.connect()
+    }
+
+    private func onChannelDisconnected(topic: Topic) {
+        let attempt = (reconnectAttempts[topic] ?? 0) + 1
+        reconnectAttempts[topic] = attempt
+        scheduleReconnect(topic: topic, attempt: attempt)
     }
 
     private func makeWSURL(base: URL, topic: Topic) -> URL {
@@ -255,6 +279,14 @@ public actor WebSocketManager {
     // MARK: - Event handling
 
     private func handleEvent(_ event: WebSocketEvent, topic: Topic) async {
+        // BUGHUNT-2026-05-18: reset the backoff counter when we receive a
+        // real event — this is our "we're up" signal since WebSocketConnection
+        // doesn't surface .connected separately. Without this reset, a
+        // recovered channel keeps its 30s cap and any future drop waits the
+        // full window instead of starting from 1s.
+        if reconnectAttempts[topic] != nil {
+            reconnectAttempts[topic] = 0
+        }
         // §21.5 Backpressure: coalesce dashboard KPI events at 1Hz client-side.
         if topic == .dashboard {
             let shouldForward = await backpressure.shouldForward(topic: topic.rawValue)
@@ -291,10 +323,13 @@ public actor WebSocketManager {
 
 final class WSConnection: @unchecked Sendable {
     private let connection: WebSocketConnection
-    private var onEvent: (WebSocketEvent) -> Void
 
-    init(url: URL, token: String, onEvent: @escaping (WebSocketEvent) -> Void) {
-        self.onEvent = onEvent
+    init(
+        url: URL,
+        token: String,
+        onEvent: @escaping (WebSocketEvent) -> Void,
+        onDisconnect: (() -> Void)? = nil
+    ) {
         self.connection = WebSocketConnection(
             url: url,
             authToken: token,
@@ -302,7 +337,8 @@ final class WSConnection: @unchecked Sendable {
                 if let event = try? JSONDecoder().decode(WebSocketEvent.self, from: data) {
                     onEvent(event)
                 }
-            }
+            },
+            onDisconnect: onDisconnect
         )
     }
 

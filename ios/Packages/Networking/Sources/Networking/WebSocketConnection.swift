@@ -17,6 +17,12 @@ public final class WebSocketConnection: @unchecked Sendable {
     private let session: URLSession
     private var onEvent: (Data) -> Void
     private var onDisconnect: (() -> Void)?
+    // BUGHUNT-2026-05-18: when the caller explicitly disconnects, the
+    // URLSessionWebSocketTask cancel surfaces as receive() .failure with
+    // URLError.cancelled — which previously routed to onDisconnect →
+    // scheduleReconnect → another connect() on a torn-down session. The
+    // flag suppresses the reconnect callback on intentional close.
+    private var intentionallyClosed: Bool = false
 
     public init(url: URL, authToken: String,
                 onEvent: @escaping (Data) -> Void,
@@ -31,9 +37,17 @@ public final class WebSocketConnection: @unchecked Sendable {
     }
 
     public func connect() {
+        intentionallyClosed = false
         var req = URLRequest(url: url)
         // §21.5: auth token in Sec-WebSocket-Protocol header
         req.setValue("Bearer \(authToken)", forHTTPHeaderField: "Sec-WebSocket-Protocol")
+        // BUGHUNT-2026-05-18: cancel the prior wsTask before assigning a new
+        // one. Reconnect paths (and any caller that hits connect() twice)
+        // would otherwise leak the prior URLSessionWebSocketTask and keep
+        // its receive() loop alive — duplicate events get delivered through
+        // onEvent and the old task's late .failure case retriggers
+        // onDisconnect → another reconnect storm.
+        wsTask?.cancel(with: .goingAway, reason: nil)
         wsTask = session.webSocketTask(with: req)
         wsTask?.resume()
         receive()
@@ -41,6 +55,7 @@ public final class WebSocketConnection: @unchecked Sendable {
     }
 
     public func disconnect() {
+        intentionallyClosed = true
         wsTask?.cancel(with: .goingAway, reason: nil)
         wsTask = nil
         // BUGHUNT-2026-05-18: tear down the URLSession too. Without this,
@@ -84,7 +99,14 @@ public final class WebSocketConnection: @unchecked Sendable {
                 self.receive()
             case .failure(let error):
                 AppLog.sync.error("WebSocketConnection: receive error: \(error.localizedDescription, privacy: .public)")
-                self.onDisconnect?()
+                // BUGHUNT-2026-05-18: suppress the disconnect callback when
+                // the close was caller-initiated. URLSession reports an
+                // explicit cancel as receive() .failure with URLError.cancelled,
+                // which previously bounced through onDisconnect →
+                // scheduleReconnect → connect() on a session we just invalidated.
+                if !self.intentionallyClosed {
+                    self.onDisconnect?()
+                }
             }
         }
     }
