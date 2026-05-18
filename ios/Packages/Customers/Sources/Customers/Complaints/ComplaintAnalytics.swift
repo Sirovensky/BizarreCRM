@@ -439,7 +439,13 @@ public struct ComplaintAuditHistoryView: View {
     private func load() async {
         isLoading = true
         defer { isLoading = false }
-        events = (try? await api.complaintAuditHistory(complaintId: complaintId)) ?? []
+        let resolved = (try? await api.complaintAuditHistory(complaintId: complaintId)) ?? []
+        // BUGHUNT-2026-05-18: try? swallows CancellationError; without this
+        // guard a nav-race would blank prior audit history. The audit log is
+        // not user-visible elsewhere, so a brief flash to empty is worse
+        // than just keeping prior rows while the new fetch is in flight.
+        if Task.isCancelled { return }
+        events = resolved
     }
 }
 

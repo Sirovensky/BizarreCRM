@@ -80,7 +80,13 @@ public struct CustomerBalanceCard: View {
     private func loadCredit() async {
         isLoading = true
         defer { isLoading = false }
-        creditBalance = try? await api.customerCreditBalance(customerId: customerId)
+        let resolved = try? await api.customerCreditBalance(customerId: customerId)
+        // BUGHUNT-2026-05-18: try? swallows CancellationError to nil; without
+        // this guard a nav-race would blank the previously-loaded credit
+        // balance even though the user is heading right back to the same
+        // customer screen (.task re-fires).
+        if Task.isCancelled { return }
+        creditBalance = resolved
     }
 
     private func centsToString(_ cents: Int) -> String {
