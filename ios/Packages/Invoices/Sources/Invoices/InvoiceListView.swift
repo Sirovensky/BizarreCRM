@@ -25,6 +25,10 @@ public struct InvoiceListView: View {
     @State private var showVoidAlert: Int64?
     @State private var showReceiptSheet: Int64?
     @State private var showCreditNoteSheet: Int64?
+    /// BUGHUNT-2026-05-18: InvoiceCreateView shipped but the list had no
+    /// path to it — invoices could only be created via POS finalize.
+    /// Adds a + toolbar item and an empty-state CTA.
+    @State private var showingCreate: Bool = false
 
     @ObservationIgnored private let detailRepo: InvoiceDetailRepository
     @ObservationIgnored private let api: APIClient
@@ -66,6 +70,11 @@ public struct InvoiceListView: View {
                 get: { vm.advancedFilter },
                 set: { newFilter in Task { await vm.applyAdvancedFilter(newFilter) } }
             ))
+        }
+        // BUGHUNT-2026-05-18: list-level Create entry. After dismiss,
+        // refresh so the new invoice surfaces without pull-to-refresh.
+        .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.load() } }) {
+            InvoiceCreateView(api: api)
         }
         // Quick-pay sheet from context menu / swipe
         .sheet(
@@ -500,6 +509,15 @@ public struct InvoiceListView: View {
             StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
         }
 
+        // BUGHUNT-2026-05-18: Create-invoice entry was missing from the list.
+        ToolbarItem(placement: .primaryAction) {
+            Button { showingCreate = true } label: {
+                Label("New invoice", systemImage: "plus")
+            }
+            .accessibilityLabel("New invoice")
+            .keyboardShortcut("n", modifiers: .command)
+        }
+
         // §7.1 Advanced filter button (with active-filter badge)
         ToolbarItem(placement: .topBarTrailing) {
             BrandGlassContainer {
@@ -627,6 +645,17 @@ public struct InvoiceListView: View {
                 .buttonStyle(.bordered)
                 .tint(.bizarreOrange)
                 .accessibilityLabel("Clear all search filters and show all invoices")
+            } else if vm.statusTab == .all {
+                // BUGHUNT-2026-05-18: truly-empty state (no search, no
+                // filter, "All" tab) gets a Create CTA. Other tabs (Paid,
+                // Overdue, Void) intentionally omit — those reflect a real
+                // filter not a missing invoice to compose.
+                Button { showingCreate = true } label: {
+                    Label("New invoice", systemImage: "plus")
+                        .font(.brandLabelLarge())
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.bizarreOrange)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -353,7 +353,25 @@ public struct AppointmentListView: View {
         } else if vm.items.isEmpty && !Reachability.shared.isOnline {
             OfflineEmptyStateView(entityName: "appointments")
         } else if vm.items.isEmpty {
-            PhaseEmptyView(icon: "calendar", text: "No appointments")
+            // BUGHUNT-2026-05-18: empty state had no Create CTA — same
+            // dead-end as Leads / Estimates before today's fix. The +
+            // toolbar button exists but is easy to overlook on iPhone.
+            VStack(spacing: BrandSpacing.md) {
+                Image(systemName: "calendar")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityHidden(true)
+                Text("No appointments")
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                Button { showingCreate = true } label: {
+                    Label("New Appointment", systemImage: "plus")
+                        .font(.brandLabelLarge())
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.bizarreOrange)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             switch viewMode {
             case .agenda:
