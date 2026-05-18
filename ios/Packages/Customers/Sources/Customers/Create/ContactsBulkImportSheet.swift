@@ -104,6 +104,10 @@ final class ContactsBulkImportViewModel {
         let store = CNContactStore()
         do {
             return try await store.requestAccess(for: .contacts)
+        } catch let e where AppError.isCancellation(e) {
+            // CNContactStore.requestAccess was cancelled (e.g. app backgrounded
+            // mid-prompt). Propagate so the caller can abort cleanly.
+            throw e
         } catch {
             phase = .permissionDenied
             return false
@@ -139,6 +143,8 @@ final class ContactsBulkImportViewModel {
         var errors: [String] = []
 
         for candidate in candidates {
+            // Bail immediately if the enclosing Task was cancelled (e.g. sheet dismissed).
+            try Task.checkCancellation()
             do {
                 let hasDupe = await duplicateChecker.hasExistingMatch(
                     phone: candidate.selectedPhone,
@@ -160,6 +166,11 @@ final class ContactsBulkImportViewModel {
                     try await repo.createFromContact(req)
                     created += 1
                 }
+            } catch let e where AppError.isCancellation(e) {
+                // Propagate cancellation — do not absorb it into the error list.
+                // Without this, a mid-import sheet dismiss would silently continue
+                // writing records until the entire candidate list was exhausted.
+                throw e
             } catch {
                 skipped += 1
                 errors.append("\(candidate.displayName): \(error.localizedDescription)")

@@ -1723,6 +1723,13 @@ public struct PosView: View {
             )
         } catch PosTransactionMapper.MapperError.customLineNotSupported(let msg) {
             tenderErrorMessage = msg
+        } catch let e where AppError.isCancellation(e) {
+            // Cancellation: do NOT surface a "failed" message. The tender request
+            // may have reached the server before the task was cancelled — clearing
+            // or overwriting tenderErrorMessage here would mask a potential
+            // double-charge. Silently return and let the UI stay in its current
+            // optimistic state. The cashier must reconcile via the register log.
+            return
         } catch {
             tenderErrorMessage = error.localizedDescription
         }

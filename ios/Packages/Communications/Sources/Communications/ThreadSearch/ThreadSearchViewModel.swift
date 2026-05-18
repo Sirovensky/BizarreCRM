@@ -97,6 +97,11 @@ public final class ThreadSearchViewModel: Sendable {
             // Merge, deduplicating by messageId; server results take priority
             var seen = Set<Int64>()
             results = (serverResults + localResults).filter { seen.insert($0.messageId).inserted }
+        } catch let e where AppError.isCancellation(e) {
+            // This search task was cancelled because the user typed another character.
+            // Return silently — do NOT overwrite `results` with stale local fallback,
+            // which would paint outdated results until the next search completes.
+            return
         } catch {
             // Offline — local results only
             results = localResults
