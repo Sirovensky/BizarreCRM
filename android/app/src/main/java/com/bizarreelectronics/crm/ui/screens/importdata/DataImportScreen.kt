@@ -48,6 +48,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -475,6 +478,10 @@ private fun ErrorText(message: String) {
         text = message,
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.error,
+        // a11y: announce the error assertively so TalkBack interrupts and reads it
+        // out as soon as the import step surfaces a failure, instead of leaving it
+        // sitting silently below the Pick/Replace button.
+        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive },
     )
 }
 

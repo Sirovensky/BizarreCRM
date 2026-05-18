@@ -15,7 +15,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -611,6 +613,13 @@ fun NotificationListScreen(
                                         .clickable {
                                             if (isUnread) viewModel.markRead(notification.id)
                                             onNotificationClick(notification.type, notification.entityId)
+                                        }
+                                        // a11y: present the whole row as a single
+                                        // focusable button so TalkBack reads
+                                        // "title, message, button" instead of
+                                        // stopping on each subtree individually.
+                                        .semantics(mergeDescendants = true) {
+                                            role = Role.Button
                                         },
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
