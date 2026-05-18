@@ -262,6 +262,16 @@ public final class PosTenderCoordinator {
             )
             stage = .confirmed
 
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PosTenderCoordinator confirm POSTs the
+            // full tender package (potentially multi-leg payment). If
+            // cancelled mid-flight, payment(s) may have committed +
+            // invoice may be paid. Banner tempts retap that re-submits
+            // the same tenders — server-side idempotency keys protect
+            // per leg but a new session UUID would double-charge. Reset
+            // isConfirming, leave stage alone, no error banner.
+            isConfirming = false
+            return
         } catch {
             AppLog.pos.error("PosTenderCoordinator confirm failed: \(error.localizedDescription)")
             errorMessage = error.localizedDescription
