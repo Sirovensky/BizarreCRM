@@ -137,62 +137,76 @@ const SETUP_RATE_CATEGORY = 'management_setup_attempt';
 const SETUP_RATE_MAX = 5;
 const SETUP_RATE_WINDOW_MS = 15 * 60 * 1000; // 15 min
 
+// BUGHUNT-2026-05-17: wrap bare-async handler in try/catch. `await import('bcryptjs')`
+// and the subsequent INSERTs can throw (e.g. UNIQUE conflict on username, DB IO).
+// Without this wrapper an unhandledRejection crashes the Express process on first-run
+// setup — the worst possible time, since there's no fallback admin yet.
 router.post('/setup', async (req: Request, res: Response) => {
   const ip = req.socket?.remoteAddress ?? 'unknown';
 
-  const masterDb = getMasterDb();
-  if (!masterDb) {
-    res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_DB_UNAVAILABLE, message: 'Master DB unavailable' });
-    return;
+  try {
+    const masterDb = getMasterDb();
+    if (!masterDb) {
+      res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_DB_UNAVAILABLE, message: 'Master DB unavailable' });
+      return;
+    }
+
+    if (!checkWindowRate(masterDb, SETUP_RATE_CATEGORY, ip, SETUP_RATE_MAX, SETUP_RATE_WINDOW_MS)) {
+      logger.warn('setup rate limit exceeded', { ip });
+      res.status(429).json({ success: false, message: 'Too many setup attempts. Wait and retry.' });
+      return;
+    }
+    recordWindowAttempt(masterDb, SETUP_RATE_CATEGORY, ip, SETUP_RATE_WINDOW_MS);
+
+    // Block if any super admin already exists
+    const existing = masterDb.prepare('SELECT id FROM super_admins LIMIT 1').get();
+    if (existing) {
+      res.status(403).json({ success: false, code: ERROR_CODES.ERR_AUTH_ALREADY_SETUP, message: 'Setup already completed' });
+      return;
+    }
+
+    const { username, password } = req.body;
+    if (!username || typeof username !== 'string' || username.trim().length < 3) {
+      res.status(400).json({ success: false, message: 'Username must be at least 3 characters' });
+      return;
+    }
+    if (!password || typeof password !== 'string' || password.length < 8) {
+      res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
+      return;
+    }
+    if (password.length > 128) {
+      res.status(400).json({ success: false, message: 'Password too long' });
+      return;
+    }
+
+    const bcrypt = await import('bcryptjs');
+    const hash = bcrypt.default.hashSync(password, 12);
+
+    const insertResult = masterDb.prepare(
+      "INSERT INTO super_admins (username, email, password_hash, password_set) VALUES (?, ?, ?, 1)"
+    ).run(username.trim().toLowerCase(), `${username.trim().toLowerCase()}@localhost`, hash);
+
+    // Auto-enable management API
+    masterDb.prepare("INSERT OR REPLACE INTO platform_config (key, value) VALUES ('management_api_enabled', 'true')").run();
+
+    // T17: Previously this logged the username via console.log, leaking account
+    // identifiers to stdout / shipped logs. Log only the numeric ID so an
+    // operator can correlate without exposing the chosen username. Never log
+    // passwords, hashes, or email addresses.
+    logger.info('super admin created via first-run setup', {
+      super_admin_id: Number(insertResult.lastInsertRowid),
+    });
+
+    res.json({ success: true, data: { message: 'Super admin account created. You can now log in.' } });
+  } catch (e: unknown) {
+    logger.error('management_setup_error', {
+      error: e instanceof Error ? e.message : String(e),
+      ip,
+    });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_GENERIC, message: 'Setup failed' });
+    }
   }
-
-  if (!checkWindowRate(masterDb, SETUP_RATE_CATEGORY, ip, SETUP_RATE_MAX, SETUP_RATE_WINDOW_MS)) {
-    logger.warn('setup rate limit exceeded', { ip });
-    res.status(429).json({ success: false, message: 'Too many setup attempts. Wait and retry.' });
-    return;
-  }
-  recordWindowAttempt(masterDb, SETUP_RATE_CATEGORY, ip, SETUP_RATE_WINDOW_MS);
-
-  // Block if any super admin already exists
-  const existing = masterDb.prepare('SELECT id FROM super_admins LIMIT 1').get();
-  if (existing) {
-    res.status(403).json({ success: false, code: ERROR_CODES.ERR_AUTH_ALREADY_SETUP, message: 'Setup already completed' });
-    return;
-  }
-
-  const { username, password } = req.body;
-  if (!username || typeof username !== 'string' || username.trim().length < 3) {
-    res.status(400).json({ success: false, message: 'Username must be at least 3 characters' });
-    return;
-  }
-  if (!password || typeof password !== 'string' || password.length < 8) {
-    res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
-    return;
-  }
-  if (password.length > 128) {
-    res.status(400).json({ success: false, message: 'Password too long' });
-    return;
-  }
-
-  const bcrypt = await import('bcryptjs');
-  const hash = bcrypt.default.hashSync(password, 12);
-
-  const insertResult = masterDb.prepare(
-    "INSERT INTO super_admins (username, email, password_hash, password_set) VALUES (?, ?, ?, 1)"
-  ).run(username.trim().toLowerCase(), `${username.trim().toLowerCase()}@localhost`, hash);
-
-  // Auto-enable management API
-  masterDb.prepare("INSERT OR REPLACE INTO platform_config (key, value) VALUES ('management_api_enabled', 'true')").run();
-
-  // T17: Previously this logged the username via console.log, leaking account
-  // identifiers to stdout / shipped logs. Log only the numeric ID so an
-  // operator can correlate without exposing the chosen username. Never log
-  // passwords, hashes, or email addresses.
-  logger.info('super admin created via first-run setup', {
-    super_admin_id: Number(insertResult.lastInsertRowid),
-  });
-
-  res.json({ success: true, data: { message: 'Super admin account created. You can now log in.' } });
 });
 
 // ── Opt-in guard: management API must be enabled by super admin ──────────
@@ -766,35 +780,49 @@ function disconnectTenantWebSockets(slug: string): number {
   return closed;
 }
 
+// BUGHUNT-2026-05-17: wrap bare-async handler in try/catch. suspendTenant() closes
+// the tenant pool / busts plan cache and can throw on filesystem/DB lock errors;
+// any synchronous throw inside this async function becomes an unhandledRejection
+// that kills the entire server process under Express 4.
 router.post('/tenants/:slug/suspend', async (req: Request, res: Response) => {
-  const masterDb = getMasterDb();
-  if (!masterDb) { res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_DB_UNAVAILABLE, message: 'Master DB not available' }); return; }
-  const slug = validateSlugParam(req, res);
-  if (!slug) return;
-  const before = masterDb.prepare('SELECT id, status FROM tenants WHERE slug = ?').get(slug) as { id: number; status: string } | undefined;
-  if (!before) {
-    res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'Tenant not found' });
-    return;
+  try {
+    const masterDb = getMasterDb();
+    if (!masterDb) { res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_DB_UNAVAILABLE, message: 'Master DB not available' }); return; }
+    const slug = validateSlugParam(req, res);
+    if (!slug) return;
+    const before = masterDb.prepare('SELECT id, status FROM tenants WHERE slug = ?').get(slug) as { id: number; status: string } | undefined;
+    if (!before) {
+      res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'Tenant not found' });
+      return;
+    }
+    // Lazy-import the canonical helper so we share state with super-admin routes.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+    const { suspendTenant } = require('../services/tenant-provisioning.js') as typeof import('../services/tenant-provisioning.js');
+    const result = suspendTenant(slug);
+    if (!result.success) {
+      res.status(400).json({ success: false, message: result.error });
+      return;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+    const tr = require('../middleware/tenantResolver.js') as { clearPlanCache?: (id: number) => void };
+    tr.clearPlanCache?.(before.id);
+    const wsClosed = disconnectTenantWebSockets(slug);
+    managementAudit('tenant_suspended', req.socket?.remoteAddress || 'unknown', {
+      slug,
+      tenant_id: before.id,
+      previous_status: before.status,
+      websockets_closed: wsClosed,
+    });
+    res.json({ success: true, data: { message: `Tenant ${slug} suspended`, websockets_closed: wsClosed } });
+  } catch (e: unknown) {
+    logger.error('management_tenant_suspend_error', {
+      error: e instanceof Error ? e.message : String(e),
+      slug: req.params.slug,
+    });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_GENERIC, message: 'Suspend failed' });
+    }
   }
-  // Lazy-import the canonical helper so we share state with super-admin routes.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-  const { suspendTenant } = require('../services/tenant-provisioning.js') as typeof import('../services/tenant-provisioning.js');
-  const result = suspendTenant(slug);
-  if (!result.success) {
-    res.status(400).json({ success: false, message: result.error });
-    return;
-  }
-  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-  const tr = require('../middleware/tenantResolver.js') as { clearPlanCache?: (id: number) => void };
-  tr.clearPlanCache?.(before.id);
-  const wsClosed = disconnectTenantWebSockets(slug);
-  managementAudit('tenant_suspended', req.socket?.remoteAddress || 'unknown', {
-    slug,
-    tenant_id: before.id,
-    previous_status: before.status,
-    websockets_closed: wsClosed,
-  });
-  res.json({ success: true, data: { message: `Tenant ${slug} suspended`, websockets_closed: wsClosed } });
 });
 
 router.post('/tenants/:slug/activate', (req: Request, res: Response) => {
@@ -825,38 +853,52 @@ router.post('/tenants/:slug/activate', (req: Request, res: Response) => {
   res.json({ success: true, data: { message: `Tenant ${slug} activated` } });
 });
 
+// BUGHUNT-2026-05-17: wrap bare-async handler in try/catch. `await deleteTenant()`
+// performs DNS cleanup + archive + soft-delete and can throw on Cloudflare API
+// failure or DB lock; without this wrapper a rejection from a fail-mid-flight
+// delete crashes Express and leaves the tenant in a half-deleted state.
 router.delete('/tenants/:slug', async (req: Request, res: Response) => {
-  const masterDb = getMasterDb();
-  if (!masterDb) { res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_DB_UNAVAILABLE, message: 'Master DB not available' }); return; }
-  const slug = validateSlugParam(req, res);
-  if (!slug) return;
-  const before = masterDb.prepare('SELECT id, status FROM tenants WHERE slug = ?').get(slug) as { id: number; status: string } | undefined;
-  if (!before) {
-    res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'Tenant not found' });
-    return;
+  try {
+    const masterDb = getMasterDb();
+    if (!masterDb) { res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_DB_UNAVAILABLE, message: 'Master DB not available' }); return; }
+    const slug = validateSlugParam(req, res);
+    if (!slug) return;
+    const before = masterDb.prepare('SELECT id, status FROM tenants WHERE slug = ?').get(slug) as { id: number; status: string } | undefined;
+    if (!before) {
+      res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'Tenant not found' });
+      return;
+    }
+    // Route through deleteTenant() so we get the 30-day grace period, the
+    // Cloudflare DNS cleanup, and the safe archive instead of an unrecoverable
+    // hard delete. This preserves the "tenant DBs are sacred" guarantee.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+    const { deleteTenant } = require('../services/tenant-provisioning.js') as typeof import('../services/tenant-provisioning.js');
+    const result = await deleteTenant(slug);
+    if (!result.success) {
+      res.status(400).json({ success: false, message: result.error });
+      return;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+    const tr = require('../middleware/tenantResolver.js') as { clearPlanCache?: (id: number) => void };
+    tr.clearPlanCache?.(before.id);
+    const wsClosed = disconnectTenantWebSockets(slug);
+    managementAudit('tenant_deleted', req.socket?.remoteAddress || 'unknown', {
+      slug,
+      tenant_id: before.id,
+      previous_status: before.status,
+      websockets_closed: wsClosed,
+      soft_delete: true,
+    });
+    res.json({ success: true, data: { message: `Tenant ${slug} scheduled for deletion`, websockets_closed: wsClosed } });
+  } catch (e: unknown) {
+    logger.error('management_tenant_delete_error', {
+      error: e instanceof Error ? e.message : String(e),
+      slug: req.params.slug,
+    });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_GENERIC, message: 'Delete failed' });
+    }
   }
-  // Route through deleteTenant() so we get the 30-day grace period, the
-  // Cloudflare DNS cleanup, and the safe archive instead of an unrecoverable
-  // hard delete. This preserves the "tenant DBs are sacred" guarantee.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-  const { deleteTenant } = require('../services/tenant-provisioning.js') as typeof import('../services/tenant-provisioning.js');
-  const result = await deleteTenant(slug);
-  if (!result.success) {
-    res.status(400).json({ success: false, message: result.error });
-    return;
-  }
-  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-  const tr = require('../middleware/tenantResolver.js') as { clearPlanCache?: (id: number) => void };
-  tr.clearPlanCache?.(before.id);
-  const wsClosed = disconnectTenantWebSockets(slug);
-  managementAudit('tenant_deleted', req.socket?.remoteAddress || 'unknown', {
-    slug,
-    tenant_id: before.id,
-    previous_status: before.status,
-    websockets_closed: wsClosed,
-    soft_delete: true,
-  });
-  res.json({ success: true, data: { message: `Tenant ${slug} scheduled for deletion`, websockets_closed: wsClosed } });
 });
 
 export default router;
