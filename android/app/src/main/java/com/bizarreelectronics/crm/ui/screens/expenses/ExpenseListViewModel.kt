@@ -10,6 +10,7 @@ import com.bizarreelectronics.crm.ui.screens.expenses.components.EmployeeOption
 import com.bizarreelectronics.crm.ui.screens.expenses.components.ExpenseFilterState
 import com.bizarreelectronics.crm.ui.screens.expenses.components.ExpenseSort
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -154,6 +155,8 @@ class ExpenseListViewModel @Inject constructor(
             try {
                 expenseRepository.deleteExpense(id)
                 loadExpenses()
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // Best-effort: list will refresh on next pull-to-refresh
             }
@@ -171,6 +174,8 @@ class ExpenseListViewModel @Inject constructor(
                 )
                 expenseRepository.createExpense(request)
                 loadExpenses()
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // Best-effort
             }
