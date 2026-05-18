@@ -78,6 +78,10 @@ public final class RepairPricingViewModel {
             templates = newTemplates
             services = newServices
             state = .loaded
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: parallel template+services fetch cancelled
+            // on nav; keep state to preserve previously-loaded data.
+            return
         } catch {
             AppLog.ui.error("RepairPricing load failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)
