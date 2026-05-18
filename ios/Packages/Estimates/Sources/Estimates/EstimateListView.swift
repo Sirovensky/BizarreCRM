@@ -264,6 +264,7 @@ public struct EstimateListView: View {
                     }
                 }
                 .listRowBackground(Color.bizarreSurface1)
+                .contextMenu { rowContextMenu(for: est) }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -509,6 +510,11 @@ public struct EstimateListView: View {
                         }
                             .listRowBackground(Color.bizarreSurface1)
                             .tag(est.id)
+                            // BUGHUNT-2026-05-18: rowContextMenu was defined
+                            // but never applied — list rows had no quick
+                            // actions. Wire it now so Open / Send / Convert
+                            // are one long-press away.
+                            .contextMenu { rowContextMenu(for: est) }
                             // §8.1: load-more trigger on last row
                             .onAppear {
                                 if est.id == vm.items.last?.id {
