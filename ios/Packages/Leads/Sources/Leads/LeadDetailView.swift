@@ -1,6 +1,7 @@
 import SwiftUI
 import Observation
 import Core
+import Customers   // BUGHUNT-2026-05-18: CustomerDetailView push from "Linked customer" row
 import DesignSystem
 import Networking
 #if canImport(UIKit)
@@ -290,19 +291,53 @@ public struct LeadDetailView: View {
                 contactRow(icon: "envelope.fill", text: email, action: { mailto(email) })
             }
             if let customer = detail.customerDisplayName {
-                HStack(spacing: BrandSpacing.sm) {
-                    Image(systemName: "person.crop.circle")
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                        .frame(width: 20)
-                        .accessibilityHidden(true)
-                    Text("Linked customer")
-                        .font(.brandLabelLarge())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                    Spacer(minLength: BrandSpacing.sm)
-                    Text(customer)
-                        .font(.brandBodyLarge())
-                        .foregroundStyle(.bizarreOnSurface)
-                        .lineLimit(1)
+                // BUGHUNT-2026-05-18: "Linked customer" row was non-tappable
+                // text. When a lead converts, the rep typically wants one
+                // tap to the customer profile to see history / add notes.
+                if let custId = detail.customerId {
+                    NavigationLink {
+                        CustomerDetailView(
+                            repo: CustomerDetailRepositoryImpl(api: api),
+                            customerId: custId,
+                            api: api
+                        )
+                    } label: {
+                        HStack(spacing: BrandSpacing.sm) {
+                            Image(systemName: "person.crop.circle")
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                                .frame(width: 20)
+                                .accessibilityHidden(true)
+                            Text("Linked customer")
+                                .font(.brandLabelLarge())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                            Spacer(minLength: BrandSpacing.sm)
+                            Text(customer)
+                                .font(.brandBodyLarge())
+                                .foregroundStyle(.bizarreOnSurface)
+                                .lineLimit(1)
+                            Image(systemName: "chevron.right")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Open customer profile")
+                } else {
+                    HStack(spacing: BrandSpacing.sm) {
+                        Image(systemName: "person.crop.circle")
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .frame(width: 20)
+                            .accessibilityHidden(true)
+                        Text("Linked customer")
+                            .font(.brandLabelLarge())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                        Spacer(minLength: BrandSpacing.sm)
+                        Text(customer)
+                            .font(.brandBodyLarge())
+                            .foregroundStyle(.bizarreOnSurface)
+                            .lineLimit(1)
+                    }
                 }
             }
         }

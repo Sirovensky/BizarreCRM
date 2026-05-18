@@ -1,5 +1,6 @@
 import SwiftUI
 import Core
+import Customers   // BUGHUNT-2026-05-18: CustomerDetailView push from info card
 import DesignSystem
 import Networking
 
@@ -320,8 +321,42 @@ public struct AppointmentDetailView: View {
         VStack(alignment: .leading, spacing: BrandSpacing.md) {
             infoRow(icon: "calendar", label: "Date", value: formattedDate(vm.appointment.startTime))
             infoRow(icon: "clock",    label: "Duration", value: durationText)
+            // BUGHUNT-2026-05-18: customer row was a plain infoRow Text —
+            // when a customer arrives early or asks about another appt,
+            // staff want a one-tap path to the customer's full record.
             if let customer = vm.appointment.customerName {
-                infoRow(icon: "person", label: "Customer", value: customer)
+                if let custId = vm.appointment.customerId {
+                    NavigationLink {
+                        CustomerDetailView(
+                            repo: CustomerDetailRepositoryImpl(api: api),
+                            customerId: custId,
+                            api: api
+                        )
+                    } label: {
+                        HStack(alignment: .top, spacing: BrandSpacing.sm) {
+                            Image(systemName: "person")
+                                .frame(width: 20)
+                                .foregroundStyle(.bizarreOrange)
+                                .accessibilityHidden(true)
+                            Text("Customer")
+                                .font(.brandLabelLarge())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                                .frame(width: 90, alignment: .leading)
+                            Text(customer)
+                                .font(.brandBodyLarge())
+                                .foregroundStyle(.bizarreOrange)
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Open customer profile")
+                } else {
+                    infoRow(icon: "person", label: "Customer", value: customer)
+                }
             }
             if let assigned = vm.appointment.assignedName {
                 infoRow(icon: "person.badge.key", label: "Technician", value: assigned)

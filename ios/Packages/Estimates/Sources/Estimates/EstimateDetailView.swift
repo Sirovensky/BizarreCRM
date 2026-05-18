@@ -1,5 +1,6 @@
 import SwiftUI
 import Core
+import Customers   // BUGHUNT-2026-05-18: CustomerDetailView push from header
 import DesignSystem
 import Networking
 
@@ -214,9 +215,33 @@ public struct EstimateDetailView: View {
                 statusBadge
             }
 
-            Text(estimate.customerName)
-                .font(.brandBodyLarge())
-                .foregroundStyle(.bizarreOnSurface)
+            // BUGHUNT-2026-05-18: customer name was non-tappable Text —
+            // estimate review usually leads to a quick check on customer
+            // history. Wrap in NavigationLink when we have customerId.
+            if let custId = estimate.customerId {
+                NavigationLink {
+                    CustomerDetailView(
+                        repo: CustomerDetailRepositoryImpl(api: api),
+                        customerId: custId,
+                        api: api
+                    )
+                } label: {
+                    HStack(spacing: BrandSpacing.xs) {
+                        Text(estimate.customerName)
+                            .font(.brandBodyLarge())
+                            .foregroundStyle(.bizarreOrange)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Open customer profile")
+            } else {
+                Text(estimate.customerName)
+                    .font(.brandBodyLarge())
+                    .foregroundStyle(.bizarreOnSurface)
+            }
 
             if let total = estimate.total {
                 Text(formatMoney(total))

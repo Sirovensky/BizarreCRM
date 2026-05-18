@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import SwiftUI
 import Core
+import Customers   // BUGHUNT-2026-05-18: CustomerDetailView push from header
 import DesignSystem
 import Networking
 
@@ -665,9 +666,18 @@ private struct HeaderCard: View {
             }
 
             // §7 Customer card link — tapping navigates to customer detail.
-            if let custId = invoice.customerId, let navigate = onNavigateToCustomer {
-                Button {
-                    navigate(custId)
+            // BUGHUNT-2026-05-18: `onNavigateToCustomer` callback had zero
+            // call sites — every InvoiceDetailView instantiation went down
+            // the `else` branch and rendered plain Text. Push directly via
+            // NavigationLink + CustomerDetailView. HeaderCard has the
+            // APIClient already (used for portal-link copy below).
+            if let custId = invoice.customerId {
+                NavigationLink {
+                    CustomerDetailView(
+                        repo: CustomerDetailRepositoryImpl(api: api),
+                        customerId: custId,
+                        api: api
+                    )
                 } label: {
                     HStack(spacing: BrandSpacing.xs) {
                         Text(invoice.customerDisplayName)

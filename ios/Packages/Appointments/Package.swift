@@ -9,6 +9,7 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../Core"),
+        .package(path: "../Customers"),
         .package(path: "../DesignSystem"),
         .package(path: "../Networking"),
         .package(path: "../Persistence"),
@@ -17,7 +18,7 @@ let package = Package(
     targets: [
         .target(
             name: "Appointments",
-            dependencies: ["Core", "DesignSystem", "Networking", "Persistence", "Sync"]
+            dependencies: ["Core", "Customers", "DesignSystem", "Networking", "Persistence", "Sync"]
         ),
         .testTarget(
             name: "AppointmentsTests",
