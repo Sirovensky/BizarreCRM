@@ -8,6 +8,7 @@ import dns from 'dns/promises';
 import crypto from 'crypto';
 import { verifySync } from 'otplib';
 import { AppError } from '../middleware/errorHandler.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
 import { config } from '../config.js';
 import { requireFeature } from '../middleware/tierGate.js';
 import { reloadSmsProvider, createTestProvider, getProviderRegistry, sendSmsTenant, isSmsConfigured } from '../services/smsProvider.js';
@@ -457,7 +458,7 @@ const SENSITIVE_CONFIG_KEYS = new Set([
 //   setup_imported_legacy_data: 'will_import' | 'later' | 'fresh' | null — setup import intent.
 // BUGHUNT-2026-05-17: wrap bare-async handler — `Promise.all` on four DB gets
 // rejects with the first failure; without try/catch it becomes an unhandledRejection.
-router.get('/setup-status', async (req, res) => {
+router.get('/setup-status', asyncHandler(async (req, res) => {
   try {
     const adb = req.asyncDb;
     const [row, nameRow, wizardRow, importChoiceRow] = await Promise.all([
@@ -482,14 +483,14 @@ router.get('/setup-status', async (req, res) => {
       res.status(500).json({ success: false, message: 'Failed to load setup status' });
     }
   }
-});
+}));
 
 // POST /complete-setup — save initial store info and mark setup as done
 // V21: validate email / phone formats before persisting, not just trim.
 // BUGHUNT-2026-05-17: wrap bare-async handler — validateRequiredString /
 // validateEmail can throw structured AppErrors; without try/catch the rejection
 // crashes the server. (adminOnly already runs sync; the body is the risk surface.)
-router.post('/complete-setup', adminOnly, async (req, res) => {
+router.post('/complete-setup', adminOnly, asyncHandler(async (req, res) => {
   try {
     const db = req.db;
     const adb = req.asyncDb;
@@ -540,9 +541,9 @@ router.post('/complete-setup', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'Setup failed' });
     }
   }
-});
+}));
 
-router.get('/config', async (req, res, next) => {
+router.get('/config', asyncHandler(async (req, res, next) => {
   try {
     const adb = req.asyncDb;
     const locationId = parseConfigLocationId(req.query.location_id);
@@ -578,7 +579,7 @@ router.get('/config', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+}));
 
 // ─── Settings validation rules (ENR-S3) ─────────────────────────────────────
 const ISO_CURRENCY_RE = /^[A-Z]{3}$/;
@@ -1024,7 +1025,7 @@ function validateConfigValue(key: string, value: string): string | null {
 // `upsertSetupNotificationTemplatesFromConfig`, and `encrypt/decryptConfigValue`
 // can each throw. Without a top-level catch every failure becomes an unhandled
 // rejection that crashes the server during config edits.
-router.put('/config', adminOnly, async (req, res) => {
+router.put('/config', adminOnly, asyncHandler(async (req, res) => {
   try {
     const db = req.db;
     const adb = req.asyncDb;
@@ -1117,14 +1118,14 @@ router.put('/config', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'Failed to update config' });
     }
   }
-});
+}));
 
 // ==================== Store Settings ====================
 
 // BUGHUNT-2026-05-17: wrap bare-async — `decryptConfigValue` throws on a
 // corrupted ciphertext / wrong tenant encryption key; without try/catch the
 // rejection crashes the process.
-router.get('/store', async (req, res) => {
+router.get('/store', asyncHandler(async (req, res) => {
   try {
     const adb = req.asyncDb;
     const rows = await adb.all<any>('SELECT key, value FROM store_config');
@@ -1143,12 +1144,12 @@ router.get('/store', async (req, res) => {
       res.status(500).json({ success: false, message: 'Failed to load store config' });
     }
   }
-});
+}));
 
 // BUGHUNT-2026-05-17: wrap bare-async — per-key `await adb.run` writes inside
 // the loop can throw on DB lock; without try/catch the partially-applied
 // settings persist and the server crashes.
-router.put('/store', adminOnly, async (req, res) => {
+router.put('/store', adminOnly, asyncHandler(async (req, res) => {
   try {
     const db = req.db;
     const adb = req.asyncDb;
@@ -1183,15 +1184,15 @@ router.put('/store', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'Failed to update store config' });
     }
   }
-});
+}));
 
 // ==================== Ticket Statuses ====================
 
-router.get('/statuses', async (req, res) => {
+router.get('/statuses', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const statuses = await adb.all<any>('SELECT * FROM ticket_statuses ORDER BY sort_order ASC LIMIT 200');
   res.json({ success: true, data: statuses });
-});
+}));
 
 // V23: integer clamp helper for sort_order (0-9999).
 function clampSortOrder(value: unknown, fieldName = 'sort_order'): number {
@@ -1220,7 +1221,7 @@ function validateTaxRate(value: unknown, fieldName = 'rate'): number {
 // `validateHexColor` throw AppError on bad input; the transaction can throw on
 // DB lock or unique-constraint violation. Without try/catch, every malformed
 // POST takes down the server.
-router.post('/statuses', adminOnly, async (req, res) => {
+router.post('/statuses', adminOnly, asyncHandler(async (req, res) => {
   try {
     const adb = req.asyncDb;
     const { name, color = '#6b7280', sort_order = 0, is_default = 0, is_closed = 0, is_cancelled = 0, notify_customer = 0, notification_template } = req.body;
@@ -1266,12 +1267,12 @@ router.post('/statuses', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'Failed to create status' });
     }
   }
-});
+}));
 
 // BUGHUNT-2026-05-17: wrap bare-async — `validateRequiredString` / `validateHexColor`
 // throw AppError on bad input; transactions can throw on lock contention. Without
 // try/catch every malformed PUT crashes the server.
-router.put('/statuses/:id', adminOnly, async (req, res) => {
+router.put('/statuses/:id', adminOnly, asyncHandler(async (req, res) => {
   try {
     const adb = req.asyncDb;
     const { name, color, sort_order, is_default, is_closed, is_cancelled, notify_customer, notification_template } = req.body;
@@ -1333,7 +1334,7 @@ router.put('/statuses/:id', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'Failed to update status' });
     }
   }
-});
+}));
 
 // D2: Deleting a status must also account for soft-deleted tickets.
 // Previously only active (is_deleted = 0) tickets were checked, so deleting a
@@ -1344,7 +1345,7 @@ router.put('/statuses/:id', adminOnly, async (req, res) => {
 // BUGHUNT-2026-05-17: wrap bare-async handler — the AppError throws on missing
 // default and on not-found are unrecoverable rejections without a top-level
 // try/catch. Foreign-key contention on the migration UPDATE can also throw.
-router.delete('/statuses/:id', adminOnly, async (req, res) => {
+router.delete('/statuses/:id', adminOnly, asyncHandler(async (req, res) => {
   try {
     const adb = req.asyncDb;
     const db = req.db;
@@ -1412,21 +1413,21 @@ router.delete('/statuses/:id', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'Failed to delete status' });
     }
   }
-});
+}));
 
 // ==================== Tax Classes ====================
 
-router.get('/tax-classes', async (req, res) => {
+router.get('/tax-classes', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const taxClasses = await adb.all<any>('SELECT * FROM tax_classes ORDER BY name ASC LIMIT 200');
   res.json({ success: true, data: taxClasses });
-});
+}));
 
 // BUGHUNT-2026-05-17: wrap bare-async handler — `validateRequiredString` and
 // `validateTaxRate` throw AppError on bad input; the transaction can throw on
 // lock or UNIQUE constraint. Without try/catch every malformed POST crashes
 // the server during a financial setting edit.
-router.post('/tax-classes', adminOnly, async (req, res) => {
+router.post('/tax-classes', adminOnly, asyncHandler(async (req, res) => {
   try {
     const adb = req.asyncDb;
     const db = req.db;
@@ -1477,12 +1478,12 @@ router.post('/tax-classes', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'Failed to create tax class' });
     }
   }
-});
+}));
 
 // BUGHUNT-2026-05-17: wrap bare-async — AppError on 404 and validate* throws,
 // the transaction throws on DB lock. Tax-class edits are financial; without
 // try/catch any malformed PUT crashes the server.
-router.put('/tax-classes/:id', adminOnly, async (req, res) => {
+router.put('/tax-classes/:id', adminOnly, asyncHandler(async (req, res) => {
   try {
     const adb = req.asyncDb;
     const db = req.db;
@@ -1544,7 +1545,7 @@ router.put('/tax-classes/:id', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'Failed to update tax class' });
     }
   }
-});
+}));
 
 // D4: also refuse when a ticket_devices row references this tax class.
 // The original check missed ticket_devices.tax_class_id, which meant deleting a
@@ -1553,7 +1554,7 @@ router.put('/tax-classes/:id', adminOnly, async (req, res) => {
 // BUGHUNT-2026-05-17: wrap bare-async — three AppError throws on guards plus
 // the Promise.all and DB writes. Without a top-level catch every failing tax
 // class delete crashes the server.
-router.delete('/tax-classes/:id', adminOnly, async (req, res) => {
+router.delete('/tax-classes/:id', adminOnly, asyncHandler(async (req, res) => {
   try {
     const adb = req.asyncDb;
     const db = req.db;
@@ -1612,19 +1613,19 @@ router.delete('/tax-classes/:id', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'Failed to delete tax class' });
     }
   }
-});
+}));
 
 // ==================== Payment Methods ====================
 
-router.get('/payment-methods', async (req, res) => {
+router.get('/payment-methods', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const methods = await adb.all<any>('SELECT * FROM payment_methods WHERE is_active = 1 ORDER BY sort_order ASC LIMIT 200');
   res.json({ success: true, data: methods });
-});
+}));
 
 // BUGHUNT-2026-05-17: wrap bare-async — AppError on missing name + INSERT can
 // throw on lock or UNIQUE collision.
-router.post('/payment-methods', adminOnly, async (req, res) => {
+router.post('/payment-methods', adminOnly, asyncHandler(async (req, res) => {
   try {
     const adb = req.asyncDb;
     const { name, sort_order = 0 } = req.body;
@@ -1643,18 +1644,18 @@ router.post('/payment-methods', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'Failed to create payment method' });
     }
   }
-});
+}));
 
 // ==================== Referral Sources ====================
 
-router.get('/referral-sources', async (req, res) => {
+router.get('/referral-sources', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const sources = await adb.all<any>('SELECT * FROM referral_sources ORDER BY sort_order ASC LIMIT 200');
   res.json({ success: true, data: sources });
-});
+}));
 
 // BUGHUNT-2026-05-17: wrap bare-async — same shape as payment-methods POST.
-router.post('/referral-sources', adminOnly, async (req, res) => {
+router.post('/referral-sources', adminOnly, asyncHandler(async (req, res) => {
   try {
     const adb = req.asyncDb;
     const { name, sort_order = 0 } = req.body;
@@ -1673,18 +1674,18 @@ router.post('/referral-sources', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'Failed to create referral source' });
     }
   }
-});
+}));
 
 // ==================== Customer Groups ====================
 
-router.get('/customer-groups', async (req, res) => {
+router.get('/customer-groups', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const groups = await adb.all<any>('SELECT * FROM customer_groups ORDER BY name ASC LIMIT 200');
   res.json({ success: true, data: groups });
-});
+}));
 
 // BUGHUNT-2026-05-17: wrap bare-async — AppError on missing name + DB writes.
-router.post('/customer-groups', adminOnly, async (req, res) => {
+router.post('/customer-groups', adminOnly, asyncHandler(async (req, res) => {
   try {
     const adb = req.asyncDb;
     const { name, discount_pct = 0, discount_type = 'percentage', auto_apply = 1, description } = req.body;
@@ -1705,10 +1706,10 @@ router.post('/customer-groups', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'Failed to create customer group' });
     }
   }
-});
+}));
 
 // BUGHUNT-2026-05-17: wrap bare-async — AppError on 404 + DB write.
-router.put('/customer-groups/:id', adminOnly, async (req, res) => {
+router.put('/customer-groups/:id', adminOnly, asyncHandler(async (req, res) => {
   try {
     const adb = req.asyncDb;
     const { name, discount_pct, discount_type, auto_apply, description } = req.body;
@@ -1745,12 +1746,12 @@ router.put('/customer-groups/:id', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'Failed to update customer group' });
     }
   }
-});
+}));
 
 // BUGHUNT-2026-05-17: wrap bare-async — AppError on 404 and two DB writes.
 // The previous unlink+delete combo isn't transactional, but at minimum the
 // catch prevents an unhandledRejection on a missing group lookup.
-router.delete('/customer-groups/:id', adminOnly, async (req, res) => {
+router.delete('/customer-groups/:id', adminOnly, asyncHandler(async (req, res) => {
   try {
     const adb = req.asyncDb;
     const existing = await adb.get<any>('SELECT * FROM customer_groups WHERE id = ?', req.params.id);
@@ -1770,7 +1771,7 @@ router.delete('/customer-groups/:id', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'Failed to delete customer group' });
     }
   }
-});
+}));
 
 // ==================== Users ====================
 
@@ -1873,7 +1874,7 @@ async function sendSetupInviteEmail(
 // throw on malformed input; `sendSetupInviteEmail` reaches an external SMTP host
 // and can reject. Without a top-level try/catch every one of those becomes an
 // unhandledRejection that crashes the server.
-router.post('/setup-invites', adminOnly, async (req, res) => {
+router.post('/setup-invites', adminOnly, asyncHandler(async (req, res) => {
   try {
     const adb = req.asyncDb;
     const db = req.db;
@@ -1977,23 +1978,23 @@ router.post('/setup-invites', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'Failed to send setup invite' });
     }
   }
-});
+}));
 
 // SCAN-1098 [HIGH]: staff email dump was ungated. Any authenticated user
 // (including revoked/low-privilege roles) could enumerate all staff emails
 // + usernames + role assignments — a ready-made phishing + social-engineering
 // target list including admin accounts. Gate behind adminOnly to match the
 // POST/PUT/DELETE sibling handlers below.
-router.get('/users', adminOnly, async (req, res) => {
+router.get('/users', adminOnly, asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const users = await adb.all<any>('SELECT id, username, email, first_name, last_name, role, is_active, created_at FROM users ORDER BY first_name ASC LIMIT 500');
   res.json({ success: true, data: users });
-});
+}));
 
 // BUGHUNT-2026-05-17: wrap bare-async handler. Multiple AppError throws on bad
 // input plus bcrypt.hashSync calls and an INSERT that re-throws AppError on a
 // 409 collision. Every one of these crashes the server without a top-level catch.
-router.post('/users', adminOnly, async (req, res) => {
+router.post('/users', adminOnly, asyncHandler(async (req, res) => {
   try {
     const adb = req.asyncDb;
     const db = req.db;
@@ -2086,14 +2087,14 @@ router.post('/users', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'Failed to create user' });
     }
   }
-});
+}));
 
 // BUGHUNT-2026-05-17: wrap bare-async handler. The 280-line body throws
 // AppError for every validation failure (password length, role allowlist,
 // last-admin guard, post-recovery cooldown, etc.) and performs multiple
 // bcrypt.hashSync + DB writes. Without a top-level catch each one becomes an
 // unhandledRejection that crashes the server.
-router.put('/users/:id', adminOnly, async (req, res) => {
+router.put('/users/:id', adminOnly, asyncHandler(async (req, res) => {
   try {
   const adb = req.asyncDb;
   const db = req.db;
@@ -2391,7 +2392,7 @@ router.put('/users/:id', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'Failed to update user' });
     }
   }
-});
+}));
 
 // (Old COGS reconciliation removed — moved to catalog.routes.ts syncCostPricesFromCatalog)
 
@@ -2475,7 +2476,7 @@ function tokenMatchScore(invName: string, catName: string): number {
 // `await adb.get/run` calls — any DB lock contention mid-loop bubbles out
 // as an unhandledRejection and crashes the server with a partial reconcile
 // already applied.
-router.post('/reconcile-cogs', adminOnly, async (req, res) => {
+router.post('/reconcile-cogs', adminOnly, asyncHandler(async (req, res) => {
   try {
   const adb = req.asyncDb;
   type AnyRow = Record<string, any>;
@@ -2622,11 +2623,11 @@ router.post('/reconcile-cogs', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'COGS reconciliation failed' });
     }
   }
-});
+}));
 
 // ==================== Condition Templates ====================
 
-router.get('/condition-templates', async (req, res) => {
+router.get('/condition-templates', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const { category } = req.query;
   // BUGHUNT-2026-05-17: LIMIT 500 + replace N+1 fan-out with a single
@@ -2664,9 +2665,9 @@ router.get('/condition-templates', async (req, res) => {
     }
   }
   res.json({ success: true, data: templates });
-});
+}));
 
-router.post('/condition-templates', adminOnly, async (req, res) => {
+router.post('/condition-templates', adminOnly, asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const { category, name } = req.body;
   if (!category || !name) throw new AppError('Category and name required', 400);
@@ -2674,9 +2675,9 @@ router.post('/condition-templates', adminOnly, async (req, res) => {
   const template = await adb.get<any>('SELECT * FROM condition_templates WHERE id = ?', result.lastInsertRowid);
   (template as any).checks = [];
   res.status(201).json({ success: true, data: template });
-});
+}));
 
-router.put('/condition-templates/:id', adminOnly, async (req, res) => {
+router.put('/condition-templates/:id', adminOnly, asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const { name, is_default } = req.body;
   await adb.run(`
@@ -2689,20 +2690,20 @@ router.put('/condition-templates/:id', adminOnly, async (req, res) => {
   if (!template) throw new AppError('Template not found', 404);
   (template as any).checks = await adb.all<any>('SELECT * FROM condition_checks WHERE template_id = ? ORDER BY sort_order ASC', template.id);
   res.json({ success: true, data: template });
-});
+}));
 
-router.delete('/condition-templates/:id', adminOnly, async (req, res) => {
+router.delete('/condition-templates/:id', adminOnly, asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const template = await adb.get<any>('SELECT * FROM condition_templates WHERE id = ?', req.params.id);
   if (!template) throw new AppError('Template not found', 404);
   if (template.is_default) throw new AppError('Cannot delete default template', 400);
   await adb.run('DELETE FROM condition_templates WHERE id = ?', req.params.id);
   res.json({ success: true, data: { message: 'Template deleted' } });
-});
+}));
 
 // ==================== Condition Checks ====================
 
-router.get('/condition-checks/:category', async (req, res) => {
+router.get('/condition-checks/:category', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const template = await adb.get<any>(
     'SELECT * FROM condition_templates WHERE category = ? AND is_default = 1',
@@ -2715,9 +2716,9 @@ router.get('/condition-checks/:category', async (req, res) => {
     'SELECT * FROM condition_checks WHERE template_id = ? AND is_active = 1 ORDER BY sort_order ASC',
     template.id);
   res.json({ success: true, data: checks });
-});
+}));
 
-router.post('/condition-checks', adminOnly, async (req, res) => {
+router.post('/condition-checks', adminOnly, asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const { template_id, label } = req.body;
   if (!template_id || !label) throw new AppError('template_id and label required', 400);
@@ -2727,9 +2728,9 @@ router.post('/condition-checks', adminOnly, async (req, res) => {
   const result = await adb.run('INSERT INTO condition_checks (template_id, label, sort_order) VALUES (?, ?, ?)', template_id, label, sort_order);
   const check = await adb.get<any>('SELECT * FROM condition_checks WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: check });
-});
+}));
 
-router.put('/condition-checks/:id', adminOnly, async (req, res) => {
+router.put('/condition-checks/:id', adminOnly, asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const { label, sort_order, is_active } = req.body;
   await adb.run(`
@@ -2742,18 +2743,18 @@ router.put('/condition-checks/:id', adminOnly, async (req, res) => {
   const check = await adb.get<any>('SELECT * FROM condition_checks WHERE id = ?', req.params.id);
   if (!check) throw new AppError('Check not found', 404);
   res.json({ success: true, data: check });
-});
+}));
 
-router.delete('/condition-checks/:id', adminOnly, async (req, res) => {
+router.delete('/condition-checks/:id', adminOnly, asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const existing = await adb.get<any>('SELECT * FROM condition_checks WHERE id = ?', req.params.id);
   if (!existing) throw new AppError('Check not found', 404);
   await adb.run('DELETE FROM condition_checks WHERE id = ?', req.params.id);
   res.json({ success: true, data: { message: 'Check deleted' } });
-});
+}));
 
 // Bulk reorder checks for a template
-router.put('/condition-checks-reorder/:templateId', adminOnly, async (req, res) => {
+router.put('/condition-checks-reorder/:templateId', adminOnly, asyncHandler(async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
   const { order } = req.body; // array of check IDs in desired order
@@ -2765,17 +2766,17 @@ router.put('/condition-checks-reorder/:templateId', adminOnly, async (req, res) 
   await adb.transaction(queries);
   const checks = await adb.all<any>('SELECT * FROM condition_checks WHERE template_id = ? ORDER BY sort_order ASC', req.params.templateId);
   res.json({ success: true, data: checks });
-});
+}));
 
 // ==================== Notification Templates ====================
 
-router.get('/notification-templates', async (req, res) => {
+router.get('/notification-templates', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const templates = await adb.all<any>('SELECT * FROM notification_templates ORDER BY id ASC');
   res.json({ success: true, data: templates });
-});
+}));
 
-router.post('/notification-templates/test', adminOnly, async (req, res, next) => {
+router.post('/notification-templates/test', adminOnly, asyncHandler(async (req, res, next) => {
   try {
     const db = req.db;
     const templateKey = String(req.body?.template_key || req.body?.key || '').trim() as SetupNotificationTemplateKey;
@@ -2886,11 +2887,11 @@ router.post('/notification-templates/test', adminOnly, async (req, res, next) =>
   } catch (err) {
     next(err);
   }
-});
+}));
 
 // BUGHUNT-2026-05-17: wrap bare-async — AppError on 404 was previously
 // unhandled, crashing the server on every "template not found" request.
-router.put('/notification-templates/:id', adminOnly, async (req, res) => {
+router.put('/notification-templates/:id', adminOnly, asyncHandler(async (req, res) => {
   try {
     const adb = req.asyncDb;
     const { subject, email_body, sms_body, send_email_auto, send_sms_auto, is_active, show_in_canned } = req.body;
@@ -2931,23 +2932,23 @@ router.put('/notification-templates/:id', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'Failed to update notification template' });
     }
   }
-});
+}));
 
 // ==================== Checklist Templates ====================
 
-router.get('/checklist-templates', async (req, res) => {
+router.get('/checklist-templates', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   // BUGHUNT-2026-05-17: cap at 500 — checklist_templates.items is a
   // JSON blob per row and an unbounded SELECT would load multi-MB
   // payloads on shops that have generated lots of device templates.
   const templates = await adb.all<any>('SELECT * FROM checklist_templates ORDER BY device_type, name LIMIT 500');
   res.json({ success: true, data: templates });
-});
+}));
 
 // BUGHUNT-2026-05-17: wrap bare-async — AppError throw on missing name and
 // the INSERT can throw on DB lock. JSON.stringify on a circular `items` value
 // can also throw.
-router.post('/checklist-templates', adminOnly, async (req, res) => {
+router.post('/checklist-templates', adminOnly, asyncHandler(async (req, res) => {
   try {
     const adb = req.asyncDb;
     const { name, device_type, items } = req.body;
@@ -2969,11 +2970,11 @@ router.post('/checklist-templates', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'Failed to create checklist template' });
     }
   }
-});
+}));
 
 // BUGHUNT-2026-05-17: wrap bare-async — JSON.stringify can throw on circular
 // objects; the UPDATE can throw on DB lock.
-router.put('/checklist-templates/:id', adminOnly, async (req, res) => {
+router.put('/checklist-templates/:id', adminOnly, asyncHandler(async (req, res) => {
   try {
     const adb = req.asyncDb;
     const { name, device_type, items } = req.body;
@@ -2989,11 +2990,11 @@ router.put('/checklist-templates/:id', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'Failed to update checklist template' });
     }
   }
-});
+}));
 
 // BUGHUNT-2026-05-17: wrap bare-async — DELETE can throw on FK constraint or
 // DB lock. Without try/catch every failed delete crashes the server.
-router.delete('/checklist-templates/:id', adminOnly, async (req, res) => {
+router.delete('/checklist-templates/:id', adminOnly, asyncHandler(async (req, res) => {
   try {
     const adb = req.asyncDb;
     await adb.run('DELETE FROM checklist_templates WHERE id = ?', req.params.id);
@@ -3004,14 +3005,14 @@ router.delete('/checklist-templates/:id', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'Failed to delete checklist template' });
     }
   }
-});
+}));
 
 // ==================== Logo Upload ====================
 
 // BUGHUNT-2026-05-17: wrap bare-async — AppError on missing file + the INSERT
 // can throw on store_config lock, leaving the uploaded file unreferenced on
 // disk and the server crashed.
-router.post('/logo', adminOnly, enforceUploadQuota, logoUpload.single('logo'), fileUploadValidator({ allowedMimes: LOGO_ALLOWED_MIMES }), async (req, res) => {
+router.post('/logo', adminOnly, enforceUploadQuota, logoUpload.single('logo'), fileUploadValidator({ allowedMimes: LOGO_ALLOWED_MIMES }), asyncHandler(async (req, res) => {
   try {
     const adb = req.asyncDb;
     if (!req.file) throw new AppError('No file uploaded', 400);
@@ -3056,7 +3057,7 @@ router.post('/logo', adminOnly, enforceUploadQuota, logoUpload.single('logo'), f
       res.status(500).json({ success: false, message: 'Logo upload failed' });
     }
   }
-});
+}));
 
 // ==================== Setup Hardware Tests ====================
 
@@ -3064,7 +3065,7 @@ router.post('/logo', adminOnly, enforceUploadQuota, logoUpload.single('logo'), f
 // outbound HTTP to BlockChyp gateway and can throw on TLS/DNS issues. The
 // inner try around connectTcp only covers LAN. Without a top-level catch
 // gateway errors crash the server.
-router.post('/hardware/blockchyp/test', adminOnly, async (req, res) => {
+router.post('/hardware/blockchyp/test', adminOnly, asyncHandler(async (req, res) => {
   try {
     const { api_key, bearer_token, signing_key, terminal_name, terminal_ip, test_mode } = req.body as Record<string, string | boolean | undefined>;
     const terminalIp = String(terminal_ip || '').trim();
@@ -3125,12 +3126,12 @@ router.post('/hardware/blockchyp/test', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'BlockChyp test failed' });
     }
   }
-});
+}));
 
 // BUGHUNT-2026-05-17: wrap bare-async — testTenantStripeConnection does an
 // outbound HTTPS call to Stripe and rejects on network/TLS errors. Without a
 // try/catch the rejection crashes the server.
-router.post('/payments/stripe/test', adminOnly, async (req, res) => {
+router.post('/payments/stripe/test', adminOnly, asyncHandler(async (req, res) => {
   try {
     const body = req.body as Record<string, string | undefined>;
     const result = await testTenantStripeConnection({
@@ -3154,13 +3155,13 @@ router.post('/payments/stripe/test', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'Stripe test failed' });
     }
   }
-});
+}));
 
 // BUGHUNT-2026-05-17: wrap bare-async — many AppError throws on validation +
 // writeTcp / writeDevicePath are I/O that can throw on EHOSTUNREACH, EACCES,
 // ENOENT etc. Without a try/catch every printer misconfiguration crashes the
 // server.
-router.post('/hardware/receipt-printer/test', adminOnly, async (req, res) => {
+router.post('/hardware/receipt-printer/test', adminOnly, asyncHandler(async (req, res) => {
   try {
     const driver = String(req.body?.driver || '').trim();
     const connection = String(req.body?.connection || '').trim();
@@ -3194,10 +3195,10 @@ router.post('/hardware/receipt-printer/test', adminOnly, async (req, res) => {
       res.status(502).json({ success: false, message: 'Printer test failed (network/IO error)' });
     }
   }
-});
+}));
 
 // BUGHUNT-2026-05-17: wrap bare-async — same I/O exposure as the printer test.
-router.post('/hardware/cash-drawer/test', adminOnly, async (req, res) => {
+router.post('/hardware/cash-drawer/test', adminOnly, asyncHandler(async (req, res) => {
   try {
     const driver = String(req.body?.driver || '').trim();
     const address = String(req.body?.address || '').trim();
@@ -3238,12 +3239,12 @@ router.post('/hardware/cash-drawer/test', adminOnly, async (req, res) => {
       res.status(502).json({ success: false, message: 'Cash drawer test failed (network/IO error)' });
     }
   }
-});
+}));
 
 // BUGHUNT-2026-05-17: wrap bare-async — many AppError throws + outbound S3
 // HTTPS calls + DNS lookups, all of which reject async. Any unhandled rejection
 // crashes the server during backup destination setup.
-router.post('/hardware/backup/test', adminOnly, async (req, res) => {
+router.post('/hardware/backup/test', adminOnly, asyncHandler(async (req, res) => {
   try {
   const kind = String(req.body?.kind || req.body?.backup_destination_type || '').trim();
   if (kind === 'local') {
@@ -3343,7 +3344,7 @@ router.post('/hardware/backup/test', adminOnly, async (req, res) => {
       res.status(502).json({ success: false, message: 'Backup destination test failed' });
     }
   }
-});
+}));
 
 // ==================== SMS/Voice Provider Settings ====================
 
@@ -3361,7 +3362,7 @@ router.get('/sms/providers', (_req, res) => {
 // silently failing at first send. The previous implementation only tested
 // Twilio + Telnyx; Bandwidth / Plivo / Vonage short-circuited to a "success"
 // response regardless of the credentials they were handed.
-router.post('/sms/test-connection', adminOnly, async (req, res, next) => {
+router.post('/sms/test-connection', adminOnly, asyncHandler(async (req, res, next) => {
   try {
     const { provider_type, credentials } = req.body as { provider_type: ProviderType; credentials: Record<string, string> };
     if (!provider_type) throw new AppError('Provider type is required', 400);
@@ -3503,7 +3504,7 @@ router.post('/sms/test-connection', adminOnly, async (req, res, next) => {
     }
     next(err);
   }
-});
+}));
 
 // POST /settings/sms/test-send — WEB-S4-010
 // Sends a real test SMS to a supplied phone number using the credentials
@@ -3511,7 +3512,7 @@ router.post('/sms/test-connection', adminOnly, async (req, res, next) => {
 // to verify their provider setup without committing the credentials first.
 // Credentials are validated for completeness before the outbound send is
 // attempted; the request never touches store_config.
-router.post('/sms/test-send', adminOnly, async (req, res, next) => {
+router.post('/sms/test-send', adminOnly, asyncHandler(async (req, res, next) => {
   try {
     const { provider_type, credentials, to, body: msgBody } = req.body as {
       provider_type?: ProviderType;
@@ -3536,14 +3537,14 @@ router.post('/sms/test-send', adminOnly, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+}));
 
 // POST /settings/sms/reload — Hot-reload SMS provider from store_config
 // Note: reloadSmsProvider uses sync db internally, keep req.db
 // BUGHUNT-2026-05-17: wrap bare-async — reloadSmsProvider can throw on a
 // malformed provider config (missing API key, bad credential decrypt). Without
 // try/catch every misconfigured reload crashes the server.
-router.post('/sms/reload', adminOnly, async (req, res) => {
+router.post('/sms/reload', adminOnly, asyncHandler(async (req, res) => {
   try {
     const db = req.db;
     const providerName = reloadSmsProvider(db);
@@ -3554,13 +3555,13 @@ router.post('/sms/reload', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'SMS provider reload failed' });
     }
   }
-});
+}));
 
 // POST /settings/email/test-smtp — WEB-S4-009 / WEB-W1-034
 // Verifies SMTP credentials supplied in the request body (not necessarily saved yet)
 // by creating a transient nodemailer transport and calling .verify(). Never touches
 // store_config — purely a connectivity check during wizard or settings setup.
-router.post('/email/test-smtp', adminOnly, async (req, res, next) => {
+router.post('/email/test-smtp', adminOnly, asyncHandler(async (req, res, next) => {
   try {
     const { host, port, user, pass } = req.body as {
       host?: string; port?: string | number; user?: string; pass?: string;
@@ -3588,7 +3589,7 @@ router.post('/email/test-smtp', adminOnly, async (req, res, next) => {
     const msg = (err as Error).message || 'SMTP connection failed';
     next(new AppError(`SMTP test failed: ${msg}`, 502));
   }
-});
+}));
 
 // ---------------------------------------------------------------------------
 // ENR-S8: GET /settings/audit-logs — Paginated audit log viewer
@@ -3598,7 +3599,7 @@ router.post('/email/test-smtp', adminOnly, async (req, res, next) => {
 // 1_000_000 to stop DoS via skip-ahead pagination.
 // BUGHUNT-2026-05-17: wrap bare-async — the `Promise.all` rejects on any of
 // the three DB calls, propagating to an unhandledRejection without a catch.
-router.get('/audit-logs', adminOnly, async (req, res) => {
+router.get('/audit-logs', adminOnly, asyncHandler(async (req, res) => {
   try {
   const adb = req.asyncDb;
   const MAX_OFFSET = 1_000_000;
@@ -3702,7 +3703,7 @@ router.get('/audit-logs', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'Failed to load audit logs' });
     }
   }
-});
+}));
 
 // ---------------------------------------------------------------------------
 // ENR-S1: Settings import/export
@@ -3710,7 +3711,7 @@ router.get('/audit-logs', adminOnly, async (req, res) => {
 
 // GET /settings/export — Download all store_config as JSON
 // SEC-H56: Step-up TOTP required before any PII export.
-router.get('/export', adminOnly, requireStepUpTotp('GET /settings-ext/export.json'), async (req, res) => {
+router.get('/export', adminOnly, requireStepUpTotp('GET /settings-ext/export.json'), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const rows = await adb.all<{ key: string; value: string }>('SELECT key, value FROM store_config');
   const configData: Record<string, string> = {};
@@ -3723,13 +3724,13 @@ router.get('/export', adminOnly, requireStepUpTotp('GET /settings-ext/export.jso
   res.setHeader('Content-Disposition', 'attachment; filename="bizarrecrm-settings.json"');
   res.setHeader('Content-Type', 'application/json');
   res.json({ success: true, data: configData });
-});
+}));
 
 // POST /settings/import — Import settings from JSON, validate keys
 // BUGHUNT-2026-05-17: wrap bare-async — `encryptConfigValue` throws on key
 // rotation issues, the transaction throws on lock or constraint violation, and
 // AppError throws on bad body. Each rejects the request handler and crashes.
-router.post('/import', adminOnly, async (req, res) => {
+router.post('/import', adminOnly, asyncHandler(async (req, res) => {
   try {
     const adb = req.asyncDb;
 
@@ -3771,7 +3772,7 @@ router.post('/import', adminOnly, async (req, res) => {
       res.status(500).json({ success: false, message: 'Settings import failed' });
     }
   }
-});
+}));
 
 // ---------------------------------------------------------------------------
 // ENR-S6: Per-user preferences (convenience aliases under /settings)
@@ -3779,7 +3780,7 @@ router.post('/import', adminOnly, async (req, res) => {
 // ---------------------------------------------------------------------------
 
 // GET /settings/preferences — returns all preferences for the current user
-router.get('/preferences', async (req, res) => {
+router.get('/preferences', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const userId = req.user!.id;
   const rows = await adb.all<any>('SELECT key, value FROM user_preferences WHERE user_id = ?', userId);
@@ -3788,11 +3789,11 @@ router.get('/preferences', async (req, res) => {
     try { prefs[row.key] = JSON.parse(row.value); } catch { prefs[row.key] = row.value; }
   }
   res.json({ success: true, data: prefs });
-});
+}));
 
 // PUT /settings/preferences — bulk upsert preferences for the current user
 // Body: { theme: "dark", default_view: "list", timezone: "America/Toronto", ... }
-router.put('/preferences', async (req, res) => {
+router.put('/preferences', asyncHandler(async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
   const userId = req.user!.id;
@@ -3826,7 +3827,7 @@ router.put('/preferences', async (req, res) => {
     try { prefs[row.key] = JSON.parse(row.value); } catch { prefs[row.key] = row.value; }
   }
   res.json({ success: true, data: prefs });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // ENR-S7: Role-based module visibility
@@ -3837,7 +3838,7 @@ router.put('/preferences', async (req, res) => {
 const DEFAULT_MODULE_VISIBILITY: Record<string, string[]> = {};
 
 // GET /settings/module-visibility — returns the role->modules config
-router.get('/module-visibility', async (req, res) => {
+router.get('/module-visibility', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const row = await adb.get<any>("SELECT value FROM store_config WHERE key = 'role_module_visibility'");
   let visibility = DEFAULT_MODULE_VISIBILITY;
@@ -3845,11 +3846,11 @@ router.get('/module-visibility', async (req, res) => {
     try { visibility = JSON.parse(row.value); } catch { /* use default */ }
   }
   res.json({ success: true, data: visibility });
-});
+}));
 
 // PUT /settings/module-visibility — save the role->modules config (admin only)
 // Body: { "technician": ["tickets", "customers", "pos"], "cashier": ["pos", "invoices", "customers"] }
-router.put('/module-visibility', adminOnly, async (req, res) => {
+router.put('/module-visibility', adminOnly, asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const data = req.body;
 
@@ -3873,12 +3874,12 @@ router.put('/module-visibility', adminOnly, async (req, res) => {
   );
 
   res.json({ success: true, data });
-});
+}));
 
 // ==================== ENR-S10: API Key Self-Service ====================
 
 // GET /api-keys — list API keys (masked)
-router.get('/api-keys', requireFeature('apiKeys'), adminOnly, async (req, res) => {
+router.get('/api-keys', requireFeature('apiKeys'), adminOnly, asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const rows = await adb.all<any>(
     "SELECT id, key_prefix, key_hash, label, created_at, last_used_at FROM api_keys WHERE revoked_at IS NULL ORDER BY created_at DESC"
@@ -3894,14 +3895,14 @@ router.get('/api-keys', requireFeature('apiKeys'), adminOnly, async (req, res) =
   }));
 
   res.json({ success: true, data: keys });
-});
+}));
 
 // POST /api-keys — generate a new API key
 // BUGHUNT-2026-05-17: wrap bare-async — `bcrypt.hashSync` with cost 12 + the
 // CREATE TABLE IF NOT EXISTS + INSERT can throw on DB lock or schema drift,
 // and audit() throws on master_audit_log lock. Without try/catch every key
 // creation is a server-crash candidate.
-router.post('/api-keys', requireFeature('apiKeys'), adminOnly, async (req, res) => {
+router.post('/api-keys', requireFeature('apiKeys'), adminOnly, asyncHandler(async (req, res) => {
   try {
     const db = req.db;
     const adb = req.asyncDb;
@@ -3960,12 +3961,12 @@ router.post('/api-keys', requireFeature('apiKeys'), adminOnly, async (req, res) 
       res.status(500).json({ success: false, message: 'Failed to create API key' });
     }
   }
-});
+}));
 
 // DELETE /api-keys/:id — revoke an API key
 // BUGHUNT-2026-05-17: wrap bare-async — AppError throw on missing key + audit()
 // on master DB lock both crash the server without a top-level catch.
-router.delete('/api-keys/:id', requireFeature('apiKeys'), adminOnly, async (req, res) => {
+router.delete('/api-keys/:id', requireFeature('apiKeys'), adminOnly, asyncHandler(async (req, res) => {
   try {
     const db = req.db;
     const adb = req.asyncDb;
@@ -3992,7 +3993,7 @@ router.delete('/api-keys/:id', requireFeature('apiKeys'), adminOnly, async (req,
       res.status(500).json({ success: false, message: 'Failed to revoke API key' });
     }
   }
-});
+}));
 
 // ─── ENR-A6: Tenant-admin webhook dead-letter endpoints ──────────────────────
 // Super-admin already has read + retry via super-admin.routes.ts. These routes
