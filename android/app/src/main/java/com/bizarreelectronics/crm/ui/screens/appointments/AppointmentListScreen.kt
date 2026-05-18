@@ -150,6 +150,7 @@ fun AppointmentListScreen(
                         isLoading = state.isLoading,
                         error = state.error,
                         onAppointmentClick = onAppointmentClick,
+                        onCreateAppointment = onCreateClick,
                         listState = listState,
                     )
                     AppointmentViewMode.Day -> AppointmentDayView(
@@ -158,6 +159,7 @@ fun AppointmentListScreen(
                         isLoading = state.isLoading,
                         error = state.error,
                         onAppointmentClick = onAppointmentClick,
+                        onCreateAppointment = onCreateClick,
                         onDateChange = viewModel::setSelectedDate,
                     )
                     AppointmentViewMode.Week -> AppointmentWeekView(
@@ -166,6 +168,7 @@ fun AppointmentListScreen(
                         isLoading = state.isLoading,
                         error = state.error,
                         onAppointmentClick = onAppointmentClick,
+                        onCreateAppointment = onCreateClick,
                         onDateChange = viewModel::setSelectedDate,
                     )
                     AppointmentViewMode.Month -> AppointmentMonthView(

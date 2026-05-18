@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -31,6 +32,7 @@ fun AppointmentDayView(
     isLoading: Boolean,
     error: String?,
     onAppointmentClick: (Long) -> Unit,
+    onCreateAppointment: () -> Unit,
     onDateChange: (LocalDate) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -74,7 +76,18 @@ fun AppointmentDayView(
             }
             dayAppts.isEmpty() -> EmptyState(
                 title = "No appointments today",
-                subtitle = "Tap + to schedule one",
+                subtitle = "Book an appointment to fill the day.",
+                action = {
+                    FilledTonalButton(onClick = onCreateAppointment) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.size(8.dp))
+                        Text("Book appointment")
+                    }
+                },
             )
             else -> LazyColumn(
                 modifier = Modifier.fillMaxSize(),

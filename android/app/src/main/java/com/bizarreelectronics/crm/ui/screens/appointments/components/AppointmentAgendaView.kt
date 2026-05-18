@@ -6,6 +6,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -33,6 +35,7 @@ fun AppointmentAgendaView(
     isLoading: Boolean,
     error: String?,
     onAppointmentClick: (Long) -> Unit,
+    onCreateAppointment: () -> Unit,
     listState: LazyListState = rememberLazyListState(),
     modifier: Modifier = Modifier,
 ) {
@@ -52,7 +55,18 @@ fun AppointmentAgendaView(
         }
         appointments.isEmpty() -> EmptyState(
             title = "No upcoming appointments",
-            subtitle = "Tap + to schedule one",
+            subtitle = "Book an appointment to keep the calendar full.",
+            action = {
+                FilledTonalButton(onClick = onCreateAppointment) {
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.size(8.dp))
+                    Text("Book appointment")
+                }
+            },
         )
         else -> {
             val today = LocalDate.now()
@@ -68,7 +82,18 @@ fun AppointmentAgendaView(
             if (grouped.isEmpty()) {
                 EmptyState(
                     title = "No upcoming appointments",
-                    subtitle = "Tap + to schedule one",
+                    subtitle = "Book an appointment to keep the calendar full.",
+                    action = {
+                        FilledTonalButton(onClick = onCreateAppointment) {
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.size(8.dp))
+                            Text("Book appointment")
+                        }
+                    },
                 )
             } else {
                 LazyColumn(

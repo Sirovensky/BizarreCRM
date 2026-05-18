@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -35,6 +36,7 @@ fun AppointmentWeekView(
     isLoading: Boolean,
     error: String?,
     onAppointmentClick: (Long) -> Unit,
+    onCreateAppointment: () -> Unit,
     onDateChange: (LocalDate) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -88,7 +90,18 @@ fun AppointmentWeekView(
             }
             weekAppts.isEmpty() -> EmptyState(
                 title = "No appointments this week",
-                subtitle = "Tap + to schedule one",
+                subtitle = "Book an appointment to fill the week.",
+                action = {
+                    FilledTonalButton(onClick = onCreateAppointment) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.size(8.dp))
+                        Text("Book appointment")
+                    }
+                },
             )
             else -> {
                 val grouped = weekAppts.groupBy { appt ->
