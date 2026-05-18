@@ -79,10 +79,22 @@ public actor VoicemailTranscriptionService {
 
         // 5. Run recognition via async continuation
         return try await withCheckedThrowingContinuation { continuation in
+            // BUGHUNT-2026-05-18: SFSpeechRecognitionTask's callback fires
+            // multiple times (one per intermediate result, plus error/final).
+            // Without the `resumed` guard, an error arriving AFTER a final
+            // result (or two final results during streaming) would call
+            // continuation.resume a second time → fatal "continuation already
+            // resumed" crash. The guard is captured by the @Sendable closure
+            // via the `nonisolated(unsafe)` shim because the speech
+            // recognizer dispatches its callback on a serial queue, so the
+            // write is naturally serialized.
+            nonisolated(unsafe) var resumed = false
             var task: SFSpeechRecognitionTask?
             task = recognizer.recognitionTask(with: request) { result, error in
                 if let error {
                     AppLog.app.error("VoicemailTranscriptionService: recognition error: \(error.localizedDescription, privacy: .public)")
+                    guard !resumed else { return }
+                    resumed = true
                     continuation.resume(throwing: TranscriptionError.recognitionFailed(error.localizedDescription))
                     return
                 }
@@ -90,6 +102,8 @@ public actor VoicemailTranscriptionService {
                 if result.isFinal {
                     let text = result.bestTranscription.formattedString
                     AppLog.app.info("VoicemailTranscriptionService: completed \(text.count) chars")
+                    guard !resumed else { return }
+                    resumed = true
                     continuation.resume(returning: text)
                 } else {
                     let progress = min(0.99, Double(result.bestTranscription.segments.count) / 20.0)

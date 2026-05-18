@@ -108,6 +108,12 @@ class SignatureRouter @Inject constructor(
     ): Result<SignatureResult>? {
         val statusOnline = try {
             blockChypClient.status().online
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // BUGHUNT-2026-05-18: preserve structured concurrency — without
+            // this re-throw, a cancel mid-status() routed callers to the
+            // phone-pad fallback instead of unwinding, then the phone-pad
+            // call itself threw CancellationException again.
+            throw e
         } catch (e: Exception) {
             Timber.w(e, "SignatureRouter: status check threw, treating as offline")
             false
