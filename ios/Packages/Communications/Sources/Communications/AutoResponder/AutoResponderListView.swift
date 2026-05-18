@@ -40,6 +40,14 @@ public final class AutoResponderListViewModel: Sendable {
         }
         do {
             _ = try await api.toggleAutoResponder(id: rule.id, enabled: !rule.enabled)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: toggle is a PATCH that flips a server-side
+            // boolean. If the server accepted before cancel, reverting the
+            // optimistic state via load() would re-show the old value, and a
+            // re-tap would flip the rule back — operator could disable a
+            // customer-facing auto-reply they thought they enabled. Keep the
+            // optimistic state; next genuine load reconciles.
+            return
         } catch {
             AppLog.ui.error("AutoResponder toggle: \(error.localizedDescription, privacy: .public)")
             await load() // revert optimistic update on failure
@@ -50,6 +58,14 @@ public final class AutoResponderListViewModel: Sendable {
         rules.removeAll { $0.id == rule.id }
         do {
             try await api.deleteAutoResponder(id: rule.id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: DELETE is idempotent server-side, but if the
+            // server already processed it and we reload, the row is gone —
+            // good. If the server didn't yet process, reload also restores
+            // the row. Keeping load() here is safe. But surface no error;
+            // optimistic removal stands while reconciliation happens.
+            await load()
+            return
         } catch {
             AppLog.ui.error("AutoResponder delete: \(error.localizedDescription, privacy: .public)")
             await load()
