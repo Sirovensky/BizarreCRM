@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -67,7 +68,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -580,6 +584,15 @@ private fun SmsPhoneSheet(
     onDismiss: () -> Unit,
 ) {
     var phone by remember { mutableStateOf("") }
+    val phoneFocus = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        runCatching { phoneFocus.requestFocus() }
+    }
+
+    val submit: () -> Unit = {
+        if (phone.isNotBlank()) onConfirm(phone)
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -609,11 +622,17 @@ private fun SmsPhoneSheet(
                 label = { Text("Phone number") },
                 placeholder = { Text("+15551234567") },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Phone,
+                    imeAction = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(onDone = { submit() }),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(phoneFocus),
             )
             Button(
-                onClick = { onConfirm(phone) },
+                onClick = submit,
                 enabled = phone.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
             ) {

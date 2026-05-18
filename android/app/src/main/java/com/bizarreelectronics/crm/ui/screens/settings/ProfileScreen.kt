@@ -7,6 +7,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -18,14 +19,19 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -549,6 +555,12 @@ private fun ChangePasswordDialog(
     var currentPassword by rememberSaveable { mutableStateOf("") }
     var newPassword by rememberSaveable { mutableStateOf("") }
     var confirmPassword by rememberSaveable { mutableStateOf("") }
+    val currentFocus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+
+    LaunchedEffect(Unit) {
+        runCatching { currentFocus.requestFocus() }
+    }
 
     val passwordsMatch = newPassword == confirmPassword
     val newIsLongEnough = newPassword.length >= 8
@@ -556,6 +568,10 @@ private fun ChangePasswordDialog(
         newIsLongEnough &&
         passwordsMatch &&
         !isSubmitting
+
+    val submit: () -> Unit = {
+        if (canSubmit) onSubmit(currentPassword, newPassword)
+    }
 
     AlertDialog(
         onDismissRequest = {
@@ -567,11 +583,20 @@ private fun ChangePasswordDialog(
                 OutlinedTextField(
                     value = currentPassword,
                     onValueChange = { currentPassword = it },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(currentFocus),
                     label = { Text("Current password") },
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
                     enabled = !isSubmitting,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Password,
+                        imeAction = ImeAction.Next,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = { focusManager.moveFocus(FocusDirection.Down) },
+                    ),
                 )
                 OutlinedTextField(
                     value = newPassword,
@@ -590,6 +615,13 @@ private fun ChangePasswordDialog(
                             )
                         }
                     },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Password,
+                        imeAction = ImeAction.Next,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = { focusManager.moveFocus(FocusDirection.Down) },
+                    ),
                 )
                 OutlinedTextField(
                     value = confirmPassword,
@@ -608,15 +640,18 @@ private fun ChangePasswordDialog(
                             )
                         }
                     },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Password,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { submit() }),
                 )
             }
         },
         confirmButton = {
             // a11y: confirm button — contentDescription reflects current submitting state
             TextButton(
-                onClick = {
-                    if (canSubmit) onSubmit(currentPassword, newPassword)
-                },
+                onClick = submit,
                 enabled = canSubmit,
                 modifier = Modifier.semantics {
                     contentDescription = if (isSubmitting) "Saving password change" else "Save password change"
@@ -660,10 +695,20 @@ private fun ChangePinDialog(
     var currentPin by rememberSaveable { mutableStateOf("") }
     var newPin by rememberSaveable { mutableStateOf("") }
     var confirmPin by rememberSaveable { mutableStateOf("") }
+    val currentPinFocus = remember { FocusRequester() }
+    val pinFocusManager = LocalFocusManager.current
+
+    LaunchedEffect(Unit) {
+        runCatching { currentPinFocus.requestFocus() }
+    }
 
     val newIsValid = newPin.length in 4..8 && newPin.all { it.isDigit() }
     val pinsMatch = newPin == confirmPin
     val canSubmit = currentPin.isNotBlank() && newIsValid && pinsMatch && !isSubmitting
+
+    val submit: () -> Unit = {
+        if (canSubmit) onSubmit(currentPin, newPin)
+    }
 
     AlertDialog(
         onDismissRequest = {
@@ -677,9 +722,17 @@ private fun ChangePinDialog(
                     onValueChange = { value ->
                         if (value.length <= 8 && value.all { it.isDigit() }) currentPin = value
                     },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(currentPinFocus),
                     label = { Text("Current PIN") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.NumberPassword,
+                        imeAction = ImeAction.Next,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = { pinFocusManager.moveFocus(FocusDirection.Down) },
+                    ),
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
                     enabled = !isSubmitting,
@@ -691,7 +744,13 @@ private fun ChangePinDialog(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("New PIN (4-8 digits)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.NumberPassword,
+                        imeAction = ImeAction.Next,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = { pinFocusManager.moveFocus(FocusDirection.Down) },
+                    ),
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
                     enabled = !isSubmitting,
@@ -712,7 +771,11 @@ private fun ChangePinDialog(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Confirm new PIN") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.NumberPassword,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { submit() }),
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
                     enabled = !isSubmitting,
@@ -731,9 +794,7 @@ private fun ChangePinDialog(
         confirmButton = {
             // a11y: confirm button — contentDescription reflects current submitting state
             TextButton(
-                onClick = {
-                    if (canSubmit) onSubmit(currentPin, newPin)
-                },
+                onClick = submit,
                 enabled = canSubmit,
                 modifier = Modifier.semantics {
                     contentDescription = if (isSubmitting) "Saving PIN change" else "Save PIN change"
