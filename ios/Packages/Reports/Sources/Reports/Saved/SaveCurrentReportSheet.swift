@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import DesignSystem
 
 // MARK: - SaveCurrentReportSheet
@@ -186,6 +187,12 @@ public struct SaveCurrentReportSheet: View {
             }
         } catch SavedReportStoreError.emptyName {
             withAnimation { validationError = "Please enter a name for this view." }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: save cancelled mid-flight; server may have
+            // accepted the row. Retap on banner could attempt duplicate save
+            // which triggers SavedReportStoreError.duplicateName — misleading
+            // error for what was a successful save. Silent return.
+            return
         } catch {
             withAnimation { validationError = error.localizedDescription }
         }
