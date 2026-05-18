@@ -40,6 +40,15 @@ public final class ResendInviteViewModel {
         do {
             _ = try await api.resendEmployeeInvite(userId: userId)
             result = hasEmail ? .sent : .noEmail
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: the resend POST may have landed and the
+            // server already sent a fresh invite email. Painting "Resend
+            // failed" alert tempts the admin to retap Resend Invite,
+            // mailing a *second* fresh invite — confusing the employee who
+            // would receive two emails with different credentials.
+            // Suppress the error; the success/noEmail result was just not
+            // captured, but the email has been sent.
+            errorMessage = nil
         } catch {
             AppLog.ui.error("ResendInvite failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
