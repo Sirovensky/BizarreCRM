@@ -136,6 +136,7 @@ fun MembershipListScreen(
                     onRefresh = { viewModel.refresh() },
                     onNavigateToCustomer = onNavigateToCustomer,
                     onCancelMembership = { membership -> cancelTarget = membership },
+                    onEnrollMember = { showEnrollDialog = true },
                     modifier = Modifier.padding(padding),
                 )
             }
@@ -188,6 +189,7 @@ private fun MembershipContent(
     onRefresh: () -> Unit,
     onNavigateToCustomer: (Long) -> Unit,
     onCancelMembership: (Membership) -> Unit,
+    onEnrollMember: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     PullToRefreshBox(
@@ -231,7 +233,17 @@ private fun MembershipContent(
                     title = "No members yet",
                     subtitle = "Enroll a customer to start tracking memberships and loyalty points.",
                     includeWave = false,
-                    action = null,
+                    action = {
+                        FilledTonalButton(onClick = onEnrollMember) {
+                            Icon(
+                                Icons.Default.PersonAdd,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("Enroll member")
+                        }
+                    },
                 )
             }
         } else {

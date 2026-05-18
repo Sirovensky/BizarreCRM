@@ -149,8 +149,20 @@ fun LocationListScreen(
                     }
                     if (filtered.isEmpty()) {
                         EmptyState(
+                            icon = Icons.Default.LocationCity,
                             title = stringResource(R.string.locations_empty_title),
                             subtitle = stringResource(R.string.locations_empty_subtitle),
+                            action = {
+                                FilledTonalButton(onClick = onCreateLocation) {
+                                    Icon(
+                                        Icons.Default.Add,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(stringResource(R.string.location_create_save_btn))
+                                }
+                            },
                         )
                     } else {
                         PullToRefreshBox(
