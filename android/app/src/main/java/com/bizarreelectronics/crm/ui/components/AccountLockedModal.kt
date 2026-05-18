@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import com.bizarreelectronics.crm.data.remote.api.TenantsApi
 import com.bizarreelectronics.crm.data.remote.dto.TenantSupportDto
+import kotlinx.coroutines.CancellationException
 
 /**
  * Modal shown when the server returns HTTP 423 (Locked) during login
@@ -77,6 +78,8 @@ fun AccountLockedModal(
                 // success=false or null data — treat as failed (degraded UI)
                 LoadState.Failed
             }
+        } catch (e: CancellationException) {
+            throw e  // BUGHUNT-2026-05-17: nav-cancel must not paint .Failed
         } catch (_: Exception) {
             // Network error, HTTP 404, or any other failure — degrade gracefully.
             LoadState.Failed
