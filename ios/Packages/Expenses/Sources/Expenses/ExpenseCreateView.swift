@@ -137,6 +137,13 @@ public final class ExpenseCreateViewModel {
             AppLog.ui.notice("Expense create queued offline")
             createdId = -1
             queuedOffline = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: createExpense is POST without an
+            // idempotency key. A "cancelled" toast tempted a re-tap that —
+            // if the server had already accepted the first POST — could
+            // persist a duplicate expense row. Stay silent on cancellation
+            // and let the list refresh reveal whether the create landed.
+            return
         } catch {
             AppLog.ui.error("Expense create failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription

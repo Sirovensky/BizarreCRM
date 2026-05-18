@@ -109,6 +109,15 @@ public final class ReceiptAttachViewModel {
                 authToken: authToken
             )
             uploadState = .success(response)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: uploadExpenseReceipt is a multipart POST
+            // that stores a fresh attachment row per call. A `.failed(
+            // "cancelled")` toast tempted a re-upload that — if the server
+            // had already accepted the original POST — would store the same
+            // image twice. Reset to .idle so the user must deliberately
+            // retry rather than reacting to a banner.
+            uploadState = .idle
+            return
         } catch {
             AppLog.ui.error("Receipt upload failed: \(error.localizedDescription, privacy: .public)")
             uploadState = .failed(error.localizedDescription)
