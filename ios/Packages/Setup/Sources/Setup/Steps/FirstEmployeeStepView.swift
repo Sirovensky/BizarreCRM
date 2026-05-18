@@ -210,6 +210,7 @@ public struct FirstEmployeeStepView: View {
                 }
                 #if canImport(UIKit)
                 .textContentType(.givenName)
+                .textInputAutocapitalization(.words)
                 .autocorrectionDisabled()
                 #endif
                 .accessibilityLabel("Employee first name")
@@ -230,6 +231,7 @@ public struct FirstEmployeeStepView: View {
                 }
                 #if canImport(UIKit)
                 .textContentType(.familyName)
+                .textInputAutocapitalization(.words)
                 .autocorrectionDisabled()
                 #endif
                 .accessibilityLabel("Employee last name")

@@ -341,12 +341,14 @@ public struct ProfileSettingsPage: View {
                 TextField("First name", text: $vm.firstName)
                     #if canImport(UIKit)
                     .textContentType(.givenName)
+                    .textInputAutocapitalization(.words)
                     #endif
                     .accessibilityLabel("First name")
                     .accessibilityIdentifier("profile.firstName")
                 TextField("Last name", text: $vm.lastName)
                     #if canImport(UIKit)
                     .textContentType(.familyName)
+                    .textInputAutocapitalization(.words)
                     #endif
                     .accessibilityLabel("Last name")
                     .accessibilityIdentifier("profile.lastName")

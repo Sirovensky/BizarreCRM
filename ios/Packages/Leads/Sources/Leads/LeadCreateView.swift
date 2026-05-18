@@ -124,10 +124,26 @@ public struct LeadCreateView: View {
         NavigationStack {
             Form {
                 Section("Contact") {
-                    TextField("First name *", text: $vm.firstName).textContentType(.givenName)
-                    TextField("Last name", text: $vm.lastName).textContentType(.familyName)
-                    TextField("Company", text: $vm.company).textContentType(.organizationName)
-                    TextField("Title", text: $vm.title).textContentType(.jobTitle)
+                    TextField("First name *", text: $vm.firstName)
+                        .textContentType(.givenName)
+#if !os(macOS)
+                        .textInputAutocapitalization(.words)
+#endif
+                    TextField("Last name", text: $vm.lastName)
+                        .textContentType(.familyName)
+#if !os(macOS)
+                        .textInputAutocapitalization(.words)
+#endif
+                    TextField("Company", text: $vm.company)
+                        .textContentType(.organizationName)
+#if !os(macOS)
+                        .textInputAutocapitalization(.words)
+#endif
+                    TextField("Title", text: $vm.title)
+                        .textContentType(.jobTitle)
+#if !os(macOS)
+                        .textInputAutocapitalization(.words)
+#endif
                     TextField("Phone", text: $vm.phone)
                         .textContentType(.telephoneNumber)
 #if !os(macOS)
@@ -149,6 +165,9 @@ public struct LeadCreateView: View {
                         }
                     }
                     TextField("Source (Google, Yelp, walk-in…)", text: $vm.source)
+#if !os(macOS)
+                        .textInputAutocapitalization(.words)
+#endif
                     TextField("Est. value ($)", text: $vm.estimatedValue)
 #if !os(macOS)
                         .keyboardType(.decimalPad)
