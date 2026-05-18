@@ -222,6 +222,12 @@ final class PosReturnsViewModel {
                 pageSize: 50
             )
             invoices = response.invoices
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: search debounce / re-type cancelled the
+            // task. Zeroing invoices + painting an error message blanked
+            // the list mid-type. Leave existing results in place; the next
+            // fetch with the latest query will repopulate.
+            return
         } catch {
             errorMessage = error.localizedDescription
             invoices = []
