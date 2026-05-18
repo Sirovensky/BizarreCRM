@@ -34,6 +34,14 @@ public final class ReferralCardViewModel {
             #if canImport(UIKit)
             qrImage = await service.generateQR(code: code.code)
             #endif
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: getOrGenerateCode is server-side idempotent
+            // (one code per customer) but the cancellation path was painting
+            // "cancelled" as a user-facing error in the customer-detail card,
+            // making the operator believe the QR view had broken. Leave the
+            // existing `referralCode` (which may be nil on first cancel)
+            // intact — `.task` will fire again when the view re-appears.
+            errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
         }
