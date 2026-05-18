@@ -1422,150 +1422,196 @@ router.get('/tax-classes', async (req, res) => {
   res.json({ success: true, data: taxClasses });
 });
 
+// BUGHUNT-2026-05-17: wrap bare-async handler — `validateRequiredString` and
+// `validateTaxRate` throw AppError on bad input; the transaction can throw on
+// lock or UNIQUE constraint. Without try/catch every malformed POST crashes
+// the server during a financial setting edit.
 router.post('/tax-classes', adminOnly, async (req, res) => {
-  const adb = req.asyncDb;
-  const db = req.db;
-  const { name, rate, is_default = 0 } = req.body;
-  // V23: name is required, rate clamped to 3 decimals.
-  const nameClean = validateRequiredString(name, 'name', 100);
-  const rateClean = validateTaxRate(rate, 'rate');
+  try {
+    const adb = req.asyncDb;
+    const db = req.db;
+    const { name, rate, is_default = 0 } = req.body;
+    // V23: name is required, rate clamped to 3 decimals.
+    const nameClean = validateRequiredString(name, 'name', 100);
+    const rateClean = validateTaxRate(rate, 'rate');
 
-  // BUGHUNT-2026-05-16: same atomicity gap as the PUT below — clearing all
-  // defaults followed by the INSERT, run as two adb.run calls, could leave
-  // every tax_class with is_default=0 if the INSERT failed. POS checkout
-  // relies on a default tax class existing. Bundle into a transaction.
-  let result;
-  if (is_default) {
-    const txResults = await adb.transaction([
-      { sql: 'UPDATE tax_classes SET is_default = 0', params: [] },
-      {
-        sql: 'INSERT INTO tax_classes (name, rate, is_default) VALUES (?, ?, ?)',
-        params: [nameClean, rateClean, 1],
-      },
-    ]);
-    result = txResults[1];
-  } else {
-    result = await adb.run(
-      'INSERT INTO tax_classes (name, rate, is_default) VALUES (?, ?, ?)',
-      nameClean,
-      rateClean,
-      0,
-    );
+    // BUGHUNT-2026-05-16: same atomicity gap as the PUT below — clearing all
+    // defaults followed by the INSERT, run as two adb.run calls, could leave
+    // every tax_class with is_default=0 if the INSERT failed. POS checkout
+    // relies on a default tax class existing. Bundle into a transaction.
+    let result;
+    if (is_default) {
+      const txResults = await adb.transaction([
+        { sql: 'UPDATE tax_classes SET is_default = 0', params: [] },
+        {
+          sql: 'INSERT INTO tax_classes (name, rate, is_default) VALUES (?, ?, ?)',
+          params: [nameClean, rateClean, 1],
+        },
+      ]);
+      result = txResults[1];
+    } else {
+      result = await adb.run(
+        'INSERT INTO tax_classes (name, rate, is_default) VALUES (?, ?, ?)',
+        nameClean,
+        rateClean,
+        0,
+      );
+    }
+    const tc = await adb.get<any>('SELECT * FROM tax_classes WHERE id = ?', result.lastInsertRowid);
+    // AL3: auditing tax class creation because tax rate changes are financial.
+    audit(db, 'tax_class_created', req.user!.id, req.ip || 'unknown', {
+      tax_class_id: result.lastInsertRowid,
+      name: nameClean,
+      rate: rateClean,
+      is_default: is_default ? 1 : 0,
+    });
+    res.status(201).json({ success: true, data: tc });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Bad request' });
+      return;
+    }
+    logger.error('settings_create_tax_class_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to create tax class' });
+    }
   }
-  const tc = await adb.get<any>('SELECT * FROM tax_classes WHERE id = ?', result.lastInsertRowid);
-  // AL3: auditing tax class creation because tax rate changes are financial.
-  audit(db, 'tax_class_created', req.user!.id, req.ip || 'unknown', {
-    tax_class_id: result.lastInsertRowid,
-    name: nameClean,
-    rate: rateClean,
-    is_default: is_default ? 1 : 0,
-  });
-  res.status(201).json({ success: true, data: tc });
 });
 
+// BUGHUNT-2026-05-17: wrap bare-async — AppError on 404 and validate* throws,
+// the transaction throws on DB lock. Tax-class edits are financial; without
+// try/catch any malformed PUT crashes the server.
 router.put('/tax-classes/:id', adminOnly, async (req, res) => {
-  const adb = req.asyncDb;
-  const db = req.db;
-  const { name, rate, is_default } = req.body;
+  try {
+    const adb = req.asyncDb;
+    const db = req.db;
+    const { name, rate, is_default } = req.body;
 
-  // AL3: read old values for a before-and-after audit record.
-  const before = await adb.get<any>('SELECT * FROM tax_classes WHERE id = ?', req.params.id);
-  if (!before) throw new AppError('Tax class not found', 404);
+    // AL3: read old values for a before-and-after audit record.
+    const before = await adb.get<any>('SELECT * FROM tax_classes WHERE id = ?', req.params.id);
+    if (!before) throw new AppError('Tax class not found', 404);
 
-  // V23: clamp + validate if a new rate was supplied.
-  const rateClean = rate !== undefined && rate !== null && rate !== ''
-    ? validateTaxRate(rate, 'rate')
-    : null;
-  // V22/V23: validate name if supplied.
-  const nameClean = name !== undefined && name !== null
-    ? validateRequiredString(name, 'name', 100)
-    : null;
+    // V23: clamp + validate if a new rate was supplied.
+    const rateClean = rate !== undefined && rate !== null && rate !== ''
+      ? validateTaxRate(rate, 'rate')
+      : null;
+    // V22/V23: validate name if supplied.
+    const nameClean = name !== undefined && name !== null
+      ? validateRequiredString(name, 'name', 100)
+      : null;
 
-  // BUGHUNT-2026-05-16: previously the "clear all defaults" UPDATE and the
-  // per-row UPDATE were two sequential adb.run calls. A crash between them
-  // (when is_default was being set) would leave EVERY tax class with
-  // is_default=0 — and the DELETE handler below explicitly guards against
-  // exactly that state because POS checkout relies on
-  // `WHERE is_default = 1` returning a row. Bundle into a transaction so
-  // the default-swap is atomic.
-  if (is_default) {
-    await adb.transaction([
-      { sql: 'UPDATE tax_classes SET is_default = 0', params: [] },
-      {
-        sql: 'UPDATE tax_classes SET name = COALESCE(?, name), rate = COALESCE(?, rate), is_default = COALESCE(?, is_default) WHERE id = ?',
-        params: [nameClean, rateClean, is_default ?? null, req.params.id],
-      },
-    ]);
-  } else {
-    await adb.run(
-      'UPDATE tax_classes SET name = COALESCE(?, name), rate = COALESCE(?, rate), is_default = COALESCE(?, is_default) WHERE id = ?',
-      nameClean,
-      rateClean,
-      is_default ?? null,
-      req.params.id,
-    );
+    // BUGHUNT-2026-05-16: previously the "clear all defaults" UPDATE and the
+    // per-row UPDATE were two sequential adb.run calls. A crash between them
+    // (when is_default was being set) would leave EVERY tax class with
+    // is_default=0 — and the DELETE handler below explicitly guards against
+    // exactly that state because POS checkout relies on
+    // `WHERE is_default = 1` returning a row. Bundle into a transaction so
+    // the default-swap is atomic.
+    if (is_default) {
+      await adb.transaction([
+        { sql: 'UPDATE tax_classes SET is_default = 0', params: [] },
+        {
+          sql: 'UPDATE tax_classes SET name = COALESCE(?, name), rate = COALESCE(?, rate), is_default = COALESCE(?, is_default) WHERE id = ?',
+          params: [nameClean, rateClean, is_default ?? null, req.params.id],
+        },
+      ]);
+    } else {
+      await adb.run(
+        'UPDATE tax_classes SET name = COALESCE(?, name), rate = COALESCE(?, rate), is_default = COALESCE(?, is_default) WHERE id = ?',
+        nameClean,
+        rateClean,
+        is_default ?? null,
+        req.params.id,
+      );
+    }
+    const tc = await adb.get<any>('SELECT * FROM tax_classes WHERE id = ?', req.params.id);
+    // AL3: audit the financial mutation with a before/after snapshot.
+    audit(db, 'tax_class_updated', req.user!.id, req.ip || 'unknown', {
+      tax_class_id: Number(req.params.id),
+      before: { name: before.name, rate: before.rate, is_default: before.is_default },
+      after: { name: tc?.name, rate: tc?.rate, is_default: tc?.is_default },
+    });
+    res.json({ success: true, data: tc });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Bad request' });
+      return;
+    }
+    logger.error('settings_update_tax_class_error', { error: e instanceof Error ? e.message : String(e), id: req.params.id });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to update tax class' });
+    }
   }
-  const tc = await adb.get<any>('SELECT * FROM tax_classes WHERE id = ?', req.params.id);
-  // AL3: audit the financial mutation with a before/after snapshot.
-  audit(db, 'tax_class_updated', req.user!.id, req.ip || 'unknown', {
-    tax_class_id: Number(req.params.id),
-    before: { name: before.name, rate: before.rate, is_default: before.is_default },
-    after: { name: tc?.name, rate: tc?.rate, is_default: tc?.is_default },
-  });
-  res.json({ success: true, data: tc });
 });
 
 // D4: also refuse when a ticket_devices row references this tax class.
 // The original check missed ticket_devices.tax_class_id, which meant deleting a
 // tax class could leave unquoted device line items pointing nowhere.
 // AL3: audit the delete because it is a financial mutation.
+// BUGHUNT-2026-05-17: wrap bare-async — three AppError throws on guards plus
+// the Promise.all and DB writes. Without a top-level catch every failing tax
+// class delete crashes the server.
 router.delete('/tax-classes/:id', adminOnly, async (req, res) => {
-  const adb = req.asyncDb;
-  const db = req.db;
-  const taxClassId = req.params.id;
+  try {
+    const adb = req.asyncDb;
+    const db = req.db;
+    const taxClassId = req.params.id;
 
-  // Guard: block deleting the last remaining tax class.  pos.routes.ts relies on
-  // `SELECT id, rate FROM tax_classes WHERE is_default = 1` returning a row for
-  // every POS transaction. Deleting the only (default) class leaves the system
-  // with no fallback tax rate, silently breaking checkout.
-  const totalCount = await adb.get<{ c: number }>('SELECT COUNT(*) as c FROM tax_classes');
-  if ((totalCount?.c ?? 0) <= 1) {
-    throw new AppError('Cannot delete the last tax class — at least one must always exist', 400);
-  }
+    // Guard: block deleting the last remaining tax class.  pos.routes.ts relies on
+    // `SELECT id, rate FROM tax_classes WHERE is_default = 1` returning a row for
+    // every POS transaction. Deleting the only (default) class leaves the system
+    // with no fallback tax rate, silently breaking checkout.
+    const totalCount = await adb.get<{ c: number }>('SELECT COUNT(*) as c FROM tax_classes');
+    if ((totalCount?.c ?? 0) <= 1) {
+      throw new AppError('Cannot delete the last tax class — at least one must always exist', 400);
+    }
 
-  const [invCount, lineCount, deviceCount] = await Promise.all([
-    adb.get<any>('SELECT COUNT(*) as c FROM inventory_items WHERE tax_class_id = ?', taxClassId),
-    adb.get<any>('SELECT COUNT(*) as c FROM invoice_line_items WHERE tax_class_id = ?', taxClassId),
-    adb.get<any>('SELECT COUNT(*) as c FROM ticket_devices WHERE tax_class_id = ?', taxClassId),
-  ]);
-  if ((invCount?.c || 0) > 0 || (lineCount?.c || 0) > 0 || (deviceCount?.c || 0) > 0) {
-    throw new AppError(
-      'Tax class is in use by inventory items, invoice line items, or ticket devices and cannot be deleted',
-      400,
+    const [invCount, lineCount, deviceCount] = await Promise.all([
+      adb.get<any>('SELECT COUNT(*) as c FROM inventory_items WHERE tax_class_id = ?', taxClassId),
+      adb.get<any>('SELECT COUNT(*) as c FROM invoice_line_items WHERE tax_class_id = ?', taxClassId),
+      adb.get<any>('SELECT COUNT(*) as c FROM ticket_devices WHERE tax_class_id = ?', taxClassId),
+    ]);
+    if ((invCount?.c || 0) > 0 || (lineCount?.c || 0) > 0 || (deviceCount?.c || 0) > 0) {
+      throw new AppError(
+        'Tax class is in use by inventory items, invoice line items, or ticket devices and cannot be deleted',
+        400,
+      );
+    }
+
+    const before = await adb.get<any>('SELECT * FROM tax_classes WHERE id = ?', taxClassId);
+    // BUGHUNT-2026-05-17: pre-check above is TOCTOU. Two admins concurrently
+    // deleting two different tax classes (when there are exactly 2 left) both
+    // pass count > 1 and both DELETE, leaving 0 tax classes. pos.routes.ts
+    // then hangs on every checkout because the default-class lookup returns
+    // empty. Atomic guard: only delete if at least 2 tax classes exist at
+    // write time so deleting THIS row still leaves >= 1.
+    const delResult = await adb.run(
+      `DELETE FROM tax_classes WHERE id = ? AND (SELECT COUNT(*) FROM tax_classes) >= 2`,
+      taxClassId,
     );
+    if (delResult.changes === 0) {
+      throw new AppError('Cannot delete the last remaining tax class', 400);
+    }
+    audit(db, 'tax_class_deleted', req.user!.id, req.ip || 'unknown', {
+      tax_class_id: Number(taxClassId),
+      name: before?.name,
+      rate: before?.rate,
+      is_default: before?.is_default,
+    });
+    res.json({ success: true, data: { message: 'Deleted' } });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Bad request' });
+      return;
+    }
+    logger.error('settings_delete_tax_class_error', { error: e instanceof Error ? e.message : String(e), id: req.params.id });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to delete tax class' });
+    }
   }
-
-  const before = await adb.get<any>('SELECT * FROM tax_classes WHERE id = ?', taxClassId);
-  // BUGHUNT-2026-05-17: pre-check above is TOCTOU. Two admins concurrently
-  // deleting two different tax classes (when there are exactly 2 left) both
-  // pass count > 1 and both DELETE, leaving 0 tax classes. pos.routes.ts
-  // then hangs on every checkout because the default-class lookup returns
-  // empty. Atomic guard: only delete if at least 2 tax classes exist at
-  // write time so deleting THIS row still leaves >= 1.
-  const delResult = await adb.run(
-    `DELETE FROM tax_classes WHERE id = ? AND (SELECT COUNT(*) FROM tax_classes) >= 2`,
-    taxClassId,
-  );
-  if (delResult.changes === 0) {
-    throw new AppError('Cannot delete the last remaining tax class', 400);
-  }
-  audit(db, 'tax_class_deleted', req.user!.id, req.ip || 'unknown', {
-    tax_class_id: Number(taxClassId),
-    name: before?.name,
-    rate: before?.rate,
-    is_default: before?.is_default,
-  });
-  res.json({ success: true, data: { message: 'Deleted' } });
 });
 
 // ==================== Payment Methods ====================
@@ -3656,76 +3702,101 @@ router.get('/api-keys', requireFeature('apiKeys'), adminOnly, async (req, res) =
 });
 
 // POST /api-keys — generate a new API key
+// BUGHUNT-2026-05-17: wrap bare-async — `bcrypt.hashSync` with cost 12 + the
+// CREATE TABLE IF NOT EXISTS + INSERT can throw on DB lock or schema drift,
+// and audit() throws on master_audit_log lock. Without try/catch every key
+// creation is a server-crash candidate.
 router.post('/api-keys', requireFeature('apiKeys'), adminOnly, async (req, res) => {
-  const db = req.db;
-  const adb = req.asyncDb;
-  const { label } = req.body;
+  try {
+    const db = req.db;
+    const adb = req.asyncDb;
+    const { label } = req.body;
 
-  // Generate a random API key: bcrm_<32 hex chars>
-  const rawKey = 'bcrm_' + crypto.randomBytes(24).toString('hex');
-  const keyPrefix = rawKey.substring(0, 12); // First 12 chars for identification
-  // SEC-L32: bump bcrypt cost from 10 → 12 for API key hashes. Cost 10
-  // runs ~0.1s single-core; cost 12 runs ~0.4s and lifts the offline
-  // brute-force ceiling by 4× per GPU-hour. API keys are high-value
-  // (full tenant scope, no 2FA, no rate-limit friction on the receiving
-  // side) — the same reasoning that justifies cost 12 on password
-  // hashes applies here, and this is called at most once per key
-  // creation so the UX cost is negligible.
-  const keyHash = bcrypt.hashSync(rawKey, 12);
+    // Generate a random API key: bcrm_<32 hex chars>
+    const rawKey = 'bcrm_' + crypto.randomBytes(24).toString('hex');
+    const keyPrefix = rawKey.substring(0, 12); // First 12 chars for identification
+    // SEC-L32: bump bcrypt cost from 10 → 12 for API key hashes. Cost 10
+    // runs ~0.1s single-core; cost 12 runs ~0.4s and lifts the offline
+    // brute-force ceiling by 4× per GPU-hour. API keys are high-value
+    // (full tenant scope, no 2FA, no rate-limit friction on the receiving
+    // side) — the same reasoning that justifies cost 12 on password
+    // hashes applies here, and this is called at most once per key
+    // creation so the UX cost is negligible.
+    const keyHash = bcrypt.hashSync(rawKey, 12);
 
-  // Ensure api_keys table exists (create if not — graceful for first use)
-  await adb.run(`
-    CREATE TABLE IF NOT EXISTS api_keys (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      key_prefix TEXT NOT NULL,
-      key_hash TEXT NOT NULL,
-      label TEXT,
-      created_by INTEGER REFERENCES users(id),
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      last_used_at TEXT,
-      revoked_at TEXT
-    )
-  `);
+    // Ensure api_keys table exists (create if not — graceful for first use)
+    await adb.run(`
+      CREATE TABLE IF NOT EXISTS api_keys (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        key_prefix TEXT NOT NULL,
+        key_hash TEXT NOT NULL,
+        label TEXT,
+        created_by INTEGER REFERENCES users(id),
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        last_used_at TEXT,
+        revoked_at TEXT
+      )
+    `);
 
-  const result = await adb.run(`
-    INSERT INTO api_keys (key_prefix, key_hash, label, created_by)
-    VALUES (?, ?, ?, ?)
-  `, keyPrefix, keyHash, label || null, req.user!.id);
+    const result = await adb.run(`
+      INSERT INTO api_keys (key_prefix, key_hash, label, created_by)
+      VALUES (?, ?, ?, ?)
+    `, keyPrefix, keyHash, label || null, req.user!.id);
 
-  audit(db, 'api_key_created', req.user!.id, req.ip || 'unknown', {
-    api_key_id: result.lastInsertRowid,
-    label: label || null,
-  });
-
-  // Return the full key ONLY on creation — it cannot be retrieved later
-  res.status(201).json({
-    success: true,
-    data: {
-      id: result.lastInsertRowid,
-      key: rawKey,
-      key_masked: keyPrefix + '****',
+    audit(db, 'api_key_created', req.user!.id, req.ip || 'unknown', {
+      api_key_id: result.lastInsertRowid,
       label: label || null,
-      message: 'Save this key now — it will not be shown again.',
-    },
-  });
+    });
+
+    // Return the full key ONLY on creation — it cannot be retrieved later
+    res.status(201).json({
+      success: true,
+      data: {
+        id: result.lastInsertRowid,
+        key: rawKey,
+        key_masked: keyPrefix + '****',
+        label: label || null,
+        message: 'Save this key now — it will not be shown again.',
+      },
+    });
+  } catch (e: unknown) {
+    logger.error('settings_create_api_key_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to create API key' });
+    }
+  }
 });
 
 // DELETE /api-keys/:id — revoke an API key
+// BUGHUNT-2026-05-17: wrap bare-async — AppError throw on missing key + audit()
+// on master DB lock both crash the server without a top-level catch.
 router.delete('/api-keys/:id', requireFeature('apiKeys'), adminOnly, async (req, res) => {
-  const db = req.db;
-  const adb = req.asyncDb;
-  const id = parseInt(req.params.id as string, 10);
+  try {
+    const db = req.db;
+    const adb = req.asyncDb;
+    const id = parseInt(req.params.id as string, 10);
 
-  const existing = await adb.get<any>('SELECT id FROM api_keys WHERE id = ? AND revoked_at IS NULL', id);
-  if (!existing) {
-    throw new AppError('API key not found or already revoked', 404);
+    const existing = await adb.get<any>('SELECT id FROM api_keys WHERE id = ? AND revoked_at IS NULL', id);
+    if (!existing) {
+      throw new AppError('API key not found or already revoked', 404);
+    }
+
+    await adb.run("UPDATE api_keys SET revoked_at = datetime('now') WHERE id = ?", id);
+
+    audit(db, 'api_key_revoked', req.user!.id, req.ip || 'unknown', { api_key_id: id });
+
+    res.json({ success: true, data: { message: 'API key revoked' } });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Bad request' });
+      return;
+    }
+    logger.error('settings_revoke_api_key_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to revoke API key' });
+    }
   }
-
-  await adb.run("UPDATE api_keys SET revoked_at = datetime('now') WHERE id = ?", id);
-
-  audit(db, 'api_key_revoked', req.user!.id, req.ip || 'unknown', { api_key_id: id });
-
-  res.json({ success: true, data: { message: 'API key revoked' } });
 });
 
 // ─── ENR-A6: Tenant-admin webhook dead-letter endpoints ──────────────────────
@@ -3764,15 +3835,30 @@ router.get('/webhook-failures', adminOnly, async (req: Request, res: Response) =
 });
 
 // POST /webhook-failures/:id/retry — operator retry of a single dead-lettered delivery
+// BUGHUNT-2026-05-17: wrap bare-async — AppError on invalid id, dynamic import
+// and retryDeliveryFailure (outbound HTTP) both reject async, audit() can throw.
+// Without try/catch a single retry attempt with a malformed id crashes the server.
 router.post('/webhook-failures/:id/retry', adminOnly, async (req: Request, res: Response) => {
-  const failureId = parseInt(req.params.id as string, 10);
-  if (!Number.isFinite(failureId)) {
-    throw new AppError('Invalid failure id', 400);
+  try {
+    const failureId = parseInt(req.params.id as string, 10);
+    if (!Number.isFinite(failureId)) {
+      throw new AppError('Invalid failure id', 400);
+    }
+    const { retryDeliveryFailure } = await import('../services/webhooks.js');
+    const result = await retryDeliveryFailure(req.db, failureId);
+    audit(req.db, 'webhook_retry', req.user!.id, req.ip || 'unknown', { failure_id: failureId, ok: result.ok });
+    res.json({ success: true, data: result });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Bad request' });
+      return;
+    }
+    logger.error('settings_webhook_retry_error', { error: e instanceof Error ? e.message : String(e), id: req.params.id });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Webhook retry failed' });
+    }
   }
-  const { retryDeliveryFailure } = await import('../services/webhooks.js');
-  const result = await retryDeliveryFailure(req.db, failureId);
-  audit(req.db, 'webhook_retry', req.user!.id, req.ip || 'unknown', { failure_id: failureId, ok: result.ok });
-  res.json({ success: true, data: result });
 });
 
 // ---------------------------------------------------------------------------
