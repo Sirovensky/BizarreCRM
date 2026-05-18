@@ -112,6 +112,11 @@ public final class MembershipDunningViewModel {
         do {
             let updated = try await api.retryDunning(id: id)
             replace(updated)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: retryDunning triggers an outbound SMS/email
+            // to the customer. Cancellation banner tempts retap that
+            // re-triggers the dunning send — TCPA hazard. Silent return.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -123,6 +128,11 @@ public final class MembershipDunningViewModel {
         do {
             let updated = try await api.cancelDunning(id: id)
             replace(updated)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: cancel writes audit row + flips status.
+            // Cancellation banner tempts retap that double-cancels (404 on
+            // second tap is harmless but produces confusing audit row).
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
