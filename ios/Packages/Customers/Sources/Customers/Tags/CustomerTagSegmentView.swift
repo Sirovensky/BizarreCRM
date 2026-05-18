@@ -176,6 +176,9 @@ public final class CustomerTagSegmentViewModel {
             let (loadedDTOs, loadedTags) = try await (dtos, tags)
             segments = loadedDTOs.map(CustomerTagSegment.init(dto:))
             availableTags = loadedTags
+        } catch let e where AppError.isCancellation(e) {
+            isLoading = false
+            return  // BUGHUNT-2026-05-18: nav cancel — .task re-fires on reopen
         } catch {
             errorMessage = error.localizedDescription
         }
