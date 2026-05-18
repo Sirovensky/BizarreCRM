@@ -193,7 +193,11 @@ extension APIClient {
     /// `GET /customers/:id/assets?kind=photo` — fetch repair photos for a customer.
     public func customerRepairPhotos(customerId: Int64) async throws -> [CustomerPhoto] {
         let q = [URLQueryItem(name: "kind", value: "photo")]
-        return try await get("/customers/\(customerId)/assets", query: q, as: [CustomerPhoto].self)
+        // BUGHUNT-2026-05-17: server mounts customers.routes at /api/v1/customers
+        // (index.ts:1659). Was missing the /api/v1 prefix → every call 404'd,
+        // which surfaces as the Photo Mementos section rendering an empty grid
+        // on every customer detail screen regardless of stored repair assets.
+        return try await get("/api/v1/customers/\(customerId)/assets", query: q, as: [CustomerPhoto].self)
     }
 }
 
