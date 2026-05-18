@@ -13,7 +13,7 @@ import { confirm } from '@/stores/confirmStore';
 import { usePlanStore } from '@/stores/planStore';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
-import { formatCurrency, formatDate, formatShortDateTime } from '@/utils/format';
+import { formatCurrency, formatDate, formatShortDateTime, formatTime } from '@/utils/format';
 import { formatApiError } from '@/utils/apiError';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { LEGAL_LEAD_TRANSITIONS } from '@bizarre-crm/shared';
@@ -822,7 +822,18 @@ export function LeadDetailPage() {
                       </div>
                       <p className="text-xs text-surface-500 mt-0.5">
                         {formatShortDateTime(a.start_time)}
-                        {a.end_time && ` - ${new Date(a.end_time).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`}
+                        {/* BUGHUNT-2026-05-17: end_time is stored as a SQLite
+                            text column ("YYYY-MM-DD HH:MM:SS" UTC when
+                            written via datetime(), or a no-suffix
+                            "YYYY-MM-DDTHH:MM" on schedules cut from a
+                            datetime-local input). Bare `new Date(...)`
+                            parses both flavors as LOCAL, mis-shifting the
+                            displayed end-time by the browser's UTC offset
+                            (e.g. an appointment ending at 17:00 UTC shows
+                            as 09:00 in PST). formatTime routes through
+                            normalizeMaybeSqliteTs so the UTC suffix is
+                            applied before display. */}
+                        {a.end_time && ` - ${formatTime(a.end_time)}`}
                       </p>
                       {a.no_show === 1 && (
                         <span className="mt-1 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
