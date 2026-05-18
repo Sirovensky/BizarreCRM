@@ -47,6 +47,7 @@ import { audit } from '../utils/audit.js';
 import { checkWindowRate, recordWindowFailure, clearRateLimit } from '../utils/rateLimiter.js';
 import { clearPlanCache } from '../middleware/tenantResolver.js';
 import { createLogger } from '../utils/logger.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
 import { generateJwtSecret } from '../utils/jwtSecrets.js';
 import { JWT_SIGN_OPTIONS as TENANT_JWT_SIGN_OPTIONS } from '../middleware/auth.js';
 import { PLAN_DEFINITIONS, type TenantPlan } from '@bizarre-crm/shared';
@@ -731,7 +732,7 @@ router.get('/dashboard', (_req, res) => {
 // enrichTenantOperationalTimestamps` does cross-DB lookups that can throw on a
 // stale pool or missing tenant file, and the per-tenant fs.statSync is in a
 // `.map` — any uncaught throw becomes an unhandledRejection.
-router.get('/tenants', async (req, res) => {
+router.get('/tenants', asyncHandler(async (req, res) => {
   try {
     const { status, plan, search, q, sort, order } = req.query as Record<string, string | undefined>;
     const searchTerm = search ?? q;
@@ -795,7 +796,7 @@ router.get('/tenants', async (req, res) => {
       res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_GENERIC, message: 'Failed to load tenants' });
     }
   }
-});
+}));
 
 // @audit-fixed: Previously this route called provisionTenant() with whatever
 // arrived in req.body, including non-string slugs. provisionTenant() does its
@@ -808,7 +809,7 @@ router.get('/tenants', async (req, res) => {
 // runs migrations, writes a tenant DB file, and signs setup tokens — many failure
 // modes (disk full, schema bug, JWT secret missing) throw, and an unhandled
 // rejection here crashes the server during multi-tenant onboarding.
-router.post('/tenants', async (req, res) => {
+router.post('/tenants', asyncHandler(async (req, res) => {
   try {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const slug = body.slug;
@@ -868,12 +869,12 @@ router.post('/tenants', async (req, res) => {
       res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_GENERIC, message: 'Failed to create tenant' });
     }
   }
-});
+}));
 
 // BUGHUNT-2026-05-17: wrap bare-async handler in try/catch. The inner try/catch
 // only guards the tenant-DB stats lookup — the masterDb.prepare(...).get() above
 // it can throw on a pool failure and crash the server with an unhandledRejection.
-router.get('/tenants/:slug', async (req, res) => {
+router.get('/tenants/:slug', asyncHandler(async (req, res) => {
   try {
     const masterDb = getMasterDb()!;
     const tenant = masterDb.prepare('SELECT * FROM tenants WHERE slug = ?').get(req.params.slug) as any;
@@ -900,13 +901,13 @@ router.get('/tenants/:slug', async (req, res) => {
       res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_GENERIC, message: 'Failed to load tenant' });
     }
   }
-});
+}));
 
 // BUGHUNT-2026-05-17: wrap bare-async handler in try/catch. Multiple awaits
 // (upsertTenantStoreName, dynamic import + updateSubscription, rollback) without
 // a top-level guard — every one can throw and crash the server. Inner try/catches
 // only cover their own awaits; a downstream rollback throw still escapes.
-router.put('/tenants/:slug', requireStepUpTotpSuperAdmin('super_admin_tenant_update'), async (req, res) => {
+router.put('/tenants/:slug', requireStepUpTotpSuperAdmin('super_admin_tenant_update'), asyncHandler(async (req, res) => {
   try {
   const masterDb = getMasterDb()!;
   const errors: string[] = [];
@@ -1201,7 +1202,7 @@ router.put('/tenants/:slug', requireStepUpTotpSuperAdmin('super_admin_tenant_upd
       res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_GENERIC, message: 'Tenant update failed' });
     }
   }
-});
+}));
 
 // Usage summary for a single tenant: current-month counters, 12-month history,
 // plan/limit snapshot, and whether the trial is still active.
@@ -1439,7 +1440,7 @@ router.delete('/tenants/:slug', requireStepUpTotpSuperAdmin('super_admin_tenant_
 // on the users SELECT (line ~1477) or from the `tdb.transaction()` factory itself
 // escapes into an unhandledRejection. Add a top-level guard while still letting
 // the inner finally release the tenant DB pool slot.
-router.post('/tenants/:slug/users/:userId/force-disable-2fa', requireStepUpTotpSuperAdmin('super_admin_force_disable_2fa'), async (req, res) => {
+router.post('/tenants/:slug/users/:userId/force-disable-2fa', requireStepUpTotpSuperAdmin('super_admin_force_disable_2fa'), asyncHandler(async (req, res) => {
   try {
     const masterDb = getMasterDb();
     if (!masterDb) {
@@ -1541,7 +1542,7 @@ router.post('/tenants/:slug/users/:userId/force-disable-2fa', requireStepUpTotpS
       res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_GENERIC, message: 'Force-disable 2FA failed' });
     }
   }
-});
+}));
 
 // ─── Backup Management ──────────────────────────────────────────────
 
