@@ -90,6 +90,14 @@ public final class ApprovalActionViewModel {
         do {
             _ = try await api.editClockEntry(entryId: entry.id, edit: edit)
             actionState = successState
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PATCH may already have landed when the
+            // task was cancelled. Painting "Failed: cancelled" tempts the
+            // manager to retap Approve/Reject, double-editing the audit
+            // trail (and on tolerant servers, double-stamping the entry as
+            // approved/rejected). Roll back to idle so the manager can
+            // verify via the approvals list refresh and retap intentionally.
+            actionState = .idle
         } catch {
             AppLog.ui.error(
                 "ApprovalActionVM edit failed: \(error.localizedDescription, privacy: .public)"
