@@ -362,6 +362,11 @@ final class DiscountEffectivenessViewModel {
             summary = resp.summary
             dailyPoints = resp.daily
             topRules = resp.topRules
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: period change re-fires load and cancels the
+            // prior one. Painting "cancelled" as the error obscured the
+            // legitimate report from the latest period selection.
+            return
         } catch let APITransportError.httpStatus(code, _) where code == 404 || code == 501 {
             error = "Discount analytics not yet enabled on this server."
             summary = .empty
