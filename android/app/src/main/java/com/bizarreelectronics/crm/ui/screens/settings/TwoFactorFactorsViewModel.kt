@@ -27,6 +27,7 @@ import com.bizarreelectronics.crm.data.remote.api.AuthApi
 import com.bizarreelectronics.crm.data.remote.dto.TwoFactorFactorDto
 import com.bizarreelectronics.crm.util.AppError
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -228,6 +229,18 @@ class TwoFactorFactorsViewModel @Inject constructor(
                 _events.send(TwoFactorFactorsEvent.Toast(msg))
             } catch (e: IOException) {
                 _events.send(TwoFactorFactorsEvent.Toast("Network error. Please try again."))
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation. POST
+                // /auth/2fa/factors/enroll for type=sms triggers the
+                // server to send an OTP SMS to the user. The SMS is a
+                // billable side effect that has likely already happened
+                // when the POST reaches the server. Catching the
+                // CancellationException in the generic Exception arm
+                // surfaces a misleading "Unknown error" toast that
+                // tempts the user to re-tap Enroll, sending a second
+                // OTP SMS (the user pays twice and is confused about
+                // which code is current).
+                throw e
             } catch (e: Exception) {
                 _events.send(TwoFactorFactorsEvent.Toast(e.localizedMessage ?: "Unknown error."))
             }
