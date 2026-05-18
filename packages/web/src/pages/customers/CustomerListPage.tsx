@@ -640,8 +640,12 @@ export function CustomerListPage() {
         <div className="relative max-w-md flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-surface-400" />
           <label htmlFor="clist-search" className="sr-only">Search customers</label>
-          <input id="clist-search" type="text" placeholder="Search customers..." value={searchInput}
+          <input id="clist-search" type="search" placeholder="Search customers..." value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            aria-label="Search customers"
             className="w-full pl-10 pr-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:border-primary-500 transition-colors" />
         </div>
         <button onClick={() => setShowFilters(!showFilters)}

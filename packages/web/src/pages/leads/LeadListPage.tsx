@@ -227,17 +227,24 @@ function CreateLeadModal({
         >
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">First Name *</label>
+              <label htmlFor="new-lead-first-name" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">First Name *</label>
               <input
+                id="new-lead-first-name"
                 required
+                autoFocus
+                autoComplete="given-name"
+                autoCapitalize="words"
                 value={form.first_name}
                 onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))}
                 className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Last Name</label>
+              <label htmlFor="new-lead-last-name" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Last Name</label>
               <input
+                id="new-lead-last-name"
+                autoComplete="family-name"
+                autoCapitalize="words"
                 value={form.last_name}
                 onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))}
                 className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
@@ -246,17 +253,29 @@ function CreateLeadModal({
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Phone</label>
+              <label htmlFor="new-lead-phone" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Phone</label>
               <input
+                id="new-lead-phone"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="(303) 555-1234"
                 value={form.phone}
                 onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
                 className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Email</label>
+              <label htmlFor="new-lead-email" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Email</label>
               <input
+                id="new-lead-email"
                 type="email"
+                inputMode="email"
+                autoComplete="email"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                placeholder="customer@example.com"
                 value={form.email}
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
                 className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
@@ -690,11 +709,17 @@ export function LeadListPage() {
         <div className="flex items-center gap-3 border-b border-surface-200 px-4 py-3 dark:border-surface-700">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+            <label htmlFor="lead-search" className="sr-only">Search leads</label>
             <input
-              type="text"
+              id="lead-search"
+              type="search"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
               placeholder="Search leads..."
+              aria-label="Search leads"
               className="w-full rounded-lg border border-surface-200 bg-surface-50 py-1.5 pl-9 pr-4 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
             />
           </div>
