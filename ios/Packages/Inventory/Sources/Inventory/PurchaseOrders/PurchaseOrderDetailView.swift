@@ -39,6 +39,9 @@ public final class PurchaseOrderDetailViewModel {
             let fetched = try await repo.get(id: orderId)
             order = fetched
             supplier = try? await supplierRepo.get(id: fetched.supplierId)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav-away cancellation; keep last-loaded order visible.
+            return
         } catch {
             AppLog.ui.error("PO detail load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -53,6 +56,9 @@ public final class PurchaseOrderDetailViewModel {
         defer { isLoading = false }
         do {
             self.order = try await repo.approve(id: order.id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: approve flips PO status to pending server-side. If server committed when cancelled, "Failed" tempts retry → second approve on now-pending row may 409. Silent return; user refreshes to see real status.
+            return
         } catch {
             AppLog.ui.error("PO approve failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -67,6 +73,9 @@ public final class PurchaseOrderDetailViewModel {
         defer { isLoading = false }
         do {
             self.order = try await repo.cancel(id: order.id, reason: reason)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: cancel flips PO to cancelled status. Idempotent server-side but retry-prompt is still confusing UX.
+            return
         } catch {
             AppLog.ui.error("PO cancel failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -81,6 +90,9 @@ public final class PurchaseOrderDetailViewModel {
         defer { isLoading = false }
         do {
             self.order = try await repo.send(id: order.id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: send emails the supplier AND flips status to ordered. If task cancelled after server commit, retry double-emails the supplier. Silent return is critical here — vendor relationship suffers from duplicate POs.
+            return
         } catch {
             AppLog.ui.error("PO send failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
