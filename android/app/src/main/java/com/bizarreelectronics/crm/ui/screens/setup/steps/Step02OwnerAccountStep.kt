@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -71,6 +72,10 @@ fun OwnerAccountStep(
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             supportingText = { Text("Minimum 3 characters") },
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.None,
+                autoCorrect = false,
+            ),
         )
         OutlinedTextField(
             value = email,
@@ -78,7 +83,11 @@ fun OwnerAccountStep(
             label = { Text("Email *") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Email,
+                capitalization = KeyboardCapitalization.None,
+                autoCorrect = false,
+            ),
         )
         OutlinedTextField(
             value = password,

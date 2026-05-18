@@ -7,6 +7,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 
@@ -62,6 +63,7 @@ fun BusinessInfoStep(
             label = { Text("Shop name *") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
         )
         OutlinedTextField(
             value = address,
@@ -70,6 +72,7 @@ fun BusinessInfoStep(
             modifier = Modifier.fillMaxWidth(),
             minLines = 2,
             maxLines = 3,
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
         )
         OutlinedTextField(
             value = phone,
@@ -86,6 +89,10 @@ fun BusinessInfoStep(
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             supportingText = { Text("e.g. America/New_York") },
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.None,
+                autoCorrect = false,
+            ),
         )
 
         Text("Shop type *", style = MaterialTheme.typography.bodyMedium)

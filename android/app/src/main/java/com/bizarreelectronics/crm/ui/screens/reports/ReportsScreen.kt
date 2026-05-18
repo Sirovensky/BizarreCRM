@@ -1178,6 +1178,8 @@ fun ScheduleReportSheet(
                         modifier = Modifier.fillMaxWidth(),
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                             keyboardType = androidx.compose.ui.text.input.KeyboardType.Email,
+                            capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.None,
+                            autoCorrect = false,
                         ),
                     )
                 }
