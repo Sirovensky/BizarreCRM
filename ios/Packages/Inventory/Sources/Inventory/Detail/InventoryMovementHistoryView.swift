@@ -106,6 +106,9 @@ public final class InventoryMovementHistoryViewModel {
             movements = page.movements
             nextCursor = page.nextCursor
             hasMore = page.hasMore
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancels prior history fetch; preserve existing movements.
+            return
         } catch is URLError {
             isOfflineCached = true
             // Offline: display what was already loaded (cached from prior online session)
@@ -127,6 +130,9 @@ public final class InventoryMovementHistoryViewModel {
             movements.append(contentsOf: page.movements)
             nextCursor = page.nextCursor
             hasMore = page.hasMore
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: pagination scroll-stop cancels follow-up fetch; silent.
+            return
         } catch {
             AppLog.ui.error("MovementHistory loadMore failed: \(error.localizedDescription, privacy: .public)")
         }
