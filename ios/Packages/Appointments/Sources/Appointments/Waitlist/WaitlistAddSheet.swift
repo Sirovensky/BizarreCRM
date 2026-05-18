@@ -133,6 +133,11 @@ public struct WaitlistAddSheet: View {
     // MARK: - Actions
 
     private func submit() async {
+        // BUGHUNT-2026-05-17: Re-entry guard — POST create without this would
+        // double-create on a rapid tap (no server-side idempotency key on
+        // this endpoint), leaving an orphan waitlist row that staff has to
+        // hunt down and delete.
+        guard !isSubmitting else { return }
         guard let cid = Int64(customerId) else {
             errorMessage = "Invalid customer ID"
             return
@@ -149,6 +154,12 @@ public struct WaitlistAddSheet: View {
             )
             _ = try await api.createWaitlistEntry(body)
             dismiss()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: POST create; if the user dismisses before
+            // the response lands, the server may already have inserted the
+            // row. Painting an error tempts a retap that creates a duplicate
+            // waitlist entry for the same customer.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
