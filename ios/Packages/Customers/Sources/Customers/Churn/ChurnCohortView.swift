@@ -297,6 +297,10 @@ final class ChurnCohortViewModel {
         do {
             let cohort = try await api.churnCohort(riskLevel: riskFilter)
             entries = cohort.customers
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: risk-filter swap cancels prior fetch;
+            // keep prior entries visible so the list doesn't flash empty.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

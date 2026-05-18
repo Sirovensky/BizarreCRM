@@ -186,8 +186,15 @@ public struct CustomerTicketsTabView: View {
     private func loadTickets() async {
         isLoading = true; error = nil
         defer { isLoading = false }
-        do { tickets = try await api.customerRecentTickets(id: customerId, pageSize: 100) }
-        catch { self.error = error.localizedDescription }
+        do {
+            tickets = try await api.customerRecentTickets(id: customerId, pageSize: 100)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: tab swap / pull-to-refresh cancels prior
+            // fetch; keep prior tickets visible.
+            return
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 
     private func errorState(_ msg: String) -> some View {
@@ -269,8 +276,15 @@ public struct CustomerInvoicesTabView: View {
     private func loadInvoices() async {
         isLoading = true; error = nil
         defer { isLoading = false }
-        do { invoices = try await api.customerInvoices(id: customerId) }
-        catch { self.error = error.localizedDescription }
+        do {
+            invoices = try await api.customerInvoices(id: customerId)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: tab swap / refresh cancels prior fetch;
+            // keep prior invoices visible.
+            return
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 }
 
@@ -345,8 +359,15 @@ public struct CustomerCommsTabView: View {
     private func loadComms() async {
         isLoading = true; error = nil
         defer { isLoading = false }
-        do { comms = try await api.customerCommunications(id: customerId) }
-        catch { self.error = error.localizedDescription }
+        do {
+            comms = try await api.customerCommunications(id: customerId)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: tab swap / refresh cancels prior fetch;
+            // keep prior communications visible.
+            return
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 }
 

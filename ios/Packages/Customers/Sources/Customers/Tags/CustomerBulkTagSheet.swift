@@ -216,6 +216,12 @@ public struct CustomerBulkTagSheet: View {
             }
             onDone(tags)
             dismiss()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss mid-loop cancels in-flight
+            // bulk-tag write. Partial tags may have committed server-side;
+            // surfacing "cancelled" as a red banner tempts a full retap
+            // that re-applies the already-saved tags. Stay silent.
+            return
         } catch {
             saveError = error.localizedDescription
         }
