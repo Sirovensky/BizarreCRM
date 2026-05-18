@@ -105,6 +105,17 @@ final class TicketDeviceChecklistViewModel {
                 technicianSignature: notes.isEmpty ? nil : notes
             )
             savedSuccessfully = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: updateDeviceChecklist is a PUT that gates
+            // a downstream state machine (status can only advance to
+            // "diagnosed" after the checklist is saved). The broad catch
+            // painted "save failed" into errorMessage on plain
+            // CancellationError even when the server had already applied
+            // the PUT, and the user would re-tap save — which on a
+            // technician-signature line means the timestamp gets refreshed
+            // pointlessly, and any concurrent edit by another tech is
+            // silently clobbered. Suppress cancel-as-failure.
+            return
         } catch {
             AppLog.ui.error(
                 "Device checklist save failed for device \(self.deviceId): \(error.localizedDescription, privacy: .public)"
