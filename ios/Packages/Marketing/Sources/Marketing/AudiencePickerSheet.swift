@@ -28,6 +28,14 @@ final class AudiencePickerViewModel {
             let (s, g) = try await (segs, groups)
             segments = s.segments
             smsGroups = g
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet's Cancel button calls `dismiss()`
+            // mid-load, which cancels the in-flight async-let pair. The
+            // catch-all was logging that as a load failure and painting
+            // "cancelled" in the picker — visible briefly on the next
+            // open of the picker, making it look broken on cold launch
+            // when network round-trip > sheet open animation.
+            errorMessage = nil
         } catch {
             AppLog.ui.error("AudiencePicker load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
