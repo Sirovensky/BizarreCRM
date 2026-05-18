@@ -31,6 +31,8 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -884,6 +886,9 @@ private fun ComposeBar(
                     modifier = textFieldModifier,
                     placeholder = { Text("Type a message...") },
                     maxLines = if (isTablet) Int.MAX_VALUE else 4,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                    ),
                 )
 
                 // L1524 — emoji picker
@@ -1156,6 +1161,9 @@ private fun CreateCustomerFromThreadDialog(
                     label = { Text("First name") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words,
+                    ),
                 )
                 OutlinedTextField(
                     value = lastName,
@@ -1163,6 +1171,9 @@ private fun CreateCustomerFromThreadDialog(
                     label = { Text("Last name (optional)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words,
+                    ),
                 )
             }
         },
