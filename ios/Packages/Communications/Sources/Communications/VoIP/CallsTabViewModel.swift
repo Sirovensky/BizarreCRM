@@ -67,6 +67,11 @@ public final class CallsTabViewModel {
             } else {
                 errorMessage = err.localizedDescription
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: tab-switch / pull-to-refresh cancel —
+            // don't paint a "cancelled" toast on a screen the user just left.
+            isLoading = false
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
