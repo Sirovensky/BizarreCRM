@@ -2,39 +2,43 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Brand fonts (DASH-ELEC-024 / WEB brand font partial-implementation):
- * self-hosted to keep production CSP from needing googleapis. Bebas Neue
- * (display heading), Jost (body — drop-in Futura replacement until a
- * licensed Futura Medium asset is purchased and replaces these), and
- * JetBrains Mono (code). Saved By Zero (logo) is donation-ware; until
- * a licensed copy is supplied, the logo falls back to Bebas Neue. */
+/* Brand fonts: DM Serif Display (display headings), DM Sans (body),
+ * JetBrains Mono (code). Self-hosted for CSP + offline support.
+ * Saved By Zero (logo) is donation-ware; falls back to DM Serif Display. */
 @font-face {
-  font-family: 'Bebas Neue';
+  font-family: 'DM Serif Display';
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url('/fonts/bebas-neue.ttf') format('truetype');
+  src: url('/fonts/dm-serif-display-400.ttf') format('truetype');
 }
 @font-face {
-  font-family: 'Jost';
+  font-family: 'DM Sans';
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url('/fonts/jost-400.ttf') format('truetype');
+  src: url('/fonts/dm-sans-400.ttf') format('truetype');
 }
 @font-face {
-  font-family: 'Jost';
+  font-family: 'DM Sans';
   font-style: normal;
   font-weight: 500;
   font-display: swap;
-  src: url('/fonts/jost-500.ttf') format('truetype');
+  src: url('/fonts/dm-sans-500.ttf') format('truetype');
 }
 @font-face {
-  font-family: 'Jost';
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/dm-sans-600.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'DM Sans';
   font-style: normal;
   font-weight: 700;
   font-display: swap;
-  src: url('/fonts/jost-700.ttf') format('truetype');
+  src: url('/fonts/dm-sans-700.ttf') format('truetype');
 }
 @font-face {
   font-family: 'JetBrains Mono';

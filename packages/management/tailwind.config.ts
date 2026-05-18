@@ -55,15 +55,10 @@ export default {
         },
       },
       fontFamily: {
-        // DASH-ELEC-024: renderer font stack. globals.css self-hosts the
-        // repo-bundled OFL assets we have: Bebas Neue, Jost (400/500/700,
-        // mirrors packages/web), Inter, and JetBrains Mono. Futura Medium and
-        // Saved By Zero are licensed-only and stay as local/system-only heads
-        // of the fallback chain.
-        sans: ['Futura Medium', 'Jost', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
-        display: ['Bebas Neue', 'Futura Medium', 'Jost', 'Inter', 'sans-serif'],
-        heading: ['Bebas Neue', 'Futura Medium', 'Jost', 'Inter', 'sans-serif'],
-        logo: ['Saved By Zero', 'Bebas Neue', 'Futura Medium', 'Jost', 'Inter', 'sans-serif'],
+        sans: ['DM Sans', 'system-ui', '-apple-system', 'sans-serif'],
+        display: ['DM Serif Display', 'Georgia', 'serif'],
+        heading: ['DM Serif Display', 'Georgia', 'serif'],
+        logo: ['Saved By Zero', 'DM Serif Display', 'Georgia', 'serif'],
         mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
       },
       animation: {

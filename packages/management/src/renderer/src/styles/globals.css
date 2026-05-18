@@ -3,64 +3,40 @@
 @tailwind utilities;
 
 @font-face {
-  font-family: 'Bebas Neue';
-  src: url('../assets/fonts/bebas_neue_regular.ttf') format('truetype');
+  font-family: 'DM Serif Display';
+  src: url('../assets/fonts/dm_serif_display_regular.ttf') format('truetype');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Jost';
-  src: url('../assets/fonts/jost_regular.ttf') format('truetype');
+  font-family: 'DM Sans';
+  src: url('../assets/fonts/dm_sans_regular.ttf') format('truetype');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Jost';
-  src: url('../assets/fonts/jost_medium.ttf') format('truetype');
+  font-family: 'DM Sans';
+  src: url('../assets/fonts/dm_sans_medium.ttf') format('truetype');
   font-weight: 500;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Jost';
-  src: url('../assets/fonts/jost_bold.ttf') format('truetype');
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'Inter';
-  src: url('../assets/fonts/inter_regular.ttf') format('truetype');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'Inter';
-  src: url('../assets/fonts/inter_medium.ttf') format('truetype');
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'Inter';
-  src: url('../assets/fonts/inter_semibold.ttf') format('truetype');
+  font-family: 'DM Sans';
+  src: url('../assets/fonts/dm_sans_semibold.ttf') format('truetype');
   font-weight: 600;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Inter';
-  src: url('../assets/fonts/inter_bold.ttf') format('truetype');
+  font-family: 'DM Sans';
+  src: url('../assets/fonts/dm_sans_bold.ttf') format('truetype');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
