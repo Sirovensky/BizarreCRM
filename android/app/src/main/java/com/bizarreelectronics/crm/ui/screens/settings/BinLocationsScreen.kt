@@ -52,6 +52,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -487,7 +488,11 @@ private fun CreateBinDialog(
                     placeholder = { Text("e.g. A1-S2-B3") },
                     isError = code.isNotBlank().not() && code.isNotEmpty(),
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardOptions = KeyboardOptions(
+                        imeAction = ImeAction.Next,
+                        capitalization = KeyboardCapitalization.Characters,
+                        autoCorrect = false,
+                    ),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
@@ -495,7 +500,10 @@ private fun CreateBinDialog(
                     onValueChange = { description = it },
                     label = { Text("Description") },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardOptions = KeyboardOptions(
+                        imeAction = ImeAction.Next,
+                        capitalization = KeyboardCapitalization.Sentences,
+                    ),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -504,7 +512,11 @@ private fun CreateBinDialog(
                         onValueChange = { aisle = it },
                         label = { Text("Aisle") },
                         singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Next,
+                            capitalization = KeyboardCapitalization.Characters,
+                            autoCorrect = false,
+                        ),
                         modifier = Modifier.weight(1f),
                     )
                     OutlinedTextField(
@@ -512,7 +524,11 @@ private fun CreateBinDialog(
                         onValueChange = { shelf = it },
                         label = { Text("Shelf") },
                         singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Next,
+                            capitalization = KeyboardCapitalization.Characters,
+                            autoCorrect = false,
+                        ),
                         modifier = Modifier.weight(1f),
                     )
                     OutlinedTextField(
@@ -520,7 +536,11 @@ private fun CreateBinDialog(
                         onValueChange = { binField = it },
                         label = { Text("Bin") },
                         singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Done,
+                            capitalization = KeyboardCapitalization.Characters,
+                            autoCorrect = false,
+                        ),
                         modifier = Modifier.weight(1f),
                     )
                 }
