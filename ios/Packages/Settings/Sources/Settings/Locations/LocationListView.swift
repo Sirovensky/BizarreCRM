@@ -31,6 +31,7 @@ public struct LocationListView: View {
                     } label: {
                         Label("Add Location", systemImage: "plus")
                     }
+                    .keyboardShortcut("n", modifiers: .command)
                     .accessibilityLabel("Add location")
                 }
             }

@@ -150,6 +150,7 @@ public struct RecurringExpenseListView: View {
                 Label("Add Rule", systemImage: "plus")
             }
             .brandGlass()
+            .keyboardShortcut("n", modifiers: .command)
             .accessibilityLabel("Add recurring expense rule")
         }
     }

@@ -45,6 +45,7 @@ public struct HeldCartsListView: View {
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
+                    .keyboardShortcut("r", modifiers: .command)
                     .accessibilityLabel("Refresh")
                     .accessibilityIdentifier("heldCarts.refresh")
                 }

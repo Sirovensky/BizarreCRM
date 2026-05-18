@@ -36,6 +36,7 @@ public struct LocationTransferListView: View {
                 } label: {
                     Label("New Transfer", systemImage: "arrow.left.arrow.right")
                 }
+                .keyboardShortcut("n", modifiers: .command)
                 .accessibilityLabel("New transfer")
             }
         }

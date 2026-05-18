@@ -209,6 +209,7 @@ public struct AutoResponderListView: View {
         } label: {
             Image(systemName: "plus")
         }
+        .keyboardShortcut("n", modifiers: .command)
         .accessibilityLabel("Add auto-responder")
     }
 

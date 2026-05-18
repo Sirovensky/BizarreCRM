@@ -259,6 +259,7 @@ public struct EmailTemplateListView: View {
             } label: {
                 Label("New Template", systemImage: "plus")
             }
+            .keyboardShortcut("n", modifiers: .command)
             .accessibilityLabel("Create new email template")
         }
     }
