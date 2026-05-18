@@ -114,6 +114,12 @@ public final class EmailComposerViewModel {
                 plainBody: rendered.plain
             ))
             didSend = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sendEmail has no idempotency key. Painting
+            // "cancelled" tempted a re-tap that sent a second copy to the
+            // customer's inbox. Clear the error so the user must
+            // deliberately re-press Send rather than reacting to a banner.
+            errorMessage = nil
         } catch {
             let appError = AppError.from(error)
             errorMessage = appError.errorDescription
