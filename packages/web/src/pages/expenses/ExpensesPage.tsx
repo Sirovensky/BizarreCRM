@@ -79,6 +79,18 @@ export function ExpensesPage() {
   const searchRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [searchInput, setSearchInput] = useState('');
 
+  // BUGHUNT-2026-05-17: searchRef setTimeout fires 400ms after the last keystroke
+  // and calls setKeyword + setPage. If the user types then immediately navigates
+  // away (Esc back to list page on mobile, or clicks a row to drill in), the
+  // pending timer fires on an unmounted component — React logs a setState-on-
+  // unmounted warning and the closure pins the unmounted component's state for
+  // the GC. Clear the pending timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (searchRef.current) clearTimeout(searchRef.current);
+    };
+  }, []);
+
   // WEB-FC-018 (FIXED-by-Fixer-A23 2026-04-25): the form now renders as a
   // dimmed-backdrop modal overlay instead of an inline panel above the
   // table. Editing a row on page 3 no longer scrolls the user to the top
