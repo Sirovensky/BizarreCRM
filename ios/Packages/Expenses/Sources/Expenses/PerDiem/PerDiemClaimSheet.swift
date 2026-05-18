@@ -77,6 +77,11 @@ public final class PerDiemClaimViewModel {
                 "/api/v1/expenses/perdiem", body: body, as: PerDiemClaim.self
             )
             savedClaimId = claim.id
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: per-diem create POST is reimbursable
+            // money. Retap on cancellation banner duplicates the claim and
+            // the next reimbursement run pays out twice.
+            return
         } catch {
             AppLog.ui.error("Per-diem save failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
