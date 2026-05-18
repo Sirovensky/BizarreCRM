@@ -16,6 +16,11 @@ public final class AppointmentListViewModel {
 
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private let cachedRepo: AppointmentCachedRepository?
+    /// BUGHUNT-2026-05-17: tracks the in-flight load task. Without this,
+    /// rapid filter/view-mode changes or onAppear+refreshable interactions
+    /// spawned concurrent loads where the stale response would clobber the
+    /// fresh one. Cancel previous before starting next.
+    @ObservationIgnored private var loadTask: Task<Void, Never>?
 
     public init(api: APIClient, cachedRepo: AppointmentCachedRepository? = nil) {
         self.api = api
@@ -23,36 +28,59 @@ public final class AppointmentListViewModel {
     }
 
     public func load() async {
-        if items.isEmpty { isLoading = true }
-        defer { isLoading = false }
-        errorMessage = nil
-        do {
-            if let repo = cachedRepo {
-                items = try await repo.listAppointments()
-                lastSyncedAt = await repo.lastSyncedAt
-            } else {
-                items = try await api.listAppointments()
+        loadTask?.cancel()
+        let task = Task { @MainActor in
+            if items.isEmpty { isLoading = true }
+            defer { isLoading = false }
+            errorMessage = nil
+            do {
+                if let repo = cachedRepo {
+                    let fresh = try await repo.listAppointments()
+                    if Task.isCancelled { return }
+                    items = fresh
+                    lastSyncedAt = await repo.lastSyncedAt
+                } else {
+                    let fresh = try await api.listAppointments()
+                    if Task.isCancelled { return }
+                    items = fresh
+                }
+            } catch let e where AppError.isCancellation(e) {
+                // BUGHUNT-2026-05-17: Newer load cancelled this one; stay silent.
+                return
+            } catch {
+                AppLog.ui.error("Appointments load failed: \(error.localizedDescription, privacy: .public)")
+                errorMessage = error.localizedDescription
             }
-        } catch {
-            AppLog.ui.error("Appointments load failed: \(error.localizedDescription, privacy: .public)")
-            errorMessage = error.localizedDescription
         }
+        loadTask = task
+        await task.value
     }
 
     public func forceRefresh() async {
-        defer { isLoading = false }
-        errorMessage = nil
-        do {
-            if let repo = cachedRepo {
-                items = try await repo.forceRefresh()
-                lastSyncedAt = await repo.lastSyncedAt
-            } else {
-                items = try await api.listAppointments()
+        loadTask?.cancel()
+        let task = Task { @MainActor in
+            defer { isLoading = false }
+            errorMessage = nil
+            do {
+                if let repo = cachedRepo {
+                    let fresh = try await repo.forceRefresh()
+                    if Task.isCancelled { return }
+                    items = fresh
+                    lastSyncedAt = await repo.lastSyncedAt
+                } else {
+                    let fresh = try await api.listAppointments()
+                    if Task.isCancelled { return }
+                    items = fresh
+                }
+            } catch let e where AppError.isCancellation(e) {
+                return
+            } catch {
+                AppLog.ui.error("Appointments force-refresh failed: \(error.localizedDescription, privacy: .public)")
+                errorMessage = error.localizedDescription
             }
-        } catch {
-            AppLog.ui.error("Appointments force-refresh failed: \(error.localizedDescription, privacy: .public)")
-            errorMessage = error.localizedDescription
         }
+        loadTask = task
+        await task.value
     }
 
     /// Quick status update from context menu (mark complete / no-show).
