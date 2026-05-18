@@ -65,6 +65,9 @@ public final class InventoryTaxClassViewModel {
             BrandHaptics.success()
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             showSuccess = false
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: taxClass overwrite is idempotent; cancellation banner just causes confusion. Silent return.
+            return
         } catch {
             AppLog.ui.error("TaxClass save failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription

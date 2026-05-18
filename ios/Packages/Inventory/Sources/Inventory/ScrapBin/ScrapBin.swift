@@ -107,6 +107,10 @@ public final class ScrapBinViewModel {
         isLoading = true; errorMessage = nil
         defer { isLoading = false }
         do { entries = try await repo.list() }
+        catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: list reload cancelled; keep existing entries.
+            return
+        }
         catch { errorMessage = error.localizedDescription }
     }
 
@@ -130,6 +134,9 @@ public final class ScrapBinViewModel {
             selectedIds = []
             showDisposalSheet = false
             BrandHaptics.success()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: dispose mass-removes scrap entries server-side. If server committed when sheet was dismissed, retry attempts re-dispose of already-disposed ids. Silent return — caller refresh shows the disposed entries gone.
+            return
         } catch { errorMessage = error.localizedDescription }
     }
 }
@@ -354,6 +361,10 @@ public struct MoveToScrapSheet: View {
             BrandHaptics.success()
             onComplete()
             dismiss()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: moveToScrap creates scrap entry AND decrements inventory stock. Server may have committed when sheet was dismissed; retry double-scraps (stock goes 2x negative). Silent return; caller refresh will reveal actual state.
+            isSubmitting = false
+            return
         } catch {
             errorMessage = error.localizedDescription
             isSubmitting = false
