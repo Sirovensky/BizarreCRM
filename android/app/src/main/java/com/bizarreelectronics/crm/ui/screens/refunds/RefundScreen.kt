@@ -2,6 +2,7 @@ package com.bizarreelectronics.crm.ui.screens.refunds
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -13,7 +14,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -468,6 +472,15 @@ private fun ManagerPinDialog(
     isError: Boolean,
 ) {
     var pinText by remember { mutableStateOf("") }
+    val pinFocus = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        runCatching { pinFocus.requestFocus() }
+    }
+
+    val submit: () -> Unit = {
+        if (pinText.length == 4) onConfirm(pinText)
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -486,18 +499,24 @@ private fun ManagerPinDialog(
                     onValueChange = { if (it.length <= 4 && it.all { c -> c.isDigit() }) pinText = it },
                     label = { Text("PIN") },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.NumberPassword,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { submit() }),
                     isError = isError,
                     supportingText = if (isError) {
                         { Text("Incorrect PIN", color = MaterialTheme.colorScheme.error) }
                     } else null,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(pinFocus),
                 )
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(pinText) },
+                onClick = submit,
                 enabled = pinText.length == 4,
             ) { Text("Authorize") }
         },

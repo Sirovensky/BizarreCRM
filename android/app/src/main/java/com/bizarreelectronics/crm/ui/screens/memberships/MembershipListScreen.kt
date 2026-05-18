@@ -3,6 +3,8 @@ package com.bizarreelectronics.crm.ui.screens.memberships
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -11,7 +13,11 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.bizarreelectronics.crm.data.remote.api.Membership
@@ -360,6 +366,19 @@ private fun EnrollMemberDialog(
     var selectedTier by remember { mutableStateOf(tiers.firstOrNull()) }
     var billing by remember { mutableStateOf("monthly") }
     var paymentMethod by remember { mutableStateOf("cash") }
+    val customerIdFocus = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        runCatching { customerIdFocus.requestFocus() }
+    }
+
+    val submit: () -> Unit = {
+        val cid = customerIdText.toLongOrNull()
+        val tid = selectedTier?.id
+        if (!isLoading && cid != null && tid != null) {
+            onConfirm(cid, tid, billing, paymentMethod)
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -371,7 +390,14 @@ private fun EnrollMemberDialog(
                     onValueChange = { customerIdText = it },
                     label = { Text("Customer ID") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(customerIdFocus),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { submit() }),
                 )
 
                 Text("Tier", style = MaterialTheme.typography.labelMedium)
@@ -423,11 +449,7 @@ private fun EnrollMemberDialog(
         },
         confirmButton = {
             Button(
-                onClick = {
-                    val cid = customerIdText.toLongOrNull() ?: return@Button
-                    val tid = selectedTier?.id ?: return@Button
-                    onConfirm(cid, tid, billing, paymentMethod)
-                },
+                onClick = submit,
                 enabled = !isLoading && customerIdText.isNotBlank() && selectedTier != null,
             ) {
                 if (isLoading) {
