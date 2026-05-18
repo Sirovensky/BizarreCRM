@@ -143,6 +143,12 @@ public final class ExpenseEditViewModel {
         do {
             _ = try await api.updateExpense(id: expenseId, body: req)
             didSave = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: expense update PUT may have committed
+            // server-side. Banner tempts retap that double-PUTs same values
+            // (audit row noise + potential reimbursement double-counting if
+            // the cron picks it up between writes).
+            return
         } catch {
             AppLog.ui.error("Expense update failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
