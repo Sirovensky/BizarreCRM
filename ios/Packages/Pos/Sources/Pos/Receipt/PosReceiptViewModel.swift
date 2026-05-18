@@ -182,6 +182,14 @@ public final class PosReceiptViewModel {
     // SMS: disabled until POS-SMS-001. Email: enabled.
 
     private func sendViaNotificationsEndpoint(channel: String) async {
+        // BUGHUNT-2026-05-17: guard against re-entry. Tapping the SMS or
+        // email button twice in quick succession used to start two send
+        // requests (the toolbar button doesn't observe `sendStatus`), so
+        // an impatient cashier could double-text or double-email the
+        // customer. postSendReceipt has no idempotency key server-side.
+        if case .sending = sendStatus { return }
+        if case .sent = sendStatus { return }
+
         let destination: String?
         switch channel {
         case "sms":   destination = payload.customerPhone
@@ -211,6 +219,14 @@ public final class PosReceiptViewModel {
             )
             sendStatus = .sent("Receipt sent to \(dest).")
             AppLog.pos.info("PosReceiptViewModel: receipt sent via \(channel, privacy: .public) invoice=\(self.payload.invoiceId, privacy: .public)")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: postSendReceipt is POST without an
+            // idempotency key. A `.failed("cancelled")` banner tempted a
+            // re-tap that could double-send. Revert to `.idle` so the
+            // banner clears without lying about success or tempting
+            // a follow-up.
+            sendStatus = .idle
+            return
         } catch {
             AppLog.pos.error("PosReceiptViewModel: \(channel) send failed — \(error.localizedDescription)")
             sendStatus = .failed(error.localizedDescription)
