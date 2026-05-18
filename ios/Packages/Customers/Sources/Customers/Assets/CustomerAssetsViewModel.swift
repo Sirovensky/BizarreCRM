@@ -83,6 +83,13 @@ public final class CustomerAssetsViewModel {
             assets = [created] + assets
             resetAddForm()
             return true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: addAsset is POST without an idempotency
+            // key. A `errorMessage = "cancelled"` toast tempted a re-tap that —
+            // if the server had already accepted the first POST — would
+            // persist a duplicate asset row for the customer. Stay silent;
+            // the assets list refresh on next load shows whether it landed.
+            return false
         } catch {
             errorMessage = AppError.from(error).localizedDescription
             return false
