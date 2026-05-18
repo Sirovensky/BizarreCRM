@@ -592,6 +592,10 @@ export function SignupPage() {
                   placeholder="you@example.com"
                   maxLength={254}
                   autoComplete="email"
+                  inputMode="email"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
                   aria-invalid={!!fieldErrors.admin_email}
                   aria-describedby={fieldErrors.admin_email ? 'signup-email-error' : undefined}
                   className={inputClass(!!fieldErrors.admin_email)}

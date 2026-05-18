@@ -151,6 +151,10 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
                     placeholder="e.g. T-1042 or 1042"
                     value={orderId}
                     onChange={e => setOrderId(e.target.value)}
+                    autoFocus
+                    autoCapitalize="characters"
+                    autoCorrect="off"
+                    spellCheck={false}
                     aria-invalid={!!error}
                     aria-describedby={error ? 'portal-login-error' : undefined}
                     className="w-full rounded-lg border border-surface-300 dark:border-surface-600 dark:bg-surface-800 px-4 py-2.5 text-sm text-surface-900 dark:text-surface-100 placeholder-surface-400 dark:placeholder-surface-500 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
@@ -164,6 +168,8 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
                   <input
                     id="portal-phone-last4"
                     type="tel"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     placeholder="e.g. 1234"
                     maxLength={4}
                     value={phoneLast4}
@@ -191,6 +197,8 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
                   <input
                     id="portal-phone"
                     type="tel"
+                    inputMode="tel"
+                    autoFocus
                     placeholder="(303) 555-1234"
                     value={phone}
                     onChange={e => setPhone(e.target.value)}

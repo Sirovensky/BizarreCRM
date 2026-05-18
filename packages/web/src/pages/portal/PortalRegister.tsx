@@ -315,6 +315,8 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
                 <input
                   id="reg-phone"
                   type="tel"
+                  inputMode="tel"
+                  autoFocus
                   placeholder="(303) 555-1234"
                   value={phone}
                   onChange={e => setPhone(e.target.value)}
