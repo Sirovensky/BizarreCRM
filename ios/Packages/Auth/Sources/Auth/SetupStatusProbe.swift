@@ -60,6 +60,12 @@ public actor SetupStatusProbe {
         } catch APITransportError.httpStatus(let code, _) where code == 404 {
             // Older servers don't implement this endpoint; treat as no-setup-needed.
             return .resolved(AuthSetupStatus(needsSetup: false, isMultiTenant: nil))
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: setup probe was painting .failure on nav
+            // cancel. Treat cancel as a benign retryable state by reporting
+            // no-setup-needed; the launch flow will run the probe again
+            // after the user finishes whatever superseded the cancelled probe.
+            return .resolved(AuthSetupStatus(needsSetup: false, isMultiTenant: nil))
         } catch {
             return .failure(error.localizedDescription)
         }
