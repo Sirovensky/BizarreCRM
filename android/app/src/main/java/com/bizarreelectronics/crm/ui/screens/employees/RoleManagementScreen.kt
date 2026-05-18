@@ -41,6 +41,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -264,7 +267,10 @@ fun RoleManagementScreen(
             ) { CircularProgressIndicator() }
 
             state.error != null && state.roles.isEmpty() -> Box(
-                Modifier.fillMaxSize().padding(padding),
+                Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .semantics { liveRegion = LiveRegionMode.Assertive },
                 contentAlignment = Alignment.Center,
             ) {
                 ErrorState(message = state.error!!, onRetry = { viewModel.loadRoles() })
@@ -277,8 +283,19 @@ fun RoleManagementScreen(
                 EmptyState(
                     icon = Icons.Default.ManageAccounts,
                     title = "No custom roles",
-                    subtitle = "Tap + to create your first custom role.",
+                    subtitle = "Create a role to define a custom permission set.",
                     includeWave = true,
+                    action = {
+                        androidx.compose.material3.FilledTonalButton(onClick = { viewModel.showCreateDialog() }) {
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            androidx.compose.foundation.layout.Spacer(Modifier.size(8.dp))
+                            Text("Create role")
+                        }
+                    },
                 )
             }
 
