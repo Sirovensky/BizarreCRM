@@ -199,9 +199,15 @@ class PosTenderViewModel @Inject constructor(
                 cartDiscountCents = session.cartDiscountCents,
                 notes = session.cartNote,
             )
-            runCatching {
-                posApi.createInvoiceLater(idempotencyKey, request)
-            }.onSuccess { resp ->
+            // BUGHUNT-2026-05-17: invoice-later is a server write that creates a
+            // real invoice row. The endpoint accepts the idempotencyKey so a
+            // genuine retry within the dedup window is safe, BUT runCatching
+            // swallowed CancellationException and painted "Network error",
+            // tempting a retry from a different navigation path (which would
+            // generate a fresh UUID and bypass dedup). Re-throw cancellation
+            // explicitly and add a verification hint on real failures.
+            try {
+                val resp = posApi.createInvoiceLater(idempotencyKey, request)
                 val data = resp.data
                 if (resp.success && data != null) {
                     coordinator.completeOrder(
@@ -213,8 +219,15 @@ class PosTenderViewModel @Inject constructor(
                 } else {
                     _uiState.update { it.copy(isProcessing = false, errorMessage = resp.message ?: "Invoice later failed") }
                 }
-            }.onFailure { e ->
-                _uiState.update { it.copy(isProcessing = false, errorMessage = e.message ?: "Network error") }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isProcessing = false,
+                        errorMessage = "Network error: ${e.message ?: "could not reach server"}. The invoice may have been created — check the customer's invoices before retrying.",
+                    )
+                }
             }
         }
     }
@@ -251,17 +264,25 @@ class PosTenderViewModel @Inject constructor(
         val role = authPreferences.userRole ?: ""
         val operatorId = authPreferences.userId.toString()
         viewModelScope.launch {
-            runCatching {
-                cashDrawerController.manualOpen(
+            // BUGHUNT-2026-05-17: manualOpen is suspend and writes an audit log
+            // entry to the sync queue. Wrapping the suspend call in runCatching
+            // swallowed CancellationException and painted "Could not open drawer"
+            // — but the audit row may already have been written. The inner
+            // `Result<Unit>` returned by the controller is the controller's own
+            // success/failure (e.g. SecurityException for non-admin); that
+            // stays as-is. Only the outer wrapper is changed.
+            try {
+                val result = cashDrawerController.manualOpen(
                     operatorId = operatorId,
                     operatorRole = role,
                     reason = reason,
                 )
-            }.onSuccess { result ->
                 result.onFailure { e ->
                     _uiState.update { it.copy(errorMessage = e.message ?: "Could not open drawer") }
                 }
-            }.onFailure { e ->
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
                 _uiState.update { it.copy(errorMessage = e.message ?: "Could not open drawer") }
             }
         }
@@ -512,9 +533,15 @@ class PosTenderViewModel @Inject constructor(
                 return@launch
             }
 
-            runCatching {
-                posApi.completeSale(idempotencyKey, request)
-            }.onSuccess { resp ->
+            // BUGHUNT-2026-05-17: previously `runCatching { posApi.completeSale(...) }`
+            // swallowed CancellationException. If the cashier navigated away (or the VM
+            // scope was cancelled) mid-POST, the user saw a generic "Network error"
+            // toast and would retry — but the server may already have committed the
+            // sale, creating a duplicate. Switch to explicit try/catch with a
+            // CancellationException re-throw, and surface a verification hint on
+            // non-cancellation errors so the cashier checks Recent Sales before retry.
+            try {
+                val resp = posApi.completeSale(idempotencyKey, request)
                 val data = resp.data
                 if (resp.success && data != null) {
                     coordinator.completeOrder(
@@ -532,14 +559,23 @@ class PosTenderViewModel @Inject constructor(
                         viewModelScope.launch {
                             runCatching { cashDrawerController.openDrawer() }
                             // Result intentionally ignored — hardware failure is
-                            // non-fatal for a completed sale.
+                            // non-fatal for a completed sale, and the controller
+                            // call is a non-suspending hardware kick (no
+                            // CancellationException to worry about).
                         }
                     }
                 } else {
                     _uiState.update { it.copy(isProcessing = false, errorMessage = resp.message ?: "Sale failed") }
                 }
-            }.onFailure { e ->
-                _uiState.update { it.copy(isProcessing = false, errorMessage = e.message ?: "Network error") }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isProcessing = false,
+                        errorMessage = "Network error: ${e.message ?: "could not reach server"}. The sale may have been recorded — verify in Recent Sales before retrying.",
+                    )
+                }
             }
         }
     }
