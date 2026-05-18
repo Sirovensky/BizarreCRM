@@ -204,6 +204,8 @@ public struct LoginFlowView: View {
                     systemImage: "server.rack",
                     contentType: .URL,
                     keyboard: .URL,
+                    autocapitalize: .never,
+                    autocorrect: false,
                     // §2 a11y — clarify expected format for VoiceOver users
                     // who may not see the placeholder when the field is empty.
                     accessibilityHint: "Enter the full address of your self-hosted server, for example https://192.168.0.240"
