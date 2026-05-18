@@ -70,6 +70,10 @@ public struct LeadDeleteButton: View {
         do {
             try await api.deleteLead(id: leadId)
             onDeleted()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: DELETE may have committed; retap 404s
+            // and audit-logs confusing delete-attempt-on-missing-row.
+            return
         } catch {
             errorMessage = error.localizedDescription
             AppLog.ui.error("Lead delete failed: \(error.localizedDescription, privacy: .public)")
