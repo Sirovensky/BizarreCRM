@@ -128,6 +128,13 @@ public final class PosReceiptPrintBridge {
             try await printer.printBitmap(bitmap, jobName: jobName)
             AppLog.pos.info("Thermal print succeeded: \(jobName, privacy: .public)")
             return .success
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: don't paint a thermal-printer-error toast
+            // when the print task was cancelled (POS sheet dismissed, register
+            // shift ended). The caller will know to suppress the printer-error
+            // banner because the cancel surfaces as .printerError("cancelled")
+            // — but the AppLog.pos.error noise was misleading on-call ops.
+            return .printerError(e.localizedDescription)
         } catch {
             AppLog.pos.error("Thermal print error: \(error.localizedDescription, privacy: .public)")
             return .printerError(error.localizedDescription)
