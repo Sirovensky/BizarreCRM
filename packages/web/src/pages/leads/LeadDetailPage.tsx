@@ -508,13 +508,25 @@ export function LeadDetailPage() {
               {lead.phone && (
                 <div className="flex items-center gap-2 text-sm">
                   <Phone className="h-4 w-4 text-surface-400" />
-                  <span className="text-surface-600 dark:text-surface-400">{lead.phone}</span>
+                  <a
+                    href={`tel:${lead.phone.replace(/[^\d+]/g, '')}`}
+                    className="text-surface-600 dark:text-surface-400 hover:text-primary-600 dark:hover:text-primary-400 hover:underline"
+                    aria-label={`Call ${lead.phone}`}
+                  >
+                    {lead.phone}
+                  </a>
                 </div>
               )}
               {lead.email && (
                 <div className="flex items-center gap-2 text-sm">
                   <Mail className="h-4 w-4 text-surface-400" />
-                  <span className="text-surface-600 dark:text-surface-400">{lead.email}</span>
+                  <a
+                    href={`mailto:${lead.email}`}
+                    className="text-surface-600 dark:text-surface-400 hover:text-primary-600 dark:hover:text-primary-400 hover:underline break-all"
+                    aria-label={`Email ${lead.email}`}
+                  >
+                    {lead.email}
+                  </a>
                 </div>
               )}
               {(lead.address || lead.zip_code) && (
