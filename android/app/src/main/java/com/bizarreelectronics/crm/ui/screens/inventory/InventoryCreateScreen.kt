@@ -20,6 +20,7 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -524,7 +525,10 @@ internal fun InventoryFormContent(
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Name *") },
             singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+            keyboardOptions = KeyboardOptions(
+                imeAction = ImeAction.Next,
+                capitalization = KeyboardCapitalization.Words,
+            ),
             keyboardActions = onNext,
         )
 
@@ -543,7 +547,11 @@ internal fun InventoryFormContent(
                 modifier = Modifier.weight(1f),
                 label = { Text("SKU") },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Next,
+                    capitalization = KeyboardCapitalization.Characters,
+                    autoCorrect = false,
+                ),
                 keyboardActions = onNext,
             )
             OutlinedTextField(
@@ -552,7 +560,11 @@ internal fun InventoryFormContent(
                 modifier = Modifier.weight(1f),
                 label = { Text("UPC / Barcode") },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Next,
+                    capitalization = KeyboardCapitalization.Characters,
+                    autoCorrect = false,
+                ),
                 keyboardActions = onNext,
             )
         }
@@ -638,7 +650,10 @@ internal fun InventoryFormContent(
             label = { Text("Description") },
             minLines = 3,
             maxLines = 6,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardOptions = KeyboardOptions(
+                imeAction = ImeAction.Done,
+                capitalization = KeyboardCapitalization.Sentences,
+            ),
             keyboardActions = onDoneSubmit,
         )
 

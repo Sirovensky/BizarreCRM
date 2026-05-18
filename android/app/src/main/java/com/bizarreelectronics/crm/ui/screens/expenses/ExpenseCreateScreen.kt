@@ -17,6 +17,7 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -737,7 +738,10 @@ fun ExpenseCreateScreen(
                         label = { Text("Description / Vendor") },
                         singleLine = false,
                         minLines = 2,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Next,
+                            capitalization = KeyboardCapitalization.Sentences,
+                        ),
                         keyboardActions = onNext,
                     )
                 }
@@ -750,7 +754,10 @@ fun ExpenseCreateScreen(
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text("Vendor / Business Purpose") },
                         singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Next,
+                            capitalization = KeyboardCapitalization.Words,
+                        ),
                         keyboardActions = onNext,
                     )
                     // Miles + rate on the same row
@@ -807,7 +814,10 @@ fun ExpenseCreateScreen(
                         label = { Text("Notes") },
                         singleLine = false,
                         minLines = 2,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Next,
+                            capitalization = KeyboardCapitalization.Sentences,
+                        ),
                         keyboardActions = onNext,
                     )
                 }
@@ -867,7 +877,10 @@ fun ExpenseCreateScreen(
                         label = { Text("Description / Purpose") },
                         singleLine = false,
                         minLines = 2,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Next,
+                            capitalization = KeyboardCapitalization.Sentences,
+                        ),
                         keyboardActions = onNext,
                     )
                 }
