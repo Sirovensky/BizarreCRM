@@ -264,6 +264,13 @@ public final class CustomerCommPrefsViewModel {
         do {
             try await api.updateCustomerCommPrefs(customerId: customerId, prefs)
             savedSuccessfully = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: comm prefs PUT sets TCPA-relevant opt-in
+            // flags (sms_marketing, email_marketing). Cancellation banner
+            // tempted retap that would PUT same prefs again — server's
+            // audit row records prefs change twice on what should be one
+            // user action. Stay silent; user can verify by reopening sheet.
+            return
         } catch {
             errorMessage = AppError.from(error).localizedDescription
         }
