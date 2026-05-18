@@ -151,6 +151,11 @@ public struct LeadStatusTransitionSheet: View {
                         let updated = try await vm.transition(to: status)
                         onTransitioned(updated)
                         dismiss()
+                    } catch let e where AppError.isCancellation(e) {
+                        // BUGHUNT-2026-05-17: sheet dismissed mid-transition;
+                        // PUT may have committed + fired workflow SMS hook.
+                        // Don't paint error — retap doubles the SMS.
+                        return
                     } catch {
                         vm.error = error.localizedDescription
                     }
