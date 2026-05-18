@@ -59,6 +59,13 @@ public final class CustomerCreateViewModel {
             let created = try await api.createCustomer(req)
             createdId = created.id
             await _draftAutoSaverValue.clear()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: createCustomer is a POST without an
+            // idempotency key — a re-tap after a "cancelled" toast could
+            // duplicate the customer. Suppress the error banner so the
+            // user can resume from the auto-saved draft cleanly rather
+            // than reacting to a banner.
+            return
         } catch {
             let appError = AppError.from(error)
             if case .offline = appError {
