@@ -63,7 +63,11 @@ public final class MessageTemplateEditorViewModel {
     // MARK: - Save
 
     public func save() async {
-        guard isValid, let api else { return }
+        // BUGHUNT-2026-05-17: `isSaving` re-entry guard. Save button is
+        // disabled while saving, but the keyboard return shortcut and
+        // SwiftUI's refresh latency can re-fire save() before `isSaving=true`
+        // propagates — would create a duplicate template POST.
+        guard isValid, let api, !isSaving else { return }
         isSaving = true
         errorMessage = nil
         defer { isSaving = false }
@@ -92,6 +96,13 @@ public final class MessageTemplateEditorViewModel {
             }
             savedTemplate = saved
             onSave(saved)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: createMessageTemplate is a POST without an
+            // idempotency key. If the server stored the template before the
+            // Task was cancelled, painting "Failed" tempts a re-tap that
+            // creates a duplicate template (then surfaces a confusing
+            // name-uniqueness error). Stay silent; reload will reconcile.
+            return
         } catch {
             let appError = AppError.from(error)
             errorMessage = appError.errorDescription
