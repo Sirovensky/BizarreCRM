@@ -148,6 +148,10 @@ fun DeviceHistoryScreen(
                             )
                         }
                     },
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Characters,
+                        autoCorrect = false,
+                    ),
                 )
             }
 
