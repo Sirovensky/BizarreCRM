@@ -51,6 +51,12 @@ final class ReceiveItemsViewModel {
             let req = ScanReceiveRequest(items: entries)
             try await api.scanReceive(req)
             successMessage = "Received \(lines.count) line(s) into stock."
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: scanReceive bumps stock for every line — no
+            // idempotency key. A "failed" toast tempted a re-tap that doubled
+            // the receive quantities. Surface a verification hint so the
+            // operator checks an item before retrying.
+            errorMessage = "Receive was interrupted. Refresh an item to verify on-hand counts before retrying — items may already have been received."
         } catch {
             AppLog.ui.error("ReceiveItems submit failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
