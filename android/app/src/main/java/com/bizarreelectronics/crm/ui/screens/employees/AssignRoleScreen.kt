@@ -18,6 +18,7 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -58,21 +59,27 @@ class AssignRoleViewModel @Inject constructor(
     }
 
     fun save() {
+        // BUGHUNT-2026-05-17: re-entry guard — double-tap on Save would
+        // queue two PATCH requests for the same role. Idempotent server-side
+        // but redundant network traffic + double audit log entry.
+        if (_state.value.isSaving) return
         val role = _state.value.selectedRole
         viewModelScope.launch {
             _state.value = _state.value.copy(isSaving = true, error = null)
-            runCatching {
+            try {
                 settingsApi.updateEmployee(employeeId, mapOf("role" to role))
+                _state.value = _state.value.copy(isSaving = false, saved = true, currentRole = role)
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: runCatching swallowed CancellationException
+                // and painted "Failed to assign role" on back-nav, tempting a
+                // re-tap. Re-throw lets the launch die cleanly.
+                throw e
+            } catch (t: Throwable) {
+                _state.value = _state.value.copy(
+                    isSaving = false,
+                    error = t.message ?: "Failed to assign role",
+                )
             }
-                .onSuccess {
-                    _state.value = _state.value.copy(isSaving = false, saved = true, currentRole = role)
-                }
-                .onFailure { t ->
-                    _state.value = _state.value.copy(
-                        isSaving = false,
-                        error = t.message ?: "Failed to assign role",
-                    )
-                }
         }
     }
 
