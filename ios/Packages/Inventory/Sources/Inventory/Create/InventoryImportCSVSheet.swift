@@ -81,6 +81,9 @@ final class InventoryImportCSVViewModel {
             let body = InventoryImportCSVRequest(csvData: csvLines.joined(separator: "\n"))
             try await api.importInventoryCSV(body)
             successMessage = "Imported \(validRowCount) item(s) successfully."
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: CSV import bulk-INSERTs N inventory rows server-side. Cancellation after server commit + retry = double-import (every SKU appears twice or fails UNIQUE constraint mid-batch). Silent return; admin must check the inventory list to see actual import result.
+            return
         } catch {
             AppLog.ui.error("InventoryImportCSV failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
