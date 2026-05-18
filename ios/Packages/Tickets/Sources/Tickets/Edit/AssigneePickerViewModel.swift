@@ -55,6 +55,14 @@ public final class AssigneePickerViewModel {
 
         do {
             employees = try await api.ticketAssigneeCandidates()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: previously a broad catch painted "cancelled"
+            // into errorMessage when the picker sheet dismissed or the user
+            // re-opened the picker while the first load was in flight. The
+            // picker would then show a confusing red error banner above an
+            // empty list. Cancellation here is structural — leave employees
+            // empty and let the next presentation re-load.
+            return
         } catch {
             AppLog.ui.error(
                 "AssigneePicker load failed: \(error.localizedDescription, privacy: .public)"
