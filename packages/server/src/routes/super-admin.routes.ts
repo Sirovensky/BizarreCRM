@@ -902,7 +902,12 @@ router.get('/tenants/:slug', async (req, res) => {
   }
 });
 
+// BUGHUNT-2026-05-17: wrap bare-async handler in try/catch. Multiple awaits
+// (upsertTenantStoreName, dynamic import + updateSubscription, rollback) without
+// a top-level guard — every one can throw and crash the server. Inner try/catches
+// only cover their own awaits; a downstream rollback throw still escapes.
 router.put('/tenants/:slug', requireStepUpTotpSuperAdmin('super_admin_tenant_update'), async (req, res) => {
+  try {
   const masterDb = getMasterDb()!;
   const errors: string[] = [];
 
@@ -1190,6 +1195,12 @@ router.put('/tenants/:slug', requireStepUpTotpSuperAdmin('super_admin_tenant_upd
   });
 
   res.json({ success: true, data: afterRow });
+  } catch (e: unknown) {
+    logger.error('super_admin_update_tenant_error', { error: e instanceof Error ? e.message : String(e), slug: req.params.slug });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_GENERIC, message: 'Tenant update failed' });
+    }
+  }
 });
 
 // Usage summary for a single tenant: current-month counters, 12-month history,
@@ -1378,19 +1389,30 @@ router.post('/tenants/:slug/activate', requireStepUpTotpSuperAdmin('super_admin_
   res.json({ success: true, data: { message: `${req.params.slug} activated` } });
 });
 
+// BUGHUNT-2026-05-17: wrap bare-async handler in try/catch. `await deleteTenant`
+// performs DNS cleanup, archive, soft-delete — Cloudflare API failures or DB
+// lock contention throw, and an unhandled rejection crashes the server while
+// leaving the tenant half-deleted.
 router.delete('/tenants/:slug', requireStepUpTotpSuperAdmin('super_admin_tenant_delete'), async (req: Request<{ slug: string }>, res: Response) => {
-  const before = lookupTenantBySlug(req.params.slug);
-  const result = await deleteTenant(req.params.slug);
-  if (!result.success) return res.status(400).json({ success: false, message: result.error });
-  if (before) clearPlanCache(before.id);
-  const wsClosed = disconnectTenantWebSockets(req.params.slug);
-  auditLog('tenant_deleted', req.superAdmin!.superAdminId, req.ip || 'unknown', {
-    slug: req.params.slug,
-    tenant_id: before?.id ?? null,
-    previous_status: before?.status ?? null,
-    websockets_closed: wsClosed,
-  });
-  res.json({ success: true, data: { message: `${req.params.slug} deleted`, websockets_closed: wsClosed } });
+  try {
+    const before = lookupTenantBySlug(req.params.slug);
+    const result = await deleteTenant(req.params.slug);
+    if (!result.success) return res.status(400).json({ success: false, message: result.error });
+    if (before) clearPlanCache(before.id);
+    const wsClosed = disconnectTenantWebSockets(req.params.slug);
+    auditLog('tenant_deleted', req.superAdmin!.superAdminId, req.ip || 'unknown', {
+      slug: req.params.slug,
+      tenant_id: before?.id ?? null,
+      previous_status: before?.status ?? null,
+      websockets_closed: wsClosed,
+    });
+    res.json({ success: true, data: { message: `${req.params.slug} deleted`, websockets_closed: wsClosed } });
+  } catch (e: unknown) {
+    logger.error('super_admin_tenant_delete_error', { error: e instanceof Error ? e.message : String(e), slug: req.params.slug });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_GENERIC, message: 'Delete failed' });
+    }
+  }
 });
 
 // ─── Force-disable 2FA on a tenant user (platform override) ─────────
@@ -1412,97 +1434,112 @@ router.delete('/tenants/:slug', requireStepUpTotpSuperAdmin('super_admin_tenant_
 //   - Everything is written to master_audit_log with before/after fields,
 //     including the tenant slug, target user id + username, and the super
 //     admin actor — a full paper trail for post-incident review.
+// BUGHUNT-2026-05-17: wrap bare-async handler in try/catch. The inner
+// `try { ... } finally` block has no catch — a throw from `tdb.prepare(...).get`
+// on the users SELECT (line ~1477) or from the `tdb.transaction()` factory itself
+// escapes into an unhandledRejection. Add a top-level guard while still letting
+// the inner finally release the tenant DB pool slot.
 router.post('/tenants/:slug/users/:userId/force-disable-2fa', requireStepUpTotpSuperAdmin('super_admin_force_disable_2fa'), async (req, res) => {
-  const masterDb = getMasterDb();
-  if (!masterDb) {
-    return res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_DB_UNAVAILABLE, message: 'Master DB unavailable' });
-  }
-
-  const slug = String(req.params.slug || '').toLowerCase().trim();
-  const targetId = parseInt(String(req.params.userId || ''), 10);
-  const actorId = req.superAdmin!.superAdminId;
-  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
-
-  if (!Number.isInteger(targetId) || targetId <= 0) {
-    return res.status(400).json({ success: false, message: 'Invalid user id' });
-  }
-
-  const tenant = masterDb
-    .prepare("SELECT id, slug, status FROM tenants WHERE slug = ?")
-    .get(slug) as AnyRow | undefined;
-  if (!tenant) {
-    return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'Tenant not found' });
-  }
-  if (tenant.status !== 'active' && tenant.status !== 'suspended') {
-    return res.status(400).json({
-      success: false,
-      message: `Cannot modify tenant in status "${tenant.status}"`,
-    });
-  }
-
-  let tdb: import('better-sqlite3').Database | undefined;
   try {
-    tdb = await getTenantDb(slug);
-  } catch (err) {
-    logger.error('Failed to open tenant DB for 2FA force-disable', {
-      slug,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return res.status(500).json({ success: false, message: 'Failed to open tenant database' });
-  }
-
-  try {
-    const target = tdb
-      .prepare('SELECT id, username, email, totp_enabled FROM users WHERE id = ? AND is_active = 1')
-      .get(targetId) as AnyRow | undefined;
-    if (!target) {
-      return res.status(404).json({ success: false, message: 'User not found in tenant' });
+    const masterDb = getMasterDb();
+    if (!masterDb) {
+      return res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_DB_UNAVAILABLE, message: 'Master DB unavailable' });
     }
 
-    const wasEnabled = Boolean(target.totp_enabled);
+    const slug = String(req.params.slug || '').toLowerCase().trim();
+    const targetId = parseInt(String(req.params.userId || ''), 10);
+    const actorId = req.superAdmin!.superAdminId;
+    const ip = req.ip || req.socket?.remoteAddress || 'unknown';
 
-    // Atomic: clear 2FA AND revoke every session for this user in one transaction.
-    // If either statement fails we want neither to land.
-    const tx = tdb.transaction(() => {
-      tdb!
-        .prepare(
-          "UPDATE users SET totp_secret = NULL, totp_enabled = 0, backup_codes = NULL, updated_at = datetime('now') WHERE id = ?"
-        )
-        .run(targetId);
-      tdb!.prepare('DELETE FROM sessions WHERE user_id = ?').run(targetId);
-    });
+    if (!Number.isInteger(targetId) || targetId <= 0) {
+      return res.status(400).json({ success: false, message: 'Invalid user id' });
+    }
+
+    const tenant = masterDb
+      .prepare("SELECT id, slug, status FROM tenants WHERE slug = ?")
+      .get(slug) as AnyRow | undefined;
+    if (!tenant) {
+      return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'Tenant not found' });
+    }
+    if (tenant.status !== 'active' && tenant.status !== 'suspended') {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot modify tenant in status "${tenant.status}"`,
+      });
+    }
+
+    let tdb: import('better-sqlite3').Database | undefined;
     try {
-      tx();
+      tdb = await getTenantDb(slug);
     } catch (err) {
-      logger.error('Force-disable 2FA transaction failed', {
+      logger.error('Failed to open tenant DB for 2FA force-disable', {
         slug,
-        targetId,
         error: err instanceof Error ? err.message : String(err),
       });
-      return res.status(500).json({ success: false, message: 'Failed to disable 2FA' });
+      return res.status(500).json({ success: false, message: 'Failed to open tenant database' });
     }
 
-    auditLog('tenant_user_2fa_force_disabled', actorId, ip, {
-      tenant_slug: slug,
-      tenant_id: tenant.id,
-      target_user_id: target.id,
-      target_username: target.username,
-      target_email: target.email,
-      was_2fa_enabled: wasEnabled,
-      sessions_revoked: true,
-    });
+    try {
+      const target = tdb
+        .prepare('SELECT id, username, email, totp_enabled FROM users WHERE id = ? AND is_active = 1')
+        .get(targetId) as AnyRow | undefined;
+      if (!target) {
+        return res.status(404).json({ success: false, message: 'User not found in tenant' });
+      }
 
-    res.json({
-      success: true,
-      data: {
-        message: `2FA force-disabled for ${target.username} (${slug}). Sessions revoked.`,
+      const wasEnabled = Boolean(target.totp_enabled);
+
+      // Atomic: clear 2FA AND revoke every session for this user in one transaction.
+      // If either statement fails we want neither to land.
+      const tx = tdb.transaction(() => {
+        tdb!
+          .prepare(
+            "UPDATE users SET totp_secret = NULL, totp_enabled = 0, backup_codes = NULL, updated_at = datetime('now') WHERE id = ?"
+          )
+          .run(targetId);
+        tdb!.prepare('DELETE FROM sessions WHERE user_id = ?').run(targetId);
+      });
+      try {
+        tx();
+      } catch (err) {
+        logger.error('Force-disable 2FA transaction failed', {
+          slug,
+          targetId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return res.status(500).json({ success: false, message: 'Failed to disable 2FA' });
+      }
+
+      auditLog('tenant_user_2fa_force_disabled', actorId, ip, {
         tenant_slug: slug,
-        user_id: target.id,
+        tenant_id: tenant.id,
+        target_user_id: target.id,
+        target_username: target.username,
+        target_email: target.email,
         was_2fa_enabled: wasEnabled,
-      },
+        sessions_revoked: true,
+      });
+
+      res.json({
+        success: true,
+        data: {
+          message: `2FA force-disabled for ${target.username} (${slug}). Sessions revoked.`,
+          tenant_slug: slug,
+          user_id: target.id,
+          was_2fa_enabled: wasEnabled,
+        },
+      });
+    } finally {
+      releaseTenantDb(slug);
+    }
+  } catch (e: unknown) {
+    logger.error('super_admin_force_disable_2fa_error', {
+      error: e instanceof Error ? e.message : String(e),
+      slug: req.params.slug,
     });
-  } finally {
-    releaseTenantDb(slug);
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_GENERIC, message: 'Force-disable 2FA failed' });
+    }
   }
 });
 
