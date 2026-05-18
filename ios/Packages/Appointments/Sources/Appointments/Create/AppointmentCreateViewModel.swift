@@ -217,6 +217,12 @@ public final class AppointmentCreateFullViewModel {
             AppLog.ui.notice("Appointment create queued offline (idempotencyKey=\(self.idempotencyKey))")
             createdId = -1
             queuedOffline = true
+        } catch let err where AppError.isCancellation(err) {
+            // User dismissed the sheet mid-create; don't paint a misleading
+            // "The operation was cancelled" toast. The next reopen reuses
+            // the same idempotencyKey, so the server collapses any
+            // duplicate retry into the original create.
+            return
         } catch {
             let appError = AppError.from(error)
             errorMessage = Self.message(for: appError)
