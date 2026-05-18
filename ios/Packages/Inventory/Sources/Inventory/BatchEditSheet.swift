@@ -49,6 +49,9 @@ public final class BatchEditViewModel {
         do {
             _ = try await api.batchDeleteInventory(req)
             deleteResult = selectedIds.count
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: bulk-delete cancellation must not flash a "Failed" banner — server may have committed; retry would attempt redelete on already-deleted ids
+            return
         } catch {
             AppLog.ui.error("Batch delete failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -105,6 +108,9 @@ public final class BatchEditViewModel {
         do {
             let resp = try await api.batchUpdateInventory(req)
             result = resp.updatedCount
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: batch price/category/tag update on N rows is money-equivalent; cancellation must not paint "Failed" — retry doubles the price adjust on already-committed rows
+            return
         } catch {
             AppLog.ui.error("Batch inventory update failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
