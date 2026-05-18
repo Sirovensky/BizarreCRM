@@ -24,7 +24,12 @@ public final class LeadFollowUpDashboardViewModel {
         do {
             let responses = try await api.todayFollowUps()
             let reminders: [LeadFollowUpReminder] = responses.compactMap { r in
-                guard let date = ISO8601DateFormatter().date(from: r.dueAt) else { return nil }
+                // BUGHUNT-2026-05-18: ISO8601DateFormatter() with default
+                // options rejects millisecond-precision Node Date.toISOString
+                // output, so every dueAt parsed as nil and the dashboard
+                // rendered as "No follow-ups today" even when reminders
+                // were due — sales rep misses the call.
+                guard let date = Self.parseIso(r.dueAt) else { return nil }
                 return LeadFollowUpReminder(
                     id: r.id,
                     leadId: r.leadId,
@@ -40,6 +45,22 @@ public final class LeadFollowUpDashboardViewModel {
             AppLog.ui.error("Follow-up dashboard load failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)
         }
+    }
+
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private static func parseIso(_ raw: String) -> Date? {
+        isoFractional.date(from: raw) ?? isoPlain.date(from: raw)
     }
 }
 
