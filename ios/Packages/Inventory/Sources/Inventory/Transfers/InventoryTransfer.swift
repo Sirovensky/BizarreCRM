@@ -167,6 +167,10 @@ public final class TransferListViewModel {
         isLoading = true; errorMessage = nil
         defer { isLoading = false }
         do { transfers = try await repo.list(status: filter) }
+        catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: filter-change cancels prior list fetch; silent return keeps last-good transfers visible.
+            return
+        }
         catch { errorMessage = error.localizedDescription }
     }
 
@@ -177,6 +181,9 @@ public final class TransferListViewModel {
             let updated = try await repo.dispatch(id: id)
             replace(updated)
             BrandHaptics.success()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: transfer dispatch moves stock between locations server-side. If server already committed when the task was cancelled, painting "Failed" tempts a re-tap → stock moves twice (double subtraction at source, double add at dest). Stay silent; user must refresh to see current state.
+            return
         } catch { errorMessage = error.localizedDescription }
     }
 
@@ -186,6 +193,9 @@ public final class TransferListViewModel {
         do {
             try await repo.cancel(id: id)
             transfers.removeAll { $0.id == id }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: cancelling a pending transfer is idempotent server-side but a stale "Failed" banner causes confusion. Silent return.
+            return
         } catch { errorMessage = error.localizedDescription }
     }
 

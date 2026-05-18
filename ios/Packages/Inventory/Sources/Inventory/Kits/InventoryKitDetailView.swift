@@ -345,6 +345,9 @@ final class InventoryKitDetailViewModel {
         defer { isLoading = false }
         do {
             kit = try await repo.getKit(id: kitId)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: detail load cancelled (nav-back); keep last-loaded kit visible.
+            return
         } catch {
             errorMessage = "Failed to load kit: \(error.localizedDescription)"
         }

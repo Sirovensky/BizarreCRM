@@ -200,6 +200,9 @@ final class InventoryKitsListViewModel {
         defer { isLoading = false }
         do {
             kits = try await repo.listKits()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: kits list load cancelled (nav-away); keep existing list visible instead of red banner.
+            return
         } catch {
             errorMessage = "Failed to load kits: \(error.localizedDescription)"
         }
@@ -215,6 +218,9 @@ final class InventoryKitsListViewModel {
             try await repo.deleteKit(id: id)
             kits = kits.filter { $0.id != id }
             if selectedKitId == id { selectedKitId = nil }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: deleteKit may have already committed server-side when the task is cancelled. A "Delete failed" banner tempts a retry → second DELETE on already-deleted row (404) and confuses the user about kit state.
+            return
         } catch {
             errorMessage = "Delete failed: \(error.localizedDescription)"
         }
