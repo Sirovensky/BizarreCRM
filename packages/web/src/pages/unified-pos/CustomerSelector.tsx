@@ -75,22 +75,34 @@ export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSele
     // Normalize mostly-digit queries (phone numbers) by stripping non-digit chars
     // so the server's fuzzy phone match works regardless of dashes/spaces/parens.
     const normalizedQuery = /^\d[\d\s\-().]{2,}$/.test(query) ? stripPhone(query) : query;
+    // BUGHUNT-2026-05-17: stale-result race. The debounce timer is canceled on
+    // re-keystroke, but once the fetch is in flight there was no abort/ignore
+    // gate. If a slower in-flight request resolves AFTER a newer one, the
+    // cashier sees results that don't match the current query — selecting one
+    // would attach the wrong customer to the cart. Use a per-effect `cancelled`
+    // flag so only the most recent fetch can call setResults/setLoading.
+    let cancelled = false;
     const timer = setTimeout(async () => {
       try {
         const res = await customerApi.search(normalizedQuery);
+        if (cancelled) return;
         const data = res.data?.data;
         setResults(Array.isArray(data) ? data.slice(0, RESULT_CAP) : []);
       } catch {
+        if (cancelled) return;
         // Distinguish a network/server failure from a genuine zero-hit
         // search: previously both rendered "No customers found" so the
         // cashier had no signal that the lookup actually broke.
         setResults([]);
         setSearchError(true);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }, 150);
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [query]);
 
   // Close dropdown on outside click
