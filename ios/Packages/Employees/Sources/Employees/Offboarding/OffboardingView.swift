@@ -51,6 +51,15 @@ public final class OffboardingViewModel {
     }
 
     public func offboard() async {
+        // BUGHUNT-2026-05-17: re-entry guard. The Offboard button is a
+        // big destructive prompt that fires a Task without disabling the
+        // outer Form. A quick double-tap before phase transitions away
+        // from .confirm would fire two POSTs — re-running the
+        // ticket-reassignment step on already-reassigned tickets, which
+        // can cascade into 404s or confusing transient state on the
+        // recipient manager's queue.
+        if case .inProgress = phase { return }
+        if case .done = phase { return }
         phase = .inProgress
         do {
             try await api.offboardEmployee(
@@ -59,6 +68,14 @@ public final class OffboardingViewModel {
                 exportShiftHistory: exportShiftHistory
             )
             phase = .done
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: offboardEmployee is a heavy POST that may
+            // have completed (revoke + reassign + archive) before the task
+            // was cancelled. Painting "Offboarding Failed" lures the admin
+            // into a Try Again retap that re-runs the reassignment step
+            // against already-reassigned tickets. Roll back to .confirm
+            // so the admin can verify via the employee list refresh.
+            phase = .confirm
         } catch {
             AppLog.ui.error("Offboarding failed: \(error.localizedDescription, privacy: .public)")
             phase = .failed(error.localizedDescription)

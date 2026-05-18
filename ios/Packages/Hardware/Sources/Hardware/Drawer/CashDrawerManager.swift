@@ -222,6 +222,17 @@ public final class CashDrawerManager {
             // Start open-too-long timer
             startWarningTimer()
 
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: cancellation (e.g. post-sale sheet dismissed
+            // mid-kick) was previously painted as `status = .warning("Failed
+            // to open: Task was cancelled")` and `errorMessage` set to the
+            // same. The drawer may have ACTUALLY OPENED (ESC/POS bytes flushed
+            // to the printer before the Task got cancelled — that's why
+            // `Task.checkCancellation` is a co-operative point, not a hard
+            // abort). Painting failure tempted the cashier to re-kick, opening
+            // the drawer twice on the same sale. Leave `status = .unknown` so
+            // the next sale's kick or status-poll reconciles the real state.
+            AppLog.hardware.info("CashDrawerManager: open cancelled — leaving status unknown for reconcile")
         } catch {
             status = .warning("Failed to open: \(error.localizedDescription)")
             errorMessage = error.localizedDescription

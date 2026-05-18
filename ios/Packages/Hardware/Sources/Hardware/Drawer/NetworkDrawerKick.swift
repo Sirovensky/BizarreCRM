@@ -54,6 +54,15 @@ public final class NetworkDrawerKick: CashDrawer, @unchecked Sendable {
         do {
             try await sendTCP(bytes: command)
             _isConnected = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: cancellation was wrapped as
+            // `kickFailed("Task was cancelled")` and `_isConnected = false`
+            // even though the TCP write may have already landed at the drawer
+            // controller. CashDrawerManager then stamped a fake "Failed to
+            // open" banner and the cashier double-kicked. Re-throw cancellation
+            // without flipping `_isConnected` so the caller can decide whether
+            // to retry on the next foreground.
+            throw e
         } catch {
             _isConnected = false
             throw CashDrawerError.kickFailed(error.localizedDescription)

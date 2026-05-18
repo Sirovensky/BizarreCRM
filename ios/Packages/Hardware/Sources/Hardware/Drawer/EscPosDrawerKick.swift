@@ -79,6 +79,18 @@ public final class EscPosDrawerKick: CashDrawer, @unchecked Sendable {
         AppLog.hardware.info("EscPosDrawerKick: sending kick command [\(command.map { String(format: "0x%02X", $0) }.joined(separator: " "))]")
         do {
             try await sender.sendBytes(command)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: previously the catch wrapped every error as
+            // `kickFailed("Task was cancelled")`, which `CashDrawerManager`
+            // stamped onto `status = .warning("Failed to open: Task was
+            // cancelled")` and `errorMessage`. That permanent fake-failure
+            // banner persisted even after the next successful kick because
+            // the manager only clears errorMessage at the *start* of the next
+            // attempt — leaving a "Failed to open" alert under a cash-tender
+            // sale that actually printed and kicked fine. Re-throw cancellation
+            // unchanged so the manager's `AppError.isCancellation` branch (if
+            // any) skips the warning.
+            throw e
         } catch {
             throw CashDrawerError.kickFailed(error.localizedDescription)
         }
