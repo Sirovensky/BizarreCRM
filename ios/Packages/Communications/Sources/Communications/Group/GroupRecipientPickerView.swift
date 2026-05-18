@@ -59,6 +59,10 @@ public struct GroupRecipientPickerView: View {
         HStack(spacing: BrandSpacing.sm) {
             TextField("Add phone number", text: $manualPhone)
                 .textFieldStyle(.plain)
+                #if canImport(UIKit)
+                .keyboardType(.phonePad)
+                .textContentType(.telephoneNumber)
+                #endif
                 .padding(.horizontal, BrandSpacing.md)
                 .padding(.vertical, BrandSpacing.sm)
                 .background(Color.bizarreSurface2.opacity(0.7), in: Capsule())

@@ -101,6 +101,7 @@ public struct TicketWarrantyLookupView: View {
 
             TextField("Serial number", text: $vm.serial)
                 .autocorrectionDisabled()
+                .textInputAutocapitalization(.characters)
                 .padding(BrandSpacing.md)
                 .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
                 .accessibilityLabel("Serial number")

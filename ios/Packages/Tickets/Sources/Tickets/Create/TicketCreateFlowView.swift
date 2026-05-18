@@ -630,6 +630,7 @@ private struct DeviceFormSection: View {
                 set: { v in onUpdate { $0.serial = v } }
             ))
             .autocorrectionDisabled()
+            .textInputAutocapitalization(.characters)
             .accessibilityLabel("Serial number")
 
             TextField("Security code / pattern", text: .init(

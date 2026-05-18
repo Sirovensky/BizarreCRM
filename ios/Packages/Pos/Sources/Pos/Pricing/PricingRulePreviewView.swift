@@ -250,10 +250,13 @@ public struct PricingRulePreviewView: View {
                 TextField("SKU (optional)", text: $vm.newLineSku)
                     .font(.brandBodySmall())
                     .textFieldStyle(.roundedBorder)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.characters)
                     .accessibilityIdentifier("preview.newLineSku")
                 TextField("Category (optional)", text: $vm.newLineCategory)
                     .font(.brandBodySmall())
                     .textFieldStyle(.roundedBorder)
+                    .textInputAutocapitalization(.words)
                     .accessibilityIdentifier("preview.newLineCategory")
                 Button {
                     vm.addLine()
