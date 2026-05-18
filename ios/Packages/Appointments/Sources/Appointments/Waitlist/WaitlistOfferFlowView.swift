@@ -35,12 +35,23 @@ public final class WaitlistOfferFlowViewModel {
     }
 
     public func offer(entry: WaitlistEntry) async {
+        // BUGHUNT-2026-05-17: Re-entry guard — offering a waitlist entry
+        // dispatches a slot-offer SMS to the customer (see "Slot Offered"
+        // alert in the view which advertises "SMS sent to customer"). Each
+        // call sends a new text. Without this guard a rapid double-tap on
+        // "Offer Slot" in the candidate list sends two texts. TCPA exposure.
+        guard !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
         errorMessage = nil
         do {
             let updated = try await api.offerWaitlistEntry(id: entry.id)
             offeredEntry = updated
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: Customer-facing SMS write. If user dismisses
+            // mid-flight, the SMS may already be queued. An error toast tempts
+            // a retap that double-texts the customer.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
