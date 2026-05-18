@@ -6,6 +6,7 @@
 
 import Foundation
 import Observation
+import Core
 import Networking
 
 // MARK: - DispatcherViewModel
@@ -76,6 +77,10 @@ public final class DispatcherViewModel {
             )
             let jobs = response.jobs
             listState = jobs.isEmpty ? .empty : .loaded(jobs)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: filter swap cancels prior fetch; leave
+            // listState alone so newer fetch sets .loaded/.empty.
+            return
         } catch {
             listState = .failed(error.localizedDescription)
         }
