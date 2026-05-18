@@ -67,6 +67,10 @@ public struct CustomerDeviceListView: View {
         errorMessage = nil
         do {
             devices = try await api.customerDevices(id: customerId)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: customer detail nav cancellation; keep
+            // prior devices visible rather than painting an error banner.
+            return
         } catch {
             errorMessage = AppError.from(error).localizedDescription
         }
