@@ -1216,92 +1216,123 @@ function validateTaxRate(value: unknown, fieldName = 'rate'): number {
   return Math.round(num * 1000) / 1000;
 }
 
+// BUGHUNT-2026-05-17: wrap bare-async handler. `validateRequiredString` and
+// `validateHexColor` throw AppError on bad input; the transaction can throw on
+// DB lock or unique-constraint violation. Without try/catch, every malformed
+// POST takes down the server.
 router.post('/statuses', adminOnly, async (req, res) => {
-  const adb = req.asyncDb;
-  const { name, color = '#6b7280', sort_order = 0, is_default = 0, is_closed = 0, is_cancelled = 0, notify_customer = 0, notification_template } = req.body;
-  // V22: name must be a real non-empty string; color must be hex.
-  const nameClean = validateRequiredString(name, 'name', 100);
-  const colorClean = validateHexColor(color, 'color', true) ?? '#6b7280';
-  // V23: sort_order clamped to 0-9999 integer.
-  const sortOrderInt = clampSortOrder(sort_order, 'sort_order');
+  try {
+    const adb = req.asyncDb;
+    const { name, color = '#6b7280', sort_order = 0, is_default = 0, is_closed = 0, is_cancelled = 0, notify_customer = 0, notification_template } = req.body;
+    // V22: name must be a real non-empty string; color must be hex.
+    const nameClean = validateRequiredString(name, 'name', 100);
+    const colorClean = validateHexColor(color, 'color', true) ?? '#6b7280';
+    // V23: sort_order clamped to 0-9999 integer.
+    const sortOrderInt = clampSortOrder(sort_order, 'sort_order');
 
-  // BUGHUNT-2026-05-17: if is_default=1 is sent we must clear other defaults
-  // in the same tx — mirroring the tax_classes pattern at line 1291+. Without
-  // this, the schema's "one default status" invariant breaks silently, every
-  // lookup is `WHERE is_default = 1 LIMIT 1` and returns an arbitrary winner,
-  // and operators end up with new tickets landing on the wrong status.
-  let newId: number;
-  if (is_default) {
-    const txResults = await adb.transaction([
-      { sql: 'UPDATE ticket_statuses SET is_default = 0', params: [] },
-      {
-        sql: `INSERT INTO ticket_statuses (name, color, sort_order, is_default, is_closed, is_cancelled, notify_customer, notification_template)
-              VALUES (?, ?, ?, 1, ?, ?, ?, ?)`,
-        params: [nameClean, colorClean, sortOrderInt, is_closed, is_cancelled, notify_customer, notification_template || null],
-      },
-    ]);
-    newId = Number(txResults[1].lastInsertRowid);
-  } else {
-    const result = await adb.run(`
-      INSERT INTO ticket_statuses (name, color, sort_order, is_default, is_closed, is_cancelled, notify_customer, notification_template)
-      VALUES (?, ?, ?, 0, ?, ?, ?, ?)
-    `, nameClean, colorClean, sortOrderInt, is_closed, is_cancelled, notify_customer, notification_template || null);
-    newId = Number(result.lastInsertRowid);
+    // BUGHUNT-2026-05-17: if is_default=1 is sent we must clear other defaults
+    // in the same tx — mirroring the tax_classes pattern at line 1291+. Without
+    // this, the schema's "one default status" invariant breaks silently, every
+    // lookup is `WHERE is_default = 1 LIMIT 1` and returns an arbitrary winner,
+    // and operators end up with new tickets landing on the wrong status.
+    let newId: number;
+    if (is_default) {
+      const txResults = await adb.transaction([
+        { sql: 'UPDATE ticket_statuses SET is_default = 0', params: [] },
+        {
+          sql: `INSERT INTO ticket_statuses (name, color, sort_order, is_default, is_closed, is_cancelled, notify_customer, notification_template)
+                VALUES (?, ?, ?, 1, ?, ?, ?, ?)`,
+          params: [nameClean, colorClean, sortOrderInt, is_closed, is_cancelled, notify_customer, notification_template || null],
+        },
+      ]);
+      newId = Number(txResults[1].lastInsertRowid);
+    } else {
+      const result = await adb.run(`
+        INSERT INTO ticket_statuses (name, color, sort_order, is_default, is_closed, is_cancelled, notify_customer, notification_template)
+        VALUES (?, ?, ?, 0, ?, ?, ?, ?)
+      `, nameClean, colorClean, sortOrderInt, is_closed, is_cancelled, notify_customer, notification_template || null);
+      newId = Number(result.lastInsertRowid);
+    }
+    const status = await adb.get<any>('SELECT * FROM ticket_statuses WHERE id = ?', newId);
+    res.status(201).json({ success: true, data: status });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Bad request' });
+      return;
+    }
+    logger.error('settings_create_status_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to create status' });
+    }
   }
-  const status = await adb.get<any>('SELECT * FROM ticket_statuses WHERE id = ?', newId);
-  res.status(201).json({ success: true, data: status });
 });
 
+// BUGHUNT-2026-05-17: wrap bare-async — `validateRequiredString` / `validateHexColor`
+// throw AppError on bad input; transactions can throw on lock contention. Without
+// try/catch every malformed PUT crashes the server.
 router.put('/statuses/:id', adminOnly, async (req, res) => {
-  const adb = req.asyncDb;
-  const { name, color, sort_order, is_default, is_closed, is_cancelled, notify_customer, notification_template } = req.body;
+  try {
+    const adb = req.asyncDb;
+    const { name, color, sort_order, is_default, is_closed, is_cancelled, notify_customer, notification_template } = req.body;
 
-  // V22: validate color if present (must be hex).
-  const colorClean = color !== undefined && color !== null && color !== ''
-    ? validateHexColor(color, 'color', true)
-    : null;
-  // V22: if name was supplied, it must be a real string.
-  const nameClean = name !== undefined && name !== null
-    ? validateRequiredString(name, 'name', 100)
-    : null;
-  // V23: clamp sort_order if supplied.
-  const sortOrderInt = sort_order !== undefined && sort_order !== null && sort_order !== ''
-    ? clampSortOrder(sort_order, 'sort_order')
-    : null;
+    // V22: validate color if present (must be hex).
+    const colorClean = color !== undefined && color !== null && color !== ''
+      ? validateHexColor(color, 'color', true)
+      : null;
+    // V22: if name was supplied, it must be a real string.
+    const nameClean = name !== undefined && name !== null
+      ? validateRequiredString(name, 'name', 100)
+      : null;
+    // V23: clamp sort_order if supplied.
+    const sortOrderInt = sort_order !== undefined && sort_order !== null && sort_order !== ''
+      ? clampSortOrder(sort_order, 'sort_order')
+      : null;
 
-  // BUGHUNT-2026-05-17: same "one default" invariant as POST /statuses —
-  // when is_default flips to 1, clear other defaults in the same tx.
-  const promotingToDefault = is_default === 1 || is_default === true || is_default === '1';
-  if (promotingToDefault) {
-    await adb.transaction([
-      { sql: 'UPDATE ticket_statuses SET is_default = 0 WHERE id != ?', params: [req.params.id] },
-      {
-        sql: `UPDATE ticket_statuses SET
-                name = COALESCE(?, name), color = COALESCE(?, color), sort_order = COALESCE(?, sort_order),
-                is_default = 1, is_closed = COALESCE(?, is_closed),
-                is_cancelled = COALESCE(?, is_cancelled), notify_customer = COALESCE(?, notify_customer),
-                notification_template = COALESCE(?, notification_template)
-              WHERE id = ?`,
-        params: [
-          nameClean, colorClean, sortOrderInt,
-          is_closed ?? null, is_cancelled ?? null, notify_customer ?? null,
-          notification_template ?? null, req.params.id,
-        ],
-      },
-    ]);
-  } else {
-    await adb.run(`
-      UPDATE ticket_statuses SET
-        name = COALESCE(?, name), color = COALESCE(?, color), sort_order = COALESCE(?, sort_order),
-        is_default = COALESCE(?, is_default), is_closed = COALESCE(?, is_closed),
-        is_cancelled = COALESCE(?, is_cancelled), notify_customer = COALESCE(?, notify_customer),
-        notification_template = COALESCE(?, notification_template)
-      WHERE id = ?
-    `, nameClean, colorClean, sortOrderInt, is_default ?? null, is_closed ?? null,
-      is_cancelled ?? null, notify_customer ?? null, notification_template ?? null, req.params.id);
+    // BUGHUNT-2026-05-17: same "one default" invariant as POST /statuses —
+    // when is_default flips to 1, clear other defaults in the same tx.
+    const promotingToDefault = is_default === 1 || is_default === true || is_default === '1';
+    if (promotingToDefault) {
+      await adb.transaction([
+        { sql: 'UPDATE ticket_statuses SET is_default = 0 WHERE id != ?', params: [req.params.id] },
+        {
+          sql: `UPDATE ticket_statuses SET
+                  name = COALESCE(?, name), color = COALESCE(?, color), sort_order = COALESCE(?, sort_order),
+                  is_default = 1, is_closed = COALESCE(?, is_closed),
+                  is_cancelled = COALESCE(?, is_cancelled), notify_customer = COALESCE(?, notify_customer),
+                  notification_template = COALESCE(?, notification_template)
+                WHERE id = ?`,
+          params: [
+            nameClean, colorClean, sortOrderInt,
+            is_closed ?? null, is_cancelled ?? null, notify_customer ?? null,
+            notification_template ?? null, req.params.id,
+          ],
+        },
+      ]);
+    } else {
+      await adb.run(`
+        UPDATE ticket_statuses SET
+          name = COALESCE(?, name), color = COALESCE(?, color), sort_order = COALESCE(?, sort_order),
+          is_default = COALESCE(?, is_default), is_closed = COALESCE(?, is_closed),
+          is_cancelled = COALESCE(?, is_cancelled), notify_customer = COALESCE(?, notify_customer),
+          notification_template = COALESCE(?, notification_template)
+        WHERE id = ?
+      `, nameClean, colorClean, sortOrderInt, is_default ?? null, is_closed ?? null,
+        is_cancelled ?? null, notify_customer ?? null, notification_template ?? null, req.params.id);
+    }
+    const status = await adb.get<any>('SELECT * FROM ticket_statuses WHERE id = ?', req.params.id);
+    res.json({ success: true, data: status });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Bad request' });
+      return;
+    }
+    logger.error('settings_update_status_error', { error: e instanceof Error ? e.message : String(e), id: req.params.id });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to update status' });
+    }
   }
-  const status = await adb.get<any>('SELECT * FROM ticket_statuses WHERE id = ?', req.params.id);
-  res.json({ success: true, data: status });
 });
 
 // D2: Deleting a status must also account for soft-deleted tickets.
@@ -1310,62 +1341,77 @@ router.put('/statuses/:id', adminOnly, async (req, res) => {
 // Fix: any ticket referencing the status (regardless of is_deleted) is migrated
 // to the system default status before the delete proceeds. If no default exists
 // and there are referencing tickets, we block the delete outright.
+// BUGHUNT-2026-05-17: wrap bare-async handler — the AppError throws on missing
+// default and on not-found are unrecoverable rejections without a top-level
+// try/catch. Foreign-key contention on the migration UPDATE can also throw.
 router.delete('/statuses/:id', adminOnly, async (req, res) => {
-  const adb = req.asyncDb;
-  const db = req.db;
-  const statusId = req.params.id;
+  try {
+    const adb = req.asyncDb;
+    const db = req.db;
+    const statusId = req.params.id;
 
-  const refCount = await adb.get<any>(
-    'SELECT COUNT(*) as c FROM tickets WHERE status_id = ?',
-    statusId,
-  );
-  const referenced = (refCount?.c || 0) > 0;
-
-  if (referenced) {
-    // Find the system default (is_default = 1) that is NOT the status being deleted.
-    const defaultStatus = await adb.get<any>(
-      'SELECT id, name FROM ticket_statuses WHERE is_default = 1 AND id != ? LIMIT 1',
+    const refCount = await adb.get<any>(
+      'SELECT COUNT(*) as c FROM tickets WHERE status_id = ?',
       statusId,
     );
-    if (!defaultStatus) {
-      throw new AppError(
-        'Status is in use by tickets (including deleted). Set another status as default before deleting.',
-        400,
+    const referenced = (refCount?.c || 0) > 0;
+
+    if (referenced) {
+      // Find the system default (is_default = 1) that is NOT the status being deleted.
+      const defaultStatus = await adb.get<any>(
+        'SELECT id, name FROM ticket_statuses WHERE is_default = 1 AND id != ? LIMIT 1',
+        statusId,
       );
+      if (!defaultStatus) {
+        throw new AppError(
+          'Status is in use by tickets (including deleted). Set another status as default before deleting.',
+          400,
+        );
+      }
+      // BUGHUNT-2026-05-16: previously the ticket migration UPDATE and the
+      // status DELETE were two separate adb.run calls. A crash between them
+      // would migrate every ticket onto the default status (audit row says
+      // "migrated") but leave the old status row in place — the operator
+      // would see the migration audit and assume delete succeeded, but the
+      // dropdown would still show the supposedly-deleted entry. Bundle the
+      // migration + delete into one transaction so the operator sees either
+      // "still here, still in use" or "fully gone".
+      await adb.transaction([
+        {
+          sql: "UPDATE tickets SET status_id = ?, updated_at = datetime('now') WHERE status_id = ?",
+          params: [defaultStatus.id, statusId],
+        },
+        {
+          sql: 'DELETE FROM ticket_statuses WHERE id = ?',
+          params: [statusId],
+        },
+      ]);
+      audit(db, 'status_delete_migrated_tickets', req.user!.id, req.ip || 'unknown', {
+        from_status_id: Number(statusId),
+        to_status_id: defaultStatus.id,
+        migrated_ticket_count: refCount.c,
+      });
+    } else {
+      // BUGHUNT-2026-05-17: gate the audit on actual DELETE — without
+      // this, a second concurrent /DELETE for an already-deleted status
+      // still fires 'status_deleted', producing duplicate audit rows the
+      // compliance reviewer can't tell apart.
+      const delRes = await adb.run('DELETE FROM ticket_statuses WHERE id = ?', statusId);
+      if (delRes.changes === 0) throw new AppError('Status not found', 404);
     }
-    // BUGHUNT-2026-05-16: previously the ticket migration UPDATE and the
-    // status DELETE were two separate adb.run calls. A crash between them
-    // would migrate every ticket onto the default status (audit row says
-    // "migrated") but leave the old status row in place — the operator
-    // would see the migration audit and assume delete succeeded, but the
-    // dropdown would still show the supposedly-deleted entry. Bundle the
-    // migration + delete into one transaction so the operator sees either
-    // "still here, still in use" or "fully gone".
-    await adb.transaction([
-      {
-        sql: "UPDATE tickets SET status_id = ?, updated_at = datetime('now') WHERE status_id = ?",
-        params: [defaultStatus.id, statusId],
-      },
-      {
-        sql: 'DELETE FROM ticket_statuses WHERE id = ?',
-        params: [statusId],
-      },
-    ]);
-    audit(db, 'status_delete_migrated_tickets', req.user!.id, req.ip || 'unknown', {
-      from_status_id: Number(statusId),
-      to_status_id: defaultStatus.id,
-      migrated_ticket_count: refCount.c,
-    });
-  } else {
-    // BUGHUNT-2026-05-17: gate the audit on actual DELETE — without
-    // this, a second concurrent /DELETE for an already-deleted status
-    // still fires 'status_deleted', producing duplicate audit rows the
-    // compliance reviewer can't tell apart.
-    const delRes = await adb.run('DELETE FROM ticket_statuses WHERE id = ?', statusId);
-    if (delRes.changes === 0) throw new AppError('Status not found', 404);
+    audit(db, 'status_deleted', req.user!.id, req.ip || 'unknown', { status_id: Number(statusId) });
+    res.json({ success: true, data: { message: 'Status deleted' } });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Bad request' });
+      return;
+    }
+    logger.error('settings_delete_status_error', { error: e instanceof Error ? e.message : String(e), id: req.params.id });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to delete status' });
+    }
   }
-  audit(db, 'status_deleted', req.user!.id, req.ip || 'unknown', { status_id: Number(statusId) });
-  res.json({ success: true, data: { message: 'Status deleted' } });
 });
 
 // ==================== Tax Classes ====================
