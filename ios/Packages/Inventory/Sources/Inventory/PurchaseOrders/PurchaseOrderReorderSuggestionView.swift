@@ -124,6 +124,9 @@ public final class PurchaseOrderReorderSuggestionViewModel {
             let po = try await poRepo.create(body)
             createdPOId = po.id
             await load() // refresh
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PO create from reorder suggestions may have committed server-side when sheet was dismissed. Banner tempts retry → duplicate draft PO with same lines under the same supplier. Silent return; refresh reveals real draft.
+            return
         } catch {
             AppLog.ui.error("Reorder PO creation failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
