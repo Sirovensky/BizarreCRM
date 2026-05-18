@@ -21,6 +21,15 @@ final class SegmentListViewModel {
         do {
             let resp = try await api.listSegments()
             segments = resp.segments
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: SegmentListView calls load() on every
+            // create-sheet dismiss (untracked Task) and on every pull-to-
+            // refresh. Tab away mid-load or close the create sheet during
+            // the post-create reload and the cancellation was logged as a
+            // load failure + painted "Couldn't load segments" — visible
+            // on the previously-good list page until the next .task fired.
+            // Suppress so cached `segments` remain on screen.
+            errorMessage = nil
         } catch {
             AppLog.ui.error("Segment list load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
