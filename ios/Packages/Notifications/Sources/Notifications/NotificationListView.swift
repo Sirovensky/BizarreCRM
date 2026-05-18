@@ -165,6 +165,7 @@ public struct NotificationListView: View {
                 ToolbarItem(placement: .primaryAction) {
                     Button("Mark all read") { Task { await vm.markAllRead() } }
                         .font(.brandLabelLarge())
+                        .keyboardShortcut("k", modifiers: [.command, .shift])
                         .accessibilityIdentifier("notifications.markAllRead")
                 }
             }

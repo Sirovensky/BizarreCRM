@@ -137,6 +137,7 @@ public struct PasskeyListView: View {
                 Label("Add Passkey", systemImage: "plus")
             }
             .brandGlass(.regular, in: Capsule(), interactive: true)
+            .keyboardShortcut("n", modifiers: .command)
             .accessibilityLabel("Register new passkey")
             .accessibilityIdentifier("passkeys.addButton")
         }

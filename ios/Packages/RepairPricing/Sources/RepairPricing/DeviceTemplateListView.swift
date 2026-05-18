@@ -47,6 +47,7 @@ public struct DeviceTemplateListView: View {
                         } label: {
                             Image(systemName: "plus")
                         }
+                        .keyboardShortcut("n", modifiers: .command)
                         .accessibilityLabel("New template")
                         .accessibilityIdentifier("templateList.new")
                     }
@@ -74,6 +75,7 @@ public struct DeviceTemplateListView: View {
                         } label: {
                             Image(systemName: "plus")
                         }
+                        .keyboardShortcut("n", modifiers: .command)
                         .accessibilityLabel("New template")
                     }
                     ToolbarItem(placement: .secondaryAction) {

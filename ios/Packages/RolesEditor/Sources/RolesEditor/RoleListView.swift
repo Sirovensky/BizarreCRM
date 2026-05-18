@@ -104,6 +104,7 @@ public struct RoleListView: View {
                 Label("Add Role", systemImage: "plus")
             }
             .brandGlass(.regular, interactive: true)
+            .keyboardShortcut("n", modifiers: .command)
             .accessibilityLabel("Add new role")
         }
     }
