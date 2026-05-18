@@ -1,6 +1,7 @@
 package com.bizarreelectronics.crm.ui.screens.tickets.components
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
@@ -9,7 +10,10 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.data.remote.dto.WarrantyResult
@@ -36,6 +40,16 @@ fun TicketWarrantyDialog(
     onDismiss: () -> Unit,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
+    val queryFocus = remember { FocusRequester() }
+
+    // The query field is the dialog's only purpose — focus it on open.
+    LaunchedEffect(Unit) {
+        runCatching { queryFocus.requestFocus() }
+    }
+
+    val lookup: () -> Unit = {
+        if (query.isNotBlank() && !isLoading) onLookup(query.trim())
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -47,12 +61,16 @@ fun TicketWarrantyDialog(
                     onValueChange = { query = it },
                     label = { Text("IMEI / Serial / Phone") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(queryFocus),
                     enabled = !isLoading,
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.Characters,
                         autoCorrect = false,
+                        imeAction = ImeAction.Search,
                     ),
+                    keyboardActions = KeyboardActions(onSearch = { lookup() }),
                 )
 
                 when {
@@ -76,7 +94,7 @@ fun TicketWarrantyDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = { if (query.isNotBlank()) onLookup(query.trim()) },
+                onClick = lookup,
                 enabled = query.isNotBlank() && !isLoading,
             ) {
                 Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp))

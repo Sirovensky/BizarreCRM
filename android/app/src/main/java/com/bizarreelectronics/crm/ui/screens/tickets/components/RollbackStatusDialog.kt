@@ -16,11 +16,14 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.data.remote.dto.TicketStatusItem
@@ -54,6 +57,15 @@ fun RollbackStatusDialog(
     var selectedStatus by remember { mutableStateOf<TicketStatusItem?>(null) }
     var reason by remember { mutableStateOf("") }
     var dropdownExpanded by remember { mutableStateOf(false) }
+    val reasonFocus = remember { FocusRequester() }
+
+    // Focus the reason field as soon as a target status is picked — the reason
+    // is the only remaining required input, and dropdowns don't show the keyboard.
+    LaunchedEffect(selectedStatus) {
+        if (selectedStatus != null) {
+            runCatching { reasonFocus.requestFocus() }
+        }
+    }
 
     val canConfirm = selectedStatus != null && reason.isNotBlank()
 
@@ -120,7 +132,9 @@ fun RollbackStatusDialog(
                     singleLine = false,
                     minLines = 2,
                     maxLines = 4,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(reasonFocus),
                     isError = reason.isBlank(),
                     supportingText = if (reason.isBlank()) {
                         { Text("Reason is required for audit trail") }
