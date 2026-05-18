@@ -136,18 +136,21 @@ class AppointmentListViewModel @Inject constructor(
                 "start_time" to fmt.format(Date(draft.startMillis)),
                 "end_time" to fmt.format(Date(draft.endMillis)),
             )
-            runCatching { appointmentRepository.quickCreate(body) }
-                .onSuccess { created ->
-                    _state.update { s ->
-                        s.copy(
-                            appointments = s.appointments + created,
-                            toastMessage = "Appointment saved",
-                        )
-                    }
+            // BUGHUNT-2026-05-17: runCatching swallowed CancellationException;
+            // nav cancel mid-POST + retap could DUPLICATE the appointment row.
+            try {
+                val created = appointmentRepository.quickCreate(body)
+                _state.update { s ->
+                    s.copy(
+                        appointments = s.appointments + created,
+                        toastMessage = "Appointment saved",
+                    )
                 }
-                .onFailure { e ->
-                    _state.update { it.copy(toastMessage = "Save failed: ${e.message}") }
-                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(toastMessage = "Save failed: ${e.message}") }
+            }
         }
     }
 
@@ -161,20 +164,24 @@ class AppointmentListViewModel @Inject constructor(
                 "employee_name" to newEmployeeName,
                 "start_hour" to newHour,
             )
-            runCatching { appointmentRepository.reschedule(appointmentId, body) }
-                .onSuccess { updated ->
-                    _state.update { s ->
-                        s.copy(
-                            appointments = s.appointments.map { a ->
-                                if (a.id == appointmentId) updated else a
-                            },
-                            toastMessage = "Rescheduled",
-                        )
-                    }
+            // BUGHUNT-2026-05-17: runCatching swallowed CancellationException;
+            // drag-cancel mid-PATCH + retap could DOUBLE-PATCH or PATCH to
+            // a different slot, leaving inconsistent server state.
+            try {
+                val updated = appointmentRepository.reschedule(appointmentId, body)
+                _state.update { s ->
+                    s.copy(
+                        appointments = s.appointments.map { a ->
+                            if (a.id == appointmentId) updated else a
+                        },
+                        toastMessage = "Rescheduled",
+                    )
                 }
-                .onFailure { e ->
-                    _state.update { it.copy(toastMessage = "Reschedule failed: ${e.message}") }
-                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(toastMessage = "Reschedule failed: ${e.message}") }
+            }
         }
     }
 }
