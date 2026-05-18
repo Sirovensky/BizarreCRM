@@ -165,6 +165,14 @@ final class GeofenceLocationDelegate: NSObject, CLLocationManagerDelegate, @unch
 
     func requestOneShot() async -> ShopCoordinate? {
         return await withCheckedContinuation { cont in
+            // BUGHUNT-2026-05-17: singleton delegate — parallel callers (two
+            // clock-in attempts close in time) would overwrite `continuation`
+            // without resuming the prior one, leaking the suspended Task.
+            // Cancel the prior caller with nil so it can decide whether to
+            // retry.
+            if let prior = self.continuation {
+                prior.resume(returning: nil)
+            }
             self.continuation = cont
             let status = manager.authorizationStatus
             switch status {
