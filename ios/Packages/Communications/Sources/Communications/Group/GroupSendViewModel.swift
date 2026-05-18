@@ -80,6 +80,14 @@ public final class GroupSendViewModel: Sendable {
             lastAck = ack
             progress = 1.0
             didSend = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: groupSend fans out to N customer SMS sends
+            // and carries no idempotency key. Painting "cancelled" tempted a
+            // re-tap that sent the whole batch a second time (double texts +
+            // double cost). Surface a verification hint pointing at the
+            // outgoing SMS log so the operator confirms before retrying.
+            errorMessage = "Group send was interrupted. Check the SMS log for delivery confirmation before retrying — recipients may already have received the message."
+            progress = 0.0
         } catch {
             AppLog.ui.error("GroupSend failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
