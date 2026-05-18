@@ -241,6 +241,22 @@ public struct TicketCreateFlowView: View {
         guard let idx = all.firstIndex(of: vm.currentStep), idx > 0 else { return "" }
         return all[idx - 1].title
     }
+
+    /// Adapter helpers for the Due date DatePicker — the VM uses a `String`
+    /// in "YYYY-MM-DD" (server contract). Pinned to en_US_POSIX UTC.
+    private static let dueOnFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f
+    }()
+    fileprivate static func parseDueOn(_ raw: String) -> Date? {
+        dueOnFormatter.date(from: raw)
+    }
+    fileprivate static func formatDueOn(_ date: Date) -> String {
+        dueOnFormatter.string(from: date)
+    }
 }
 
 // MARK: - §4.3 Inline validation toast (glass error pill)
@@ -815,11 +831,21 @@ private struct ScheduleStepView: View {
             }
 
             Section("Scheduling") {
-                TextField("Due date (YYYY-MM-DD)", text: $vm.dueOn)
-                    .keyboardType(.numbersAndPunctuation)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .accessibilityLabel("Due date in year month day format")
+                // BUGHUNT-2026-05-18: same free-text date-string trap as
+                // InvoiceCreate / EstimateCreate. Swap to a DatePicker.
+                DatePicker(
+                    "Due date",
+                    selection: Binding(
+                        get: { Self.parseDueOn(vm.dueOn) ?? Date().addingTimeInterval(60 * 60 * 24 * 3) },
+                        set: { newDate in
+                            vm.dueOn = Self.formatDueOn(newDate)
+                        }
+                    ),
+                    in: Date()...,
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.compact)
+                .accessibilityLabel("Due date")
             }
 
             // §4.3 — Service type picker

@@ -126,10 +126,25 @@ public struct InvoiceCreateView: View {
                             .onChange(of: vm.notes) { _, _ in vm.scheduleAutoSave() }
                             .accessibilityLabel("Invoice notes")
 
-                        TextField("Due date (YYYY-MM-DD)", text: $vm.dueOn)
-                            .keyboardType(.numbersAndPunctuation)
-                            .onChange(of: vm.dueOn) { _, _ in vm.scheduleAutoSave() }
-                            .accessibilityLabel("Due date in YYYY-MM-DD format")
+                        // BUGHUNT-2026-05-18: Due date was a free-text field
+                        // expecting YYYY-MM-DD; hand-typed strings produced
+                        // server 400s that were hard to debug. Switch to a
+                        // DatePicker bound through a String<->Date adapter
+                        // so the underlying VM contract stays the same.
+                        DatePicker(
+                            "Due date",
+                            selection: Binding(
+                                get: { Self.parseDueOn(vm.dueOn) ?? Date().addingTimeInterval(60 * 60 * 24 * 14) },
+                                set: { newDate in
+                                    vm.dueOn = Self.formatDueOn(newDate)
+                                    vm.scheduleAutoSave()
+                                }
+                            ),
+                            in: Date()...,
+                            displayedComponents: .date
+                        )
+                        .datePickerStyle(.compact)
+                        .accessibilityLabel("Due date")
 
                         TextField("Payment terms (e.g. Net 30)", text: $vm.paymentTerms)
                             .onChange(of: vm.paymentTerms) { _, _ in vm.scheduleAutoSave() }
@@ -249,6 +264,23 @@ public struct InvoiceCreateView: View {
                 }
             }
         }
+    }
+
+    /// Adapter helpers for the Due date `DatePicker` — the underlying VM
+    /// uses a `String` field locked to "YYYY-MM-DD" (server contract).
+    /// Pin to en_US_POSIX UTC so device locale doesn't shift the format.
+    private static let dueOnFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f
+    }()
+    fileprivate static func parseDueOn(_ raw: String) -> Date? {
+        dueOnFormatter.date(from: raw)
+    }
+    fileprivate static func formatDueOn(_ date: Date) -> String {
+        dueOnFormatter.string(from: date)
     }
 }
 
