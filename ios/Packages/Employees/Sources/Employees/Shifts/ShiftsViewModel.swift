@@ -189,10 +189,30 @@ public final class ShiftsViewModel {
         return shifts
             .filter { $0.userId == userId }
             .filter { shift in
-                guard let start = ISO8601DateFormatter().date(from: shift.startAt) else { return false }
+                // BUGHUNT-2026-05-18: ISO8601DateFormatter() default options
+                // rejects millisecond-precision strings from Node
+                // Date.toISOString(), so every shift was filtered out and the
+                // weekly schedule grid rendered blank for that user.
+                guard let start = Self.parseIso(shift.startAt) else { return false }
                 return start >= dayStart && start < dayEnd
             }
             .sorted { $0.startAt < $1.startAt }
+    }
+
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private static func parseIso(_ raw: String) -> Date? {
+        isoFractional.date(from: raw) ?? isoPlain.date(from: raw)
     }
 
     // MARK: - Private helpers

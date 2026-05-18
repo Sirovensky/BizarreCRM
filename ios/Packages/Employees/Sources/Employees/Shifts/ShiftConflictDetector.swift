@@ -90,8 +90,26 @@ public enum ShiftConflictDetector {
 
     // MARK: - Private helpers
 
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    // BUGHUNT-2026-05-18: ISO8601DateFormatter() with default options
+    // (.withInternetDateTime only) silently fails on Node Date.toISOString()
+    // strings (millisecond precision). Without fractional-aware parsing,
+    // `parseISO` returned nil on every real shift row, so conflicts(...)
+    // would short-circuit to [] and the supervisor never saw "shift overlap"
+    // warnings on the schedule editor — letting double-booked shifts ship.
     private static func parseISO(_ string: String) -> Date? {
-        ISO8601DateFormatter().date(from: string)
+        isoFractional.date(from: string) ?? isoPlain.date(from: string)
     }
 
     private static let timeFormatter: DateFormatter = {

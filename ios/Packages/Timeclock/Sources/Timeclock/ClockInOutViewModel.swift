@@ -190,10 +190,30 @@ public final class ClockInOutViewModel {
     // MARK: - Private
 
     private func updateElapsed(from entry: ClockEntry) {
-        guard let date = ISO8601DateFormatter().date(from: entry.clockIn) else {
+        // BUGHUNT-2026-05-18: same fix as EmployeeClockViewModel — default
+        // ISO8601DateFormatter options reject millisecond-precision strings
+        // from Node Date.toISOString(), so runningElapsed was permanently
+        // pinned at 0 even when the employee had been clocked in for hours.
+        guard let date = Self.parseIso(entry.clockIn) else {
             runningElapsed = 0
             return
         }
         runningElapsed = now().timeIntervalSince(date)
+    }
+
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private static func parseIso(_ raw: String) -> Date? {
+        isoFractional.date(from: raw) ?? isoPlain.date(from: raw)
     }
 }

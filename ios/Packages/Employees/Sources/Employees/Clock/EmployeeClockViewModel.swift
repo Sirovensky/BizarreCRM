@@ -176,10 +176,30 @@ public final class EmployeeClockViewModel {
     }
 
     private func updateElapsed(from entry: ClockEntry) {
-        guard let date = ISO8601DateFormatter().date(from: entry.clockIn) else {
+        // BUGHUNT-2026-05-18: ISO8601DateFormatter() default options reject
+        // Node Date.toISOString() output (millisecond precision); the timer
+        // displayed 0:00:00 on the clock-in tile even when the employee
+        // had been clocked in for hours. Try fractional first, then plain.
+        guard let date = Self.parseIso(entry.clockIn) else {
             elapsedSeconds = 0
             return
         }
         elapsedSeconds = now().timeIntervalSince(date)
+    }
+
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private static func parseIso(_ raw: String) -> Date? {
+        isoFractional.date(from: raw) ?? isoPlain.date(from: raw)
     }
 }
