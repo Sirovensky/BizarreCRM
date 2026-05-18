@@ -87,28 +87,43 @@ const ADMIN_LOGIN_MAX_ATTEMPTS = 5;
 const ADMIN_LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
 // Login endpoint (no auth required)
+//
+// BUGHUNT-2026-05-17: this was a bare async handler. The DB read, bcrypt
+// hash compare, and audit() write can all throw — and Express 4 lets that
+// surface as an unhandledRejection, dropping the client request without a
+// response. Worse, a thrown error mid-flow could log a "success" audit
+// after the credentials check, so we wrap the whole thing in try/catch and
+// surface a generic 500.
 router.post('/login', async (req: Request, res: Response) => {
-  const db = req.db;
-  const adb = req.asyncDb;
-  const ip = req.ip || req.socket.remoteAddress || 'unknown';
-  if (!checkWindowRate(db, 'admin_login', ip, ADMIN_LOGIN_MAX_ATTEMPTS, ADMIN_LOGIN_WINDOW_MS)) {
-    return res.status(429).json({ success: false, message: 'Too many attempts. Try again in 15 minutes.' });
-  }
+  try {
+    const db = req.db;
+    const adb = req.asyncDb;
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    if (!checkWindowRate(db, 'admin_login', ip, ADMIN_LOGIN_MAX_ATTEMPTS, ADMIN_LOGIN_WINDOW_MS)) {
+      return res.status(429).json({ success: false, message: 'Too many attempts. Try again in 15 minutes.' });
+    }
 
-  const { username, password } = req.body;
-  if (!username || !password) return res.status(400).json({ success: false, message: 'Credentials required' });
-  const user = await adb.get<AnyRow>("SELECT password_hash FROM users WHERE username = ? AND role = 'admin' AND is_active = 1", username);
-  if (!user || !bcrypt.compareSync(password, user.password_hash)) {
-    recordWindowFailure(db, 'admin_login', ip, ADMIN_LOGIN_WINDOW_MS);
-    audit(db, 'admin_login_failed', null, ip, { username });
-    return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    const { username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ success: false, message: 'Credentials required' });
+    const user = await adb.get<AnyRow>("SELECT password_hash FROM users WHERE username = ? AND role = 'admin' AND is_active = 1", username);
+    if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+      recordWindowFailure(db, 'admin_login', ip, ADMIN_LOGIN_WINDOW_MS);
+      audit(db, 'admin_login_failed', null, ip, { username });
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
+    audit(db, 'admin_login_success', null, ip, { username });
+    const token = generateToken();
+    const now = Date.now();
+    // SCAN-892: store hash only; client receives raw token
+    addWithCap(adminTokens, hashToken(token), { user: username, expires: now + TOKEN_TTL, created_at: now }, ADMIN_TOKENS_CAP);
+    res.json({ success: true, data: { token } });
+  } catch (e: unknown) {
+    const err = e as Error;
+    logger.error('admin_login_error', { error: err.message });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Login failed. Try again.' });
+    }
   }
-  audit(db, 'admin_login_success', null, ip, { username });
-  const token = generateToken();
-  const now = Date.now();
-  // SCAN-892: store hash only; client receives raw token
-  addWithCap(adminTokens, hashToken(token), { user: username, expires: now + TOKEN_TTL, created_at: now }, ADMIN_TOKENS_CAP);
-  res.json({ success: true, data: { token } });
 });
 
 // Logout (AL7: audit logout)
