@@ -89,8 +89,12 @@ public final class NotificationBadgeCounterViewModel {
         pollTask = Task { [weak self, pollIntervalSeconds] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: UInt64(pollIntervalSeconds * 1_000_000_000))
-                guard !Task.isCancelled else { break }
-                await self?.fetchOnce()
+                if Task.isCancelled { break }
+                // Break when self deinit-s so the poll Task doesn't keep
+                // sleeping in 60s ticks indefinitely after the badge
+                // disappears from the navigation chrome.
+                guard let strongSelf = self else { break }
+                await strongSelf.fetchOnce()
             }
         }
     }

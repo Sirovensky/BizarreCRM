@@ -363,8 +363,11 @@ public final class ImportWizardViewModel {
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 2_000_000_000) // 2s
-                guard !Task.isCancelled else { break }
-                await self?.pollStatus()
+                if Task.isCancelled { break }
+                // Break on weak-self deinit so a discarded import wizard
+                // doesn't keep polling /import-jobs/:id every 2s forever.
+                guard let strongSelf = self else { break }
+                await strongSelf.pollStatus()
             }
         }
     }
