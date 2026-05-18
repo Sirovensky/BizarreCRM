@@ -87,6 +87,12 @@ final class PosGiftCardSheetViewModel {
         } catch let APITransportError.httpStatus(code, message) {
             let msg = (message?.isEmpty == false) ? message! : "Not found"
             errorMessage = "Gift card lookup failed (\(code)): \(msg)"
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: sheet dismiss mid-lookup — don't paint a
+            // "failed: cancelled" toast on the sheet the user just closed.
+            // Lookup is idempotent, but the toast is misleading and bumps
+            // the cashier toward an unnecessary re-scan.
+            return
         } catch {
             errorMessage = "Gift card lookup failed: \(error.localizedDescription)"
         }
