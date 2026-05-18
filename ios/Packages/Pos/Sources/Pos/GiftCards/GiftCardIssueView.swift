@@ -108,6 +108,7 @@ struct GiftCardIssueView: View {
         Section("Recipient (optional)") {
             TextField("Name", text: $viewModel.recipientName)
                 .textContentType(.name)
+                .textInputAutocapitalization(.words)
                 .accessibilityIdentifier("giftCardIssue.recipientName")
             TextField("Email", text: $viewModel.recipientEmail)
                 .textContentType(.emailAddress)
@@ -122,13 +123,60 @@ struct GiftCardIssueView: View {
 
     private var optionsSection: some View {
         Section("Options") {
-            TextField("Expiry date (yyyy-MM-dd)", text: $viewModel.expiresAtInput)
-                .keyboardType(.numbersAndPunctuation)
+            // BUGHUNT-2026-05-18: was a yyyy-MM-dd free-text TextField.
+            // Locale-sensitive typos (`mm/dd/yyyy`) would fail server-side
+            // silently and ship a card with no expiry. Toggle + DatePicker
+            // preserves the optional semantics while keeping the wire format
+            // pinned to en_US_POSIX UTC.
+            Toggle("Set expiry date", isOn: Binding(
+                get: { !viewModel.expiresAtInput.isEmpty },
+                set: { newValue in
+                    if newValue && viewModel.expiresAtInput.isEmpty {
+                        // Default to 1 year out, a reasonable industry default.
+                        let defaultDate = Date().addingTimeInterval(60 * 60 * 24 * 365)
+                        viewModel.expiresAtInput = Self.formatExpiry(defaultDate)
+                    } else if !newValue {
+                        viewModel.expiresAtInput = ""
+                    }
+                }
+            ))
+            .accessibilityIdentifier("giftCardIssue.hasExpiry")
+            if !viewModel.expiresAtInput.isEmpty {
+                DatePicker(
+                    "Expiry date",
+                    selection: Binding(
+                        get: { Self.parseExpiry(viewModel.expiresAtInput) ?? Date().addingTimeInterval(60 * 60 * 24 * 365) },
+                        set: { viewModel.expiresAtInput = Self.formatExpiry($0) }
+                    ),
+                    in: Date()...,
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.compact)
                 .accessibilityIdentifier("giftCardIssue.expiresAt")
+            }
             TextField("Notes", text: $viewModel.notes, axis: .vertical)
                 .lineLimit(2...4)
+                .textInputAutocapitalization(.sentences)
                 .accessibilityIdentifier("giftCardIssue.notes")
         }
+    }
+
+    /// Adapter helpers for the expiry `DatePicker`. Pinned to en_US_POSIX UTC
+    /// so wire format ("yyyy-MM-dd") matches regardless of device locale.
+    private static let expiryFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f
+    }()
+
+    fileprivate static func parseExpiry(_ raw: String) -> Date? {
+        expiryFormatter.date(from: raw)
+    }
+
+    fileprivate static func formatExpiry(_ date: Date) -> String {
+        expiryFormatter.string(from: date)
     }
 
     // MARK: - Issue button

@@ -232,6 +232,7 @@ public struct PurchaseOrderComposeView: View {
                 .accessibilityLabel("SKU")
             TextField("Name", text: line.name)
                 .font(.brandBodyMedium())
+                .textInputAutocapitalization(.words)
                 .accessibilityLabel("Item name")
             HStack(spacing: BrandSpacing.md) {
                 TextField("Qty", text: line.qty)

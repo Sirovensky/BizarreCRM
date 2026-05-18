@@ -104,18 +104,22 @@ public struct CompanyInfoPage: View {
                 TextField("Street address", text: $vm.address)
                     #if canImport(UIKit)
                     .textContentType(.streetAddressLine1)
+                    .textInputAutocapitalization(.words)
                     #endif
                     .accessibilityLabel("Street address")
                     .accessibilityIdentifier("company.address")
                 TextField("City", text: $vm.city)
                     #if canImport(UIKit)
                     .textContentType(.addressCity)
+                    .textInputAutocapitalization(.words)
                     #endif
                     .accessibilityLabel("City")
                     .accessibilityIdentifier("company.city")
                 TextField("State", text: $vm.state)
                     #if canImport(UIKit)
                     .textContentType(.addressState)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
                     #endif
                     .accessibilityLabel("State")
                     .accessibilityIdentifier("company.state")
@@ -123,6 +127,7 @@ public struct CompanyInfoPage: View {
                     #if canImport(UIKit)
                     .textContentType(.postalCode)
                     .keyboardType(.numbersAndPunctuation)
+                    .autocorrectionDisabled()
                     #endif
                     .accessibilityLabel("ZIP code")
                     .accessibilityIdentifier("company.zip")

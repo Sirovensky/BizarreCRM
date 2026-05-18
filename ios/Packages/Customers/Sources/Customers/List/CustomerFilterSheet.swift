@@ -64,12 +64,15 @@ public struct CustomerFilterSheet: View {
                             get: { draft.city ?? "" },
                             set: { draft.city = $0.isEmpty ? nil : $0 }
                         ))
+                        .textInputAutocapitalization(.words)
                         .accessibilityLabel("Filter by city")
 
                         TextField("State", text: Binding(
                             get: { draft.state ?? "" },
                             set: { draft.state = $0.isEmpty ? nil : $0 }
                         ))
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
                         .accessibilityLabel("Filter by state")
                     }
                     .listRowBackground(Color.bizarreSurface1)

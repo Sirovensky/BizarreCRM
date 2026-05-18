@@ -37,10 +37,20 @@ public struct LocationEditorView: View {
             Form {
                 Section("Identity") {
                     TextField("Location name", text: $name)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.words)
+                        #endif
                         .accessibilityLabel("Location name")
                     TextField("Timezone", text: $timezone)
+                        #if canImport(UIKit)
+                        .autocorrectionDisabled()
+                        #endif
                         .accessibilityLabel("Timezone")
                     TextField("Tax rate ID (optional)", text: $taxRateId)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        #endif
                         .accessibilityLabel("Tax rate ID")
                 }
 
@@ -54,32 +64,38 @@ public struct LocationEditorView: View {
                     TextField("Address line 1", text: $addressLine1)
                         #if canImport(UIKit)
                         .textContentType(.streetAddressLine1)
+                        .textInputAutocapitalization(.words)
                         #endif
                         .accessibilityLabel("Address line 1")
                     TextField("Address line 2 (optional)", text: $addressLine2)
                         #if canImport(UIKit)
                         .textContentType(.streetAddressLine2)
+                        .textInputAutocapitalization(.words)
                         #endif
                         .accessibilityLabel("Address line 2")
                     TextField("City", text: $city)
                         #if canImport(UIKit)
                         .textContentType(.addressCity)
+                        .textInputAutocapitalization(.words)
                         #endif
                         .accessibilityLabel("City")
                     TextField("State / Province", text: $region)
                         #if canImport(UIKit)
                         .textContentType(.addressState)
+                        .textInputAutocapitalization(.words)
                         #endif
                         .accessibilityLabel("Region")
                     TextField("Postal code", text: $postal)
                         #if canImport(UIKit)
                         .textContentType(.postalCode)
                         .keyboardType(.numbersAndPunctuation)
+                        .autocorrectionDisabled()
                         #endif
                         .accessibilityLabel("Postal code")
                     TextField("Country", text: $country)
                         #if canImport(UIKit)
                         .textContentType(.countryName)
+                        .textInputAutocapitalization(.words)
                         #endif
                         .accessibilityLabel("Country")
                 }
