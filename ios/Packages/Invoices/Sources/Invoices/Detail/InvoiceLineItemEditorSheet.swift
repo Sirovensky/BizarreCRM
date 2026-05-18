@@ -205,6 +205,9 @@ public struct InvoiceLineItemEditorSheet: View {
                 Text("Description").font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted)
                 Spacer()
                 TextField("Item description", text: line.description)
+                    #if canImport(UIKit)
+                    .textInputAutocapitalization(.sentences)
+                    #endif
                     .multilineTextAlignment(.trailing)
                     .font(.brandBodyMedium())
                     .foregroundStyle(.bizarreOnSurface)

@@ -122,6 +122,9 @@ public struct InvoiceCreateView: View {
                     // MARK: — Details (§7.3)
                     Section("Details") {
                         TextField("Notes", text: $vm.notes, axis: .vertical)
+                            #if canImport(UIKit)
+                            .textInputAutocapitalization(.sentences)
+                            #endif
                             .lineLimit(2...5)
                             .onChange(of: vm.notes) { _, _ in vm.scheduleAutoSave() }
                             .accessibilityLabel("Invoice notes")
@@ -147,10 +150,16 @@ public struct InvoiceCreateView: View {
                         .accessibilityLabel("Due date")
 
                         TextField("Payment terms (e.g. Net 30)", text: $vm.paymentTerms)
+                            #if canImport(UIKit)
+                            .textInputAutocapitalization(.words)
+                            #endif
                             .onChange(of: vm.paymentTerms) { _, _ in vm.scheduleAutoSave() }
                             .accessibilityLabel("Payment terms")
 
                         TextField("Footer text", text: $vm.footerText, axis: .vertical)
+                            #if canImport(UIKit)
+                            .textInputAutocapitalization(.sentences)
+                            #endif
                             .lineLimit(1...3)
                             .onChange(of: vm.footerText) { _, _ in vm.scheduleAutoSave() }
                             .accessibilityLabel("Optional footer text on the invoice")
@@ -295,6 +304,9 @@ private struct LineItemRow: View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             HStack {
                 TextField("Description", text: $item.description)
+                    #if canImport(UIKit)
+                    .textInputAutocapitalization(.sentences)
+                    #endif
                     .font(.brandBodyMedium())
                     .onChange(of: item.description) { _, _ in onChange() }
                     .accessibilityLabel("Line item description")
