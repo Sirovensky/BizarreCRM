@@ -27,6 +27,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -154,10 +157,17 @@ fun GlobalSearchScreen(
                     }
 
                     state.error != null -> {
-                        ErrorState(
-                            message = state.error ?: "Search failed",
-                            onRetry = { viewModel.executeSearch() },
-                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .semantics { liveRegion = LiveRegionMode.Assertive },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            ErrorState(
+                                message = state.error ?: "Search failed",
+                                onRetry = { viewModel.executeSearch() },
+                            )
+                        }
                     }
 
                     // item 9 — no results
