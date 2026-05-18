@@ -46,10 +46,19 @@ public final class ReviewCadenceViewModel {
     }
 
     public func save() async {
+        // BUGHUNT-2026-05-17: re-entry guard. save() fires from the
+        // Picker's onChange — rapid cadence flips fire two PATCHes that
+        // race for the final state.
+        guard !isSaving else { return }
         isSaving = true
         defer { isSaving = false }
         do {
             try await api.updateReviewCadence(cadence)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PATCH may have landed; suppress the
+            // error so the user doesn't see "cancelled" under a setting
+            // that may have actually saved.
+            errorMessage = nil
         } catch {
             AppLog.ui.error("ReviewCadence save failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
