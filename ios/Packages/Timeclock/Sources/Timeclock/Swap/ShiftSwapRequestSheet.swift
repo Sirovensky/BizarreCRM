@@ -1,6 +1,7 @@
 import SwiftUI
 import DesignSystem
 import Networking
+import Core
 
 // MARK: - ShiftSwapRequestViewModel
 
@@ -31,6 +32,10 @@ public final class ShiftSwapRequestViewModel {
 
     public func submit() async {
         guard canSubmit else { return }
+        // BUGHUNT-2026-05-17: re-entry guard. Without this a double-tap on
+        // Submit while the previous Task is still in flight creates two
+        // swap_request rows for the same shift+target pair.
+        if case .submitting = state { return }
         state = .submitting
         let body = SwapRequestBody(
             requesterShiftId: selectedShiftId,
@@ -41,6 +46,12 @@ public final class ShiftSwapRequestViewModel {
             let request = try await api.createSwapRequest(body: body)
             state = .submitted
             onSubmitted?(request)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: POST may have landed before cancellation.
+            // Painting "Failed: cancelled" tempts a re-submit that creates a
+            // duplicate swap_request. Roll back to idle so the sheet can be
+            // re-opened cleanly and the user reconciles via the swap list.
+            state = .idle
         } catch {
             state = .failed(error.localizedDescription)
         }
