@@ -1164,7 +1164,10 @@ fun CustomerCreateScreen(
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Street address") },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Next,
+                    capitalization = KeyboardCapitalization.Words,
+                ),
                 keyboardActions = onNext,
             )
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1174,7 +1177,10 @@ fun CustomerCreateScreen(
                     modifier = Modifier.weight(1f),
                     label = { Text("City") },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardOptions = KeyboardOptions(
+                        imeAction = ImeAction.Next,
+                        capitalization = KeyboardCapitalization.Words,
+                    ),
                     keyboardActions = onNext,
                 )
                 OutlinedTextField(
@@ -1183,7 +1189,11 @@ fun CustomerCreateScreen(
                     modifier = Modifier.weight(1f),
                     label = { Text("State") },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardOptions = KeyboardOptions(
+                        imeAction = ImeAction.Next,
+                        capitalization = KeyboardCapitalization.Characters,
+                        autoCorrect = false,
+                    ),
                     keyboardActions = onNext,
                 )
                 OutlinedTextField(
@@ -1216,7 +1226,10 @@ fun CustomerCreateScreen(
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Street address") },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardOptions = KeyboardOptions(
+                        imeAction = ImeAction.Next,
+                        capitalization = KeyboardCapitalization.Words,
+                    ),
                     keyboardActions = onNext,
                 )
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1226,7 +1239,10 @@ fun CustomerCreateScreen(
                         modifier = Modifier.weight(1f),
                         label = { Text("City") },
                         singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Next,
+                            capitalization = KeyboardCapitalization.Words,
+                        ),
                         keyboardActions = onNext,
                     )
                     OutlinedTextField(
@@ -1235,7 +1251,11 @@ fun CustomerCreateScreen(
                         modifier = Modifier.weight(1f),
                         label = { Text("State") },
                         singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Next,
+                            capitalization = KeyboardCapitalization.Characters,
+                            autoCorrect = false,
+                        ),
                         keyboardActions = onNext,
                     )
                     OutlinedTextField(
