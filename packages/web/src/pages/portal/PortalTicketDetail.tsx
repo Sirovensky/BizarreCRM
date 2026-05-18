@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import * as api from './portalApi';
 import { safeColor } from '../../utils/safeColor';
 import { usePortalI18n } from './i18n';
@@ -32,12 +32,26 @@ export function PortalTicketDetail({ ticketId, initialData, onBack, scope, hasAc
   // the customer on an infinite spinner; expose retry + toast on failure.
   const [error, setError] = useState<string | null>(null);
 
+  // BUGHUNT-2026-05-17: track the latest in-flight fetch so a stale
+  // resolve (slower than the most recent ticketId switch / Back-button
+  // unmount) can't overwrite the current ticket state with the prior
+  // ticket's payload. Also short-circuits the setLoading(false) tick
+  // on an unmounted component. fetchInFlightRef holds the active
+  // request token; only resolves that match are allowed to mutate
+  // state.
+  const fetchInFlightRef = useRef(0);
   const fetchTicket = useCallback(() => {
     setLoading(true);
     setError(null);
+    const token = ++fetchInFlightRef.current;
     api.getTicketDetail(ticketId)
-      .then((t) => { setTicket(t); setError(null); })
+      .then((t) => {
+        if (fetchInFlightRef.current !== token) return;
+        setTicket(t);
+        setError(null);
+      })
       .catch((err: unknown) => {
+        if (fetchInFlightRef.current !== token) return;
         const status = (err as { response?: { status?: number } })?.response?.status;
         const msg = status === 404
           ? 'Ticket not found.'
@@ -45,7 +59,10 @@ export function PortalTicketDetail({ ticketId, initialData, onBack, scope, hasAc
         setError(msg);
         toast.error(msg);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (fetchInFlightRef.current !== token) return;
+        setLoading(false);
+      });
   }, [ticketId]);
 
   useEffect(() => {
@@ -55,6 +72,14 @@ export function PortalTicketDetail({ ticketId, initialData, onBack, scope, hasAc
     // triggers a fresh fetch, not the callback identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticketId, initialData]);
+
+  // BUGHUNT-2026-05-17: bump the in-flight token on unmount so any
+  // promise still resolving in the background drops its setState batch.
+  useEffect(() => {
+    return () => {
+      fetchInFlightRef.current += 1;
+    };
+  }, []);
 
   if (loading) {
     return (
