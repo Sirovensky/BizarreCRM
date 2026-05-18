@@ -233,8 +233,27 @@ private struct CustomFieldRow: View {
                     .onChange(of: field.value) { _, new in onChange(field.id, new) }
             }
 
+        // BUGHUNT-2026-05-18: previously fell through to a free-text
+        // LabeledTextField, so users typed dates by hand. Wrap a
+        // DatePicker bound through a String <-> Date adapter so the VM
+        // contract ("YYYY-MM-DD") stays intact.
+        case "date":
+            DatePicker(
+                field.name,
+                selection: Binding(
+                    get: { Self.customDateFormatter.date(from: field.value) ?? Date() },
+                    set: { newDate in
+                        field.value = Self.customDateFormatter.string(from: newDate)
+                        onChange(field.id, field.value)
+                    }
+                ),
+                displayedComponents: .date
+            )
+            .datePickerStyle(.compact)
+            .accessibilityLabel(field.name)
+
         default:
-            // text, date (stored as string), multiselect (stored as comma-separated).
+            // text, multiselect (stored as comma-separated).
             LabeledTextField(field.name, text: $field.value)
                 .accessibilityLabel(field.name)
                 .onChange(of: field.value) { _, new in onChange(field.id, new) }
@@ -250,6 +269,16 @@ private struct CustomFieldRow: View {
             }
         )
     }
+
+    /// Formatter for date-typed custom fields. Pinned to en_US_POSIX UTC
+    /// so the on-wire YYYY-MM-DD string matches regardless of device locale.
+    fileprivate static let customDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f
+    }()
 }
 
 // MARK: - LabeledTextField
