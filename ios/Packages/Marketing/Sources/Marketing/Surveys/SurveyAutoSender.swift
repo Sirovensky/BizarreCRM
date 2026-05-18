@@ -25,10 +25,22 @@ public enum SurveyAutoSender {
             return nil
         }
 
-        let ticketId = userInfo["ticketId"] as? String ?? ""
-
         switch typeRaw {
         case "csat":
+            // BUGHUNT-2026-05-17: CSAT requires a valid ticketId so the
+            // response row is attributed to the right service ticket
+            // (per-tech CSAT averages depend on this — §37.3). The previous
+            // code defaulted a missing ticketId to "" and still returned a
+            // .csat trigger, which then POSTed `/surveys/csat` with an
+            // empty ticketId — silently mis-attributing the rating and
+            // skewing per-tech / manager-push thresholds. Refuse to build
+            // the trigger when ticketId is missing or blank.
+            guard
+                let ticketId = userInfo["ticketId"] as? String,
+                !ticketId.trimmingCharacters(in: .whitespaces).isEmpty
+            else {
+                return nil
+            }
             return .csat(customerId: customerId, ticketId: ticketId)
         case "nps":
             return .nps(customerId: customerId)
