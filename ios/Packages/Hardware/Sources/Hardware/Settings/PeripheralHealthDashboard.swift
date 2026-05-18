@@ -141,6 +141,7 @@ public struct PeripheralHealthDashboardView: View {
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
+                .keyboardShortcut("r", modifiers: .command)
                 .accessibilityLabel("Refresh peripheral health status")
             }
         }

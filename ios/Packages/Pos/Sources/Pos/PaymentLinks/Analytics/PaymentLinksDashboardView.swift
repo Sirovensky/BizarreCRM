@@ -34,6 +34,7 @@ public struct PaymentLinksDashboardView: View {
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
+                .keyboardShortcut("r", modifiers: .command)
                 .accessibilityLabel("Refresh analytics")
                 .brandGlass(.regular, in: Circle(), interactive: true)
             }

@@ -90,6 +90,7 @@ public struct ImportHistoryView: View {
                         Button { Task { await vm.load() } } label: {
                             Image(systemName: "arrow.clockwise")
                         }
+                        .keyboardShortcut("r", modifiers: .command)
                         .accessibilityLabel("Refresh import history")
                     }
                 }

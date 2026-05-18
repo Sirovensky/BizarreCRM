@@ -287,6 +287,7 @@ public struct RecurringImportView: View {
                 } label: {
                     Image(systemName: "plus")
                 }
+                .keyboardShortcut("n", modifiers: .command)
                 .accessibilityLabel("Add recurring import schedule")
             }
         }

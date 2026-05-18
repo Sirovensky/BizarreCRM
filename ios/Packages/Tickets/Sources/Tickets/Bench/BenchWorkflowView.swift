@@ -417,6 +417,7 @@ public struct BenchWorkflowView: View {
                 Image(systemName: "arrow.clockwise")
                     .accessibilityLabel("Refresh ticket")
             }
+            .keyboardShortcut("r", modifiers: .command)
             .disabled(vm.isSubmitting)
         }
     }

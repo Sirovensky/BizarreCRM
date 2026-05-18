@@ -1,5 +1,6 @@
 package com.bizarreelectronics.crm.ui.screens.audit.components
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -8,13 +9,20 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -103,19 +111,18 @@ fun AuditFilterSheet(
                 }
             }
 
-            OutlinedTextField(
+            // BUGHUNT-2026-05-18: free-text dates replaced with DatePickers —
+            // typed dates were silently rejected by the audit filter when
+            // formatted slightly differently.
+            DateField(
                 value = draft.from,
-                onValueChange = { draft = draft.copy(from = it) },
-                label = { Text("From (YYYY-MM-DD)") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+                onChange = { draft = draft.copy(from = it) },
+                label = "From",
             )
-            OutlinedTextField(
+            DateField(
                 value = draft.to,
-                onValueChange = { draft = draft.copy(to = it) },
-                label = { Text("To (YYYY-MM-DD)") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+                onChange = { draft = draft.copy(to = it) },
+                label = "To",
             )
 
             Spacer(Modifier.height(4.dp))

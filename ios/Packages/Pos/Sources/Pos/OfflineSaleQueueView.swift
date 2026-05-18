@@ -42,6 +42,7 @@ public struct OfflineSaleQueueView: View {
                     } label: {
                         Label("Sync now", systemImage: "arrow.clockwise")
                     }
+                    .keyboardShortcut("r", modifiers: .command)
                     .disabled(vm.ops.isEmpty)
                     .accessibilityIdentifier("pos.offlineQueue.syncNow")
                 }

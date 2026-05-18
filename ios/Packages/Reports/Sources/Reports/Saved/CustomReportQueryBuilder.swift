@@ -460,6 +460,7 @@ public struct CustomReportListView: View {
                         } label: {
                             Image(systemName: "plus")
                         }
+                        .keyboardShortcut("n", modifiers: .command)
                         .accessibilityLabel("Create new custom report")
                     }
                 }
@@ -482,6 +483,7 @@ public struct CustomReportListView: View {
                 } label: {
                     Image(systemName: "plus")
                 }
+                .keyboardShortcut("n", modifiers: .command)
                 .accessibilityLabel("Create new custom report")
             }
         }

@@ -68,6 +68,7 @@ public struct FirmwareSettingsView: View {
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
+                    .keyboardShortcut("r", modifiers: .command)
                     .accessibilityLabel("Refresh firmware versions")
                 }
             }
