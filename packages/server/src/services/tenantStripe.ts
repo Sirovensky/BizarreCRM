@@ -330,9 +330,21 @@ export async function verifyTenantStripePaymentIntent(
     throw new AppError('Stripe PaymentIntent amount does not match this payment', 400);
   }
 
+  // BUGHUNT-2026-05-17: the previous `if (intent.currency && ...)` short-
+  // circuit silently accepted any PaymentIntent that came back with a
+  // missing / null / empty `currency` field. Every legitimate Stripe
+  // PaymentIntent has a currency, so a missing one means either (a) the
+  // Stripe API returned an unexpected shape (forge or downgrade) or (b)
+  // the intent was mutated in flight. Fail-closed: reject unknown
+  // currencies the same way we'd reject a mismatched one, so a payment
+  // can never be credited under "unknown currency" semantics.
   const expectedCurrency = readStoreCurrency(db);
-  if (intent.currency && intent.currency.toLowerCase() !== expectedCurrency) {
-    throw new AppError(`Stripe PaymentIntent currency ${intent.currency.toUpperCase()} does not match shop currency ${expectedCurrency.toUpperCase()}`, 400);
+  const intentCurrency = typeof intent.currency === 'string' ? intent.currency.trim() : '';
+  if (!intentCurrency) {
+    throw new AppError('Stripe PaymentIntent has no currency — refusing to apply payment', 400);
+  }
+  if (intentCurrency.toLowerCase() !== expectedCurrency) {
+    throw new AppError(`Stripe PaymentIntent currency ${intentCurrency.toUpperCase()} does not match shop currency ${expectedCurrency.toUpperCase()}`, 400);
   }
 
   const metadata = intent.metadata ?? {};
