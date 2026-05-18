@@ -640,6 +640,8 @@ public struct ReportsView: View {
         do {
             exportURL = try await exportService.generatePDF(report: snapshot)
             showExportShare = true
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel during PDF render
         } catch {
             exportError = error.localizedDescription
         }
@@ -660,6 +662,8 @@ public struct ReportsView: View {
         do {
             exportURL = try await csvService.generateSnapshotCSV(report: snapshot)
             showExportShare = true
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel during CSV render
         } catch {
             exportError = error.localizedDescription
         }
@@ -680,6 +684,11 @@ public struct ReportsView: View {
         do {
             let url = try await exportService.generatePDF(report: snapshot)
             try await exportService.emailReport(pdf: url, recipient: emailRecipient)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: server may have dispatched the email before
+            // cancel — don't paint a "failed" toast that tempts a re-send and
+            // double-emails the recipient.
+            return
         } catch {
             exportError = error.localizedDescription
         }

@@ -304,6 +304,8 @@ public struct ReportsThreeColumnView: View {
         do {
             exportURL = try await exportService.generatePDF(report: snapshot)
             showExportShare = true
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel during PDF render
         } catch {
             exportError = error.localizedDescription
         }
