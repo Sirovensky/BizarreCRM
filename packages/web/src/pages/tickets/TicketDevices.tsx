@@ -351,18 +351,22 @@ function DeviceEditForm({
     <div className="space-y-3 mt-3 pt-3 border-t border-surface-200 dark:border-surface-700">
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs font-medium text-surface-500 mb-1">Device Name</label>
+          <label htmlFor="td-device-name" className="block text-xs font-medium text-surface-500 mb-1">Device Name</label>
           <input
+            id="td-device-name"
             value={form.device_name}
             onChange={(e) => setForm({ ...form, device_name: e.target.value })}
+            autoCapitalize="words"
             className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-surface-500 mb-1">Device Type</label>
+          <label htmlFor="td-device-type" className="block text-xs font-medium text-surface-500 mb-1">Device Type</label>
           <input
+            id="td-device-type"
             value={form.device_type}
             onChange={(e) => setForm({ ...form, device_type: e.target.value })}
+            autoCapitalize="words"
             className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
             placeholder="Phone, tablet, laptop..."
           />
@@ -370,18 +374,20 @@ function DeviceEditForm({
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs font-medium text-surface-500 mb-1">Price</label>
+          <label htmlFor="td-price" className="block text-xs font-medium text-surface-500 mb-1">Price</label>
           <input
-            type="number" step="0.01"
+            id="td-price"
+            type="number" inputMode="decimal" step="0.01" min="0"
             value={form.price}
             onChange={(e) => setForm({ ...form, price: parseFloat(e.target.value) || 0 })}
             className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-surface-500 mb-1">Line Discount</label>
+          <label htmlFor="td-line-discount" className="block text-xs font-medium text-surface-500 mb-1">Line Discount</label>
           <input
-            type="number" step="0.01" min="0" max={Number(form.price) || 0}
+            id="td-line-discount"
+            type="number" inputMode="decimal" step="0.01" min="0" max={Number(form.price) || 0}
             value={form.line_discount}
             onChange={(e) => setForm({ ...form, line_discount: parseFloat(e.target.value) || 0 })}
             className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
@@ -390,40 +396,46 @@ function DeviceEditForm({
       </div>
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className="block text-xs font-medium text-surface-500 mb-1">IMEI</label>
-          <input value={form.imei} onChange={(e) => setForm({ ...form, imei: e.target.value })}
+          <label htmlFor="td-imei" className="block text-xs font-medium text-surface-500 mb-1">IMEI</label>
+          <input id="td-imei" value={form.imei} onChange={(e) => setForm({ ...form, imei: e.target.value })}
+            inputMode="numeric" pattern="[0-9]*" maxLength={15} autoCorrect="off" spellCheck={false}
             className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
             placeholder="IMEI number" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-surface-500 mb-1">Serial</label>
-          <input value={form.serial} onChange={(e) => setForm({ ...form, serial: e.target.value })}
+          <label htmlFor="td-serial" className="block text-xs font-medium text-surface-500 mb-1">Serial</label>
+          <input id="td-serial" value={form.serial} onChange={(e) => setForm({ ...form, serial: e.target.value })}
+            autoCapitalize="characters" autoCorrect="off" spellCheck={false}
             className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
             placeholder="Serial number" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-surface-500 mb-1">Passcode</label>
-          <input value={form.security_code} onChange={(e) => setForm({ ...form, security_code: e.target.value })}
+          <label htmlFor="td-passcode" className="block text-xs font-medium text-surface-500 mb-1">Passcode</label>
+          <input id="td-passcode" value={form.security_code} onChange={(e) => setForm({ ...form, security_code: e.target.value })}
+            autoCapitalize="off" autoCorrect="off" spellCheck={false} autoComplete="off"
             className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
             placeholder="Device passcode" />
         </div>
       </div>
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className="block text-xs font-medium text-surface-500 mb-1">Color</label>
-          <input value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })}
+          <label htmlFor="td-color" className="block text-xs font-medium text-surface-500 mb-1">Color</label>
+          <input id="td-color" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })}
+            autoCapitalize="words"
             className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
             placeholder="Black, blue..." />
         </div>
         <div>
-          <label className="block text-xs font-medium text-surface-500 mb-1">Network</label>
-          <input value={form.network} onChange={(e) => setForm({ ...form, network: e.target.value })}
+          <label htmlFor="td-network" className="block text-xs font-medium text-surface-500 mb-1">Network</label>
+          <input id="td-network" value={form.network} onChange={(e) => setForm({ ...form, network: e.target.value })}
+            autoCapitalize="words"
             className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
             placeholder="Unlocked, Verizon..." />
         </div>
         <div>
-          <label className="block text-xs font-medium text-surface-500 mb-1">Bench Location</label>
-          <input value={form.device_location} onChange={(e) => setForm({ ...form, device_location: e.target.value })}
+          <label htmlFor="td-bench-location" className="block text-xs font-medium text-surface-500 mb-1">Bench Location</label>
+          <input id="td-bench-location" value={form.device_location} onChange={(e) => setForm({ ...form, device_location: e.target.value })}
+            autoCapitalize="words"
             className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
             placeholder="Shelf, bin, station..." />
         </div>

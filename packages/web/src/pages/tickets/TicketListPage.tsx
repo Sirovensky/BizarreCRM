@@ -863,7 +863,7 @@ const TicketRow = memo(function TicketRow({
                   if (!input.value.trim()) return;
                   onAddNote(ticket.id, input.value.trim()).then(() => { input.value = ''; });
                 }}>
-                  <input name="quicknote" type="text" placeholder="Quick note..." className="w-48 rounded-lg border border-surface-200 bg-white px-2.5 py-1.5 text-xs dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-primary-400" />
+                  <input name="quicknote" type="text" placeholder="Quick note..." autoCapitalize="sentences" aria-label="Quick note" className="w-48 rounded-lg border border-surface-200 bg-white px-2.5 py-1.5 text-xs dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-primary-400" />
                   {/* WEB-FQ-017 (Fixer-C12 2026-04-25): bare ">Add<" was ambiguous next
                       to the "Add Customer" / "Add Ticket" / "Create" labels elsewhere.
                       Spelled-out object name keeps the same row-CRUD verb but disambiguates
@@ -881,7 +881,7 @@ const TicketRow = memo(function TicketRow({
                       input.value = '';
                     }).finally(() => { btn.disabled = false; });
                   }}>
-                    <input name="quicksms" type="text" placeholder="Quick SMS..." className="w-48 rounded-lg border border-green-200 bg-white px-2.5 py-1.5 text-xs dark:border-green-800 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-green-500 focus-visible:border-green-500" />
+                    <input name="quicksms" type="text" placeholder="Quick SMS..." autoCapitalize="sentences" aria-label="Quick SMS to customer" className="w-48 rounded-lg border border-green-200 bg-white px-2.5 py-1.5 text-xs dark:border-green-800 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-green-500 focus-visible:border-green-500" />
                     <button type="submit" className="rounded-lg bg-green-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none flex items-center gap-1">
                       <Send className="h-3 w-3" /> Send
                     </button>
@@ -1777,10 +1777,14 @@ export function TicketListPage() {
               <label htmlFor="tlist-search" className="sr-only">Search tickets</label>
               <input
                 id="tlist-search"
-                type="text"
+                type="search"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 placeholder="Search tickets..."
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                aria-label="Search tickets"
                 className="w-full rounded-lg border border-surface-200 bg-surface-50 py-1.5 pl-9 pr-4 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
               />
             </div>

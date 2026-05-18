@@ -262,11 +262,15 @@ export function DunningPage() {
       {/* WEB-W3-019: structured step editor */}
       <div className="rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 p-4 shadow-sm space-y-4">
         <h2 className="text-lg font-semibold">Create sequence</h2>
+        <label htmlFor="dunning-seq-name" className="sr-only">Sequence name</label>
         <input
+          id="dunning-seq-name"
           type="text"
           placeholder="Sequence name"
           value={name}
           onChange={(e) => setName(e.target.value)}
+          autoCapitalize="sentences"
+          aria-label="Sequence name"
           className="w-full rounded-md border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 px-3 py-2 text-sm"
         />
         <div className="space-y-2">
