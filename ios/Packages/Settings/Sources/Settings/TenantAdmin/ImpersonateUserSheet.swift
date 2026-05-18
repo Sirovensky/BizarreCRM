@@ -163,6 +163,14 @@ public struct ImpersonateUserSheet: View {
         isProcessing = true
         defer { isProcessing = false }
         let success = await onConfirm(selectedUserId, reason, managerPin)
+        if Task.isCancelled {
+            // BUGHUNT-2026-05-17: nav-cancel during impersonation handshake —
+            // the onConfirm closure may have wrapped a real failure or a cancel.
+            // If cancelled, the server may have already issued the impersonation
+            // token; painting "Check your PIN" tempts a retry that burns a
+            // PIN-attempt counter on what was a successful elevation.
+            return
+        }
         if success {
             dismiss()
         } else {
