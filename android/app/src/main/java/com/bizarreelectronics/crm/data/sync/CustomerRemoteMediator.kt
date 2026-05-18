@@ -11,6 +11,7 @@ import com.bizarreelectronics.crm.data.local.db.entities.CustomerEntity
 import com.bizarreelectronics.crm.data.local.db.entities.SyncStateEntity
 import com.bizarreelectronics.crm.data.remote.api.CustomerApi
 import com.bizarreelectronics.crm.data.repository.toEntity
+import kotlinx.coroutines.CancellationException
 
 /**
  * Paging3 [RemoteMediator] for the customers list (plan:L874).
@@ -56,6 +57,18 @@ class CustomerRemoteMediator(
                 LoadType.REFRESH -> loadRefresh(state)
                 LoadType.APPEND -> loadAppend(state)
             }
+        } catch (e: CancellationException) {
+            // BUGHUNT-2026-05-17: don't convert coroutine cancellation into a
+            // MediatorResult.Error. Paging3 cancels the load coroutine on
+            // navigate-away, filter change, or refresh; previously
+            // `catch (e: Exception)` caught CancellationException, logged a
+            // spurious "load(REFRESH) error: …", and surfaced
+            // LoadState.Error to any LazyColumn observing the flow — which
+            // painted a fake "Couldn't load customers" banner on a screen the
+            // user had already left, and corrupted retry state (a retry()
+            // call would re-launch a load on a torn-down PagingSource).
+            // Re-throw so Paging's own cancellation handling runs cleanly.
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "load($loadType) error [${e.javaClass.simpleName}]: ${e.message}")
             MediatorResult.Error(e)
