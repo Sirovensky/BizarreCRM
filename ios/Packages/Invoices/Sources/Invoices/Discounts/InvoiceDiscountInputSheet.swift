@@ -162,6 +162,14 @@ public struct InvoiceDiscountInputSheet: View {
                     TextField("CODE", text: $vm.codeInput)
                         .textCase(.uppercase)
                         .autocorrectionDisabled()
+                        #if canImport(UIKit)
+                        // BUGHUNT-2026-05-18: `.textCase(.uppercase)` only
+                        // formats the display, leaving the keyboard in the
+                        // default `.sentences` mode. Use `.characters` so
+                        // every key on the keyboard is capital from the
+                        // start — saves the cashier the shift-tap dance.
+                        .textInputAutocapitalization(.characters)
+                        #endif
                         .font(.brandMono(size: 20))
                         .multilineTextAlignment(.center)
                         .padding(BrandSpacing.base)
