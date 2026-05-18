@@ -103,6 +103,12 @@ public final class CustomerContactViewModel {
                 contacts = contacts + [result]
             }
             savedContact = result
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: createCustomerContact is a POST that creates
+            // a row; cancellation + retry could duplicate the contact. Reset
+            // errorMessage so the user has to reopen the sheet rather than
+            // re-tap on a misleading "cancelled" banner.
+            errorMessage = nil
         } catch {
             errorMessage = AppError.from(error).localizedDescription
         }
