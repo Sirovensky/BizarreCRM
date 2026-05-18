@@ -240,55 +240,62 @@ public struct AdminSubscriptionDTO: Codable, Sendable, Identifiable {
 
 public extension APIClient {
 
+    // BUGHUNT-2026-05-17: every wrapper below was POSTing/GETing under
+    // `/membership/...`, but the iOS APIClient base URL is the shop origin
+    // (no `/api/v1` suffix — see Auth/LoginFlow.swift `setBaseURL`). The
+    // server mounts at `/api/v1/membership` (index.ts L1775), so every
+    // membership call from iOS 404'd. Re-prefix all paths to `/api/v1/...`
+    // — same pattern every other Endpoints file in this module uses.
+
     // MARK: Tiers
 
     /// List all active membership tiers.
-    /// `GET /membership/tiers`
+    /// `GET /api/v1/membership/tiers`
     func listMembershipTiers() async throws -> [MembershipTierDTO] {
-        try await get("/membership/tiers", as: [MembershipTierDTO].self)
+        try await get("/api/v1/membership/tiers", as: [MembershipTierDTO].self)
     }
 
     // MARK: Customer subscription
 
     /// Fetch the active subscription for a customer (nil if none).
-    /// `GET /membership/customer/:customerId`
+    /// `GET /api/v1/membership/customer/:customerId`
     func getCustomerSubscription(customerId: Int) async throws -> CustomerSubscriptionDTO? {
-        try await get("/membership/customer/\(customerId)", as: CustomerSubscriptionDTO?.self)
+        try await get("/api/v1/membership/customer/\(customerId)", as: CustomerSubscriptionDTO?.self)
     }
 
     // MARK: Lifecycle
 
     /// Enroll a customer in a membership tier.
-    /// `POST /membership/subscribe`
+    /// `POST /api/v1/membership/subscribe`
     func subscribeMembership(request: MembershipSubscribeRequest) async throws -> CustomerSubscriptionDTO {
-        try await post("/membership/subscribe", body: request, as: CustomerSubscriptionDTO.self)
+        try await post("/api/v1/membership/subscribe", body: request, as: CustomerSubscriptionDTO.self)
     }
 
     /// Cancel a subscription.
-    /// `POST /membership/:id/cancel`
+    /// `POST /api/v1/membership/:id/cancel`
     func cancelMembership(id: Int, immediate: Bool = false) async throws -> MembershipActionResultDTO {
         try await post(
-            "/membership/\(id)/cancel",
+            "/api/v1/membership/\(id)/cancel",
             body: MembershipCancelRequest(immediate: immediate),
             as: MembershipActionResultDTO.self
         )
     }
 
     /// Pause a subscription.
-    /// `POST /membership/:id/pause`
+    /// `POST /api/v1/membership/:id/pause`
     func pauseMembership(id: Int, reason: String? = nil) async throws -> MembershipActionResultDTO {
         try await post(
-            "/membership/\(id)/pause",
+            "/api/v1/membership/\(id)/pause",
             body: MembershipPauseRequest(reason: reason),
             as: MembershipActionResultDTO.self
         )
     }
 
     /// Resume a paused subscription.
-    /// `POST /membership/:id/resume`
+    /// `POST /api/v1/membership/:id/resume`
     func resumeMembership(id: Int) async throws -> MembershipActionResultDTO {
         try await post(
-            "/membership/\(id)/resume",
+            "/api/v1/membership/\(id)/resume",
             body: EmptyMembershipBody(),
             as: MembershipActionResultDTO.self
         )
@@ -297,24 +304,24 @@ public extension APIClient {
     // MARK: Payment history
 
     /// Get payment history for a subscription.
-    /// `GET /membership/:id/payments`
+    /// `GET /api/v1/membership/:id/payments`
     func getMembershipPayments(id: Int) async throws -> [SubscriptionPaymentDTO] {
-        try await get("/membership/\(id)/payments", as: [SubscriptionPaymentDTO].self)
+        try await get("/api/v1/membership/\(id)/payments", as: [SubscriptionPaymentDTO].self)
     }
 
     // MARK: Admin
 
     /// List all active subscriptions across all customers (admin).
-    /// `GET /membership/subscriptions`
+    /// `GET /api/v1/membership/subscriptions`
     func listAllSubscriptions() async throws -> [AdminSubscriptionDTO] {
-        try await get("/membership/subscriptions", as: [AdminSubscriptionDTO].self)
+        try await get("/api/v1/membership/subscriptions", as: [AdminSubscriptionDTO].self)
     }
 
     /// Generate a BlockChyp payment link for remote membership signup.
-    /// `POST /membership/payment-link`
+    /// `POST /api/v1/membership/payment-link`
     func createMembershipPaymentLink(tierId: Int, customerId: Int?) async throws -> MembershipPaymentLinkDTO {
         return try await post(
-            "/membership/payment-link",
+            "/api/v1/membership/payment-link",
             body: MembershipPaymentLinkBody(tierId: tierId, customerId: customerId),
             as: MembershipPaymentLinkDTO.self
         )

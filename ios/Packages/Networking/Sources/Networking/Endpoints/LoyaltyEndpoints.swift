@@ -114,15 +114,20 @@ public extension APIClient {
     ///
     /// Throws on 5xx network errors. 404 from analytics → `.httpStatus(404)`.
     func getLoyaltyBalance(customerId: Int64) async throws -> LoyaltyBalance {
-        // Fetch analytics and subscription concurrently.
+        // BUGHUNT-2026-05-17: both paths were missing the `/api/v1` prefix
+        // that every other Endpoints file in this module uses (the iOS
+        // APIClient base URL points at the shop origin, not at `/api/v1`).
+        // getLoyaltyBalance therefore always 404'd on `/customers/:id/analytics`,
+        // which surfaced as "lifetime spend unavailable" in the loyalty card
+        // for every customer.
         async let analyticsTask = get(
-            "/customers/\(customerId)/analytics",
+            "/api/v1/customers/\(customerId)/analytics",
             as: CustomerAnalyticsDTO.self
         )
         async let subscriptionTask: CustomerSubscriptionDTO? = {
             do {
                 return try await get(
-                    "/membership/customer/\(customerId)",
+                    "/api/v1/membership/customer/\(customerId)",
                     as: CustomerSubscriptionDTO?.self
                 )
             } catch {
@@ -181,8 +186,13 @@ public extension APIClient {
         guard let base = await currentBaseURL() else {
             throw APITransportError.noBaseURL
         }
+        // BUGHUNT-2026-05-17: path was missing the `/api/v1` prefix the
+        // base URL doesn't include — the server mounts under
+        // `/api/v1/crm/customers/:id/wallet-pass` so the previous form
+        // 404'd, then the function (correctly) translated 404 → "pkpass
+        // not configured" so the cashier saw "coming soon" forever.
         var comps = URLComponents(
-            url: base.appendingPathComponent("/crm/customers/\(customerId)/wallet-pass"),
+            url: base.appendingPathComponent("/api/v1/crm/customers/\(customerId)/wallet-pass"),
             resolvingAgainstBaseURL: false
         )
         comps?.queryItems = [URLQueryItem(name: "format", value: "pkpass")]
