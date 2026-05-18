@@ -170,6 +170,14 @@ public final class InvoiceRefundViewModel {
         do {
             let result = try await api.createRefund(body: body)
             state = .success(RefundResult(id: result.id))
+        } catch let e where AppError.isCancellation(e) {
+            // Refund is a real money write. If the server accepted the
+            // POST before the cancel reached the URLSession task, a retry
+            // double-refunds. Bring the sheet back to .idle (not .failed)
+            // so the user must re-confirm intent; the next list refresh
+            // shows whether the original refund landed.
+            state = .idle
+            return
         } catch {
             AppLog.ui.error("Refund failed: \(error.localizedDescription, privacy: .public)")
             handleError(AppError.from(error))
