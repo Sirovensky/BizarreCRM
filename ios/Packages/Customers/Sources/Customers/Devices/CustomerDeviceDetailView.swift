@@ -138,6 +138,8 @@ struct CustomerDeviceDetailView: View {
         errorMessage = nil
         do {
             tickets = try await api.customerDeviceTickets(customerId: customerId, deviceId: device.id)
+        } catch let e where AppError.isCancellation(e) {
+            return
         } catch {
             errorMessage = AppError.from(error).localizedDescription
         }

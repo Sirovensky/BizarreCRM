@@ -66,6 +66,8 @@ public final class PunchCardComboRuleViewModel {
         do {
             settings = try await api.updatePunchCardComboRules(settings)
             savedSuccessfully = true
+        } catch let e where AppError.isCancellation(e) {
+            return
         } catch {
             errorMessage = AppError.from(error).localizedDescription
         }

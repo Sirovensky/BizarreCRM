@@ -493,6 +493,8 @@ public struct InvoiceDetailView: View {
             let url = try await printService.generatePDF(invoice: inv)
             pdfURL = url
             showSharePDF = true
+        } catch let e where AppError.isCancellation(e) {
+            return
         } catch {
             pdfError = error.localizedDescription
             AppLog.ui.error("Invoice PDF generation failed: \(error.localizedDescription, privacy: .public)")
@@ -510,6 +512,8 @@ public struct InvoiceDetailView: View {
         do {
             let url = try await printService.generatePDF(invoice: inv)
             await presentAirPrint(pdfURL: url)
+        } catch let e where AppError.isCancellation(e) {
+            return
         } catch {
             pdfError = error.localizedDescription
             AppLog.ui.error("Invoice AirPrint failed: \(error.localizedDescription, privacy: .public)")
@@ -537,6 +541,8 @@ public struct InvoiceDetailView: View {
         do {
             let cloned = try await api.cloneInvoice(id: inv.id)
             clonedInvoiceId = cloned.id
+        } catch let e where AppError.isCancellation(e) {
+            return
         } catch {
             cloneError = error.localizedDescription
             AppLog.ui.error("Invoice clone failed: \(error.localizedDescription, privacy: .public)")

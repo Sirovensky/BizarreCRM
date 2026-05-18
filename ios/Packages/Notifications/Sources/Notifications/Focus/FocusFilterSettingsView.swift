@@ -1,5 +1,6 @@
 import SwiftUI
 import Observation
+import Core
 import DesignSystem
 
 // MARK: - FocusFilterSettingsViewModel
@@ -24,6 +25,8 @@ public final class FocusFilterSettingsViewModel {
         guard let endpoints else { return }
         do {
             descriptor = try await endpoints.fetchDescriptor()
+        } catch let e where AppError.isCancellation(e) {
+            return
         } catch {
             self.error = error.localizedDescription
         }
@@ -44,6 +47,8 @@ public final class FocusFilterSettingsViewModel {
         do {
             try await endpoints.saveDescriptor(descriptor)
             error = nil
+        } catch let e where AppError.isCancellation(e) {
+            return
         } catch {
             self.error = error.localizedDescription
         }

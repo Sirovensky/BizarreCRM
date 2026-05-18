@@ -224,6 +224,8 @@ public struct CustomerHealthExplainerSheet: View {
         do {
             _ = try await api.recalculateCustomerHealthScore(customerId: detail.id)
             recalcDone = true
+        } catch let e where AppError.isCancellation(e) {
+            return
         } catch {
             recalcError = error.localizedDescription
         }

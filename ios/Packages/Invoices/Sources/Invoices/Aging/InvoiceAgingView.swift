@@ -106,6 +106,8 @@ final class InvoiceAgingViewModel {
         do {
             let report = try await api.invoiceAgingReport()
             loadState = .loaded(report)
+        } catch let e where AppError.isCancellation(e) {
+            loadState = .idle
         } catch {
             AppLog.ui.error("InvoiceAging load failed: \(error.localizedDescription, privacy: .public)")
             loadState = .failed(error.localizedDescription)
@@ -124,6 +126,8 @@ final class InvoiceAgingViewModel {
             let name = customerName ?? "customer"
             reminderMessage = "Reminder sent to \(name) for \(displayId)"
             reminderRecipient = name
+        } catch let e where AppError.isCancellation(e) {
+            return
         } catch {
             AppLog.ui.error("Aging reminder failed: \(error.localizedDescription, privacy: .public)")
             reminderMessage = "Couldn't send reminder — \(error.localizedDescription)"

@@ -132,6 +132,8 @@ public struct CustomerPinnedNotesBanner: View {
             try await api.setCustomerNotePinned(
                 customerId: customerId, noteId: note.id, pinned: false)
             pinnedNotes.removeAll { $0.id == note.id }
+        } catch let e where AppError.isCancellation(e) {
+            return
         } catch { /* non-critical */ }
     }
 }
@@ -285,6 +287,8 @@ public struct CustomerNotesListView: View {
             try await api.setCustomerNotePinned(
                 customerId: customerId, noteId: note.id, pinned: newPinned)
             await load()
+        } catch let e where AppError.isCancellation(e) {
+            return
         } catch { /* best-effort */ }
     }
 
@@ -296,6 +300,8 @@ public struct CustomerNotesListView: View {
             draftBody = ""
             showingAddSheet = false
             await load()
+        } catch let e where AppError.isCancellation(e) {
+            return
         } catch { /* error display TBD */ }
     }
 }

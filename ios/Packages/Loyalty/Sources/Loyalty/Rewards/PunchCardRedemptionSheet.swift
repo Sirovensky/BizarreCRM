@@ -39,6 +39,10 @@ public final class PunchCardRedemptionViewModel {
                 allowStacking: allowStacking
             )
             phase = .success(redemptionCode: result.redemptionCode)
+        } catch let e where AppError.isCancellation(e) {
+            // Nav-cancel during in-flight POST: preserve confirm state so
+            // a retap does not fire a second redemption against the server.
+            phase = .confirm
         } catch {
             AppLog.ui.error("Punch card redemption failed: \(error.localizedDescription, privacy: .public)")
             phase = .failure(error.localizedDescription)

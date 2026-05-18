@@ -388,6 +388,8 @@ public struct EmployeesThreeColumnView: View {
         do {
             try await api.assignEmployeeRole(userId: employee.id, roleId: roleId)
             await vm.forceRefresh()
+        } catch let e where AppError.isCancellation(e) {
+            return
         } catch {
             AppLog.ui.error("Assign role failed: \(error.localizedDescription, privacy: .public)")
             actionError = error.localizedDescription
@@ -400,6 +402,8 @@ public struct EmployeesThreeColumnView: View {
         do {
             _ = try await api.setEmployeeActive(id: employee.id, isActive: !employee.active)
             await vm.forceRefresh()
+        } catch let e where AppError.isCancellation(e) {
+            return
         } catch {
             AppLog.ui.error("Toggle active failed: \(error.localizedDescription, privacy: .public)")
             actionError = error.localizedDescription

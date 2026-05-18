@@ -315,6 +315,8 @@ public struct DeadLetterQueueView: View {
         defer { isLoading = false }
         do {
             items = try await store.fetchAll(limit: 200)
+        } catch let e where AppError.isCancellation(e) {
+            return
         } catch {
             loadError = error.localizedDescription
             AppLog.sync.error("DeadLetterQueueView.loadItems failed: \(error, privacy: .public)")
