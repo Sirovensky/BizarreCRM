@@ -1,6 +1,7 @@
 package com.bizarreelectronics.crm.ui.screens.tickets.components
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -9,6 +10,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.data.remote.dto.WarrantyResult
 import com.bizarreelectronics.crm.util.DateFormatter
@@ -47,6 +49,10 @@ fun TicketWarrantyDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !isLoading,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Characters,
+                        autoCorrect = false,
+                    ),
                 )
 
                 when {
