@@ -133,6 +133,12 @@ public final class PaginatedLoader<Item: Identifiable & Sendable>: Sendable {
             append(newItems: result.items)
             currentPage = result.page
             hasMore = result.hasMore
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav-cancel mid-page-load must not paint
+            // `self.error` — the SwiftUI consumer would surface a "Failed to
+            // load page" toast on the screen the user just left. Stay silent;
+            // the next .task firing will retry naturally.
+            return
         } catch {
             self.error = error
             // Don't flip hasMore on error so the caller can retry.
