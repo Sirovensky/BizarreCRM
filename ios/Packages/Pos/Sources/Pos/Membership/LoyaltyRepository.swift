@@ -71,10 +71,18 @@ public struct LoyaltyRepositoryLive: LoyaltyRepository {
 
     public func fetchAccount(customerId: Int64) async throws -> LoyaltyAccount? {
         // 1. Fetch membership subscription concurrently with analytics balance.
+        // BUGHUNT-2026-05-17: server mounts membership.routes at
+        // /api/v1/membership (index.ts:1775) and /customer/:customerId at
+        // membership.routes.ts:150. Was missing the /api/v1 prefix → every
+        // call 404'd, which the catch arm below already maps to nil (treated
+        // as "customer has no subscription"). The cumulative effect: every
+        // POS lookup of a customer's loyalty status reported "not a member"
+        // regardless of actual subscription state. Same fix at redeemPoints
+        // subscription fetch below.
         async let subscriptionTask: CustomerSubscriptionDTO? = {
             do {
                 return try await api.get(
-                    "/membership/customer/\(customerId)",
+                    "/api/v1/membership/customer/\(customerId)",
                     as: CustomerSubscriptionDTO?.self
                 )
             } catch {
@@ -124,7 +132,7 @@ public struct LoyaltyRepositoryLive: LoyaltyRepository {
         let sub: CustomerSubscriptionDTO?
         do {
             sub = try await api.get(
-                "/membership/customer/\(customerId)",
+                "/api/v1/membership/customer/\(customerId)",
                 as: CustomerSubscriptionDTO?.self
             )
         } catch let e where AppError.isCancellation(e) {
