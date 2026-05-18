@@ -71,7 +71,15 @@ class PaymentLinkViewModel @Inject constructor(
             _createState.value = s.copy(error = "Enter a valid amount")
             return
         }
-        val amountCents = (amountDollars * java.math.BigDecimal(100)).toLong()
+        // BUGHUNT-2026-05-17: round half-up instead of truncating. BigDecimal
+        // .toLong() silently discards fractional cents, so "$5.999" entered
+        // in the amount field generated a link for $5.99 instead of $6.00.
+        // Always settle to whole cents using bankers'-style rounding before
+        // sending to the server.
+        val amountCents = amountDollars
+            .multiply(java.math.BigDecimal(100))
+            .setScale(0, java.math.RoundingMode.HALF_UP)
+            .longValueExact()
 
         viewModelScope.launch {
             _createState.value = s.copy(isLoading = true, error = null)
