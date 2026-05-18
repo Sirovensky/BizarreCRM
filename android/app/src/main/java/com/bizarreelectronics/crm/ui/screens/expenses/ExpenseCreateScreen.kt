@@ -247,6 +247,11 @@ class ExpenseCreateViewModel @Inject constructor(
                         ocrToast = "OCR found no data — please fill in manually",
                     )
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-18: don't paint "Receipt scan failed" on
+                // a screen the user already navigated away from. The OCR
+                // is best-effort — the next re-scan re-fires this flow.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isOcrRunning = false,
