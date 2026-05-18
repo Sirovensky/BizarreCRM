@@ -247,6 +247,14 @@ public final class PosRepairFlowCoordinator {
 
             currentStep = .describeIssue
 
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: step navigation cancelled mid-POST. Either
+            // the ticket create or the device attach may have committed
+            // server-side. Painting an error would invite retap; on retap a
+            // missing savedDraftId would create a DUPLICATE ticket. Stay on
+            // the current step and let the user re-tap deliberately —
+            // savedDraftId persists so a follow-up tap won't dup the ticket.
+            return
         } catch {
             AppLog.pos.error("RepairFlow commitDeviceStep: \(error.localizedDescription, privacy: .public)")
             errorMessage = "Could not save device. \(error.localizedDescription)"
@@ -292,6 +300,11 @@ public final class PosRepairFlowCoordinator {
 
             currentStep = .diagnosticQuote
 
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: symptom-note POST cancelled. The note may
+            // have committed; on retry the same symptom would be appended
+            // again as a duplicate note. Stay silent.
+            return
         } catch {
             AppLog.pos.error("RepairFlow commitSymptomStep: \(error.localizedDescription, privacy: .public)")
             errorMessage = "Could not save symptom. \(error.localizedDescription)"
@@ -322,6 +335,10 @@ public final class PosRepairFlowCoordinator {
 
             currentStep = .deposit
 
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: diagnostic-note POST cancelled. Same as
+            // symptom step — silent fail prevents duplicate notes on retry.
+            return
         } catch {
             AppLog.pos.error("RepairFlow commitQuoteStep: \(error.localizedDescription, privacy: .public)")
             errorMessage = "Could not save diagnostic quote. \(error.localizedDescription)"
@@ -346,6 +363,15 @@ public final class PosRepairFlowCoordinator {
             AppLog.pos.info("RepairFlow: converted ticket \(ticketId, privacy: .public) → invoice \(resolvedId, privacy: .public)")
             onComplete?(resolvedId)
 
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: convert-to-invoice POST cancelled. The
+            // ticket may have ALREADY been converted server-side. Painting
+            // "Could not finalize repair ticket" tempts a retry that would
+            // attempt a second conversion — which depending on server
+            // implementation could create a duplicate invoice or 409 with
+            // a confusing message to the cashier. Stay silent on cancel;
+            // the next .task on the parent reconciles the converted state.
+            return
         } catch {
             AppLog.pos.error("RepairFlow commitDepositStep: \(error.localizedDescription, privacy: .public)")
             errorMessage = "Could not finalize repair ticket. \(error.localizedDescription)"
