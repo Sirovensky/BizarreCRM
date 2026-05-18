@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Foundation
 import Observation
+import Core
 import Networking
 
 // MARK: - GiftCardTransferViewModel
@@ -78,6 +79,11 @@ public final class GiftCardTransferViewModel {
         do {
             sourceCard = try await api.lookupGiftCard(code: trimmed)
             state = .idle
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: lookup cancelled (sheet dismissed or rapid
+            // re-type). Don't paint a misleading "Failed" banner.
+            state = .idle
+            return
         } catch let APITransportError.httpStatus(code, message) {
             state = .failure("Source lookup failed (\(code)): \(message ?? "Not found")")
         } catch {
@@ -92,6 +98,11 @@ public final class GiftCardTransferViewModel {
         do {
             targetCard = try await api.lookupGiftCard(code: trimmed)
             state = .idle
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: lookup cancelled (sheet dismissed or rapid
+            // re-type). Don't paint a misleading "Failed" banner.
+            state = .idle
+            return
         } catch let APITransportError.httpStatus(code, message) {
             state = .failure("Target lookup failed (\(code)): \(message ?? "Not found")")
         } catch {
@@ -112,6 +123,13 @@ public final class GiftCardTransferViewModel {
         do {
             let response = try await api.transferGiftCard(request)
             state = .success(response)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: Sheet dismissed mid-transfer cancelled the Task.
+            // Painting .failure invites a retry that could double-debit the
+            // source card or double-credit the target. Revert to .idle so any
+            // retry is intentional; both card lookups are preserved.
+            state = .idle
+            return
         } catch let APITransportError.httpStatus(code, message) {
             let msg = (message?.isEmpty == false) ? message! : "Transfer failed"
             state = .failure("Transfer failed (\(code)): \(msg)")
