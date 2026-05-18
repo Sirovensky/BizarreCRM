@@ -52,6 +52,12 @@ public final class InventoryAdjustViewModel {
         do {
             let resp = try await api.adjustStock(itemId: itemId, request: req)
             newQty = resp.newQty
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: adjustStock creates a stock_movements row
+            // AND increments inventories.qty_on_hand — not idempotent. A
+            // cancellation toast tempts a re-tap that would double-apply
+            // the delta. Surface a verification hint instead.
+            errorMessage = "Submission was interrupted. Refresh the item to verify the new quantity before retrying."
         } catch {
             AppLog.ui.error("Inventory adjust failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
