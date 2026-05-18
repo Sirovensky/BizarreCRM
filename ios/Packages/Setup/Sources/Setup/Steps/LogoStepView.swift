@@ -59,12 +59,19 @@ final class LogoStepViewModel {
             uploadedURL = "placeholder://logo"
             return
         }
+        guard !isUploading else { return }
         isUploading = true
         uploadError = nil
         defer { isUploading = false }
         do {
             uploadedURL = try await repo.uploadLogo(data: data)
             AppLog.ui.info("Logo uploaded: \(self.uploadedURL ?? "nil", privacy: .public)")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: logo upload cancelled mid-flight may have
+            // flushed the multipart body server-side. Retry would create a
+            // duplicate logo file in the tenant uploads dir. Stay silent;
+            // user re-picks photo to retry deliberately.
+            return
         } catch {
             uploadError = error.localizedDescription
         }
