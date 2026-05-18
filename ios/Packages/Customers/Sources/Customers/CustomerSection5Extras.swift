@@ -869,7 +869,13 @@ public struct CustomerRelatedCustomersCardWithLink: View {
     private func load() async {
         isLoading = true
         defer { isLoading = false }
-        relationships = (try? await api.customerRelationships(customerId: customerId)) ?? []
+        let resolved = (try? await api.customerRelationships(customerId: customerId)) ?? []
+        // BUGHUNT-2026-05-18: try? swallows CancellationError to nil → `?? []`
+        // would clobber previously-loaded relationships on a nav-race even
+        // though the user might be navigating BACK to the same screen
+        // (.task re-fires).
+        if Task.isCancelled { return }
+        relationships = resolved
     }
 }
 
