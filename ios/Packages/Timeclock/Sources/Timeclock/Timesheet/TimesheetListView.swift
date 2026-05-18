@@ -281,22 +281,47 @@ public struct ClockEntryEditSheet: View {
     public var body: some View {
         NavigationStack {
             Form {
-                Section("Clock Times (ISO-8601 UTC)") {
-                    LabeledContent("Clock In") {
-                        TextField("Clock In", text: $clockInText)
-                            .autocorrectionDisabled()
-                            #if canImport(UIKit)
-                            .textInputAutocapitalization(.never)
-                            #endif
-                            .accessibilityLabel("Clock-in timestamp")
-                    }
-                    LabeledContent("Clock Out") {
-                        TextField("Clock Out (optional)", text: $clockOutText)
-                            .autocorrectionDisabled()
-                            #if canImport(UIKit)
-                            .textInputAutocapitalization(.never)
-                            #endif
-                            .accessibilityLabel("Clock-out timestamp")
+                // BUGHUNT-2026-05-18: managers correcting a timesheet had to
+                // hand-type ISO-8601 UTC strings (e.g. "2026-05-18T13:00:00Z").
+                // Common typos (timezone, day/month swap) silently changed
+                // the punch time on the server. Use DatePickers bound through
+                // an ISO8601 String<->Date adapter so the server contract is
+                // preserved while the manager picks a human time.
+                Section("Clock Times") {
+                    DatePicker(
+                        "Clock In",
+                        selection: Binding(
+                            get: { Self.parseISO(clockInText) ?? Date() },
+                            set: { clockInText = Self.formatISO($0) }
+                        ),
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    .accessibilityLabel("Clock-in timestamp")
+
+                    Toggle("Clock Out set", isOn: Binding(
+                        get: { !clockOutText.isEmpty },
+                        set: { hasOut in
+                            if hasOut {
+                                if clockOutText.isEmpty {
+                                    clockOutText = Self.formatISO(Date())
+                                }
+                            } else {
+                                clockOutText = ""
+                            }
+                        }
+                    ))
+                    .accessibilityLabel("Has clock-out time")
+
+                    if !clockOutText.isEmpty {
+                        DatePicker(
+                            "Clock Out",
+                            selection: Binding(
+                                get: { Self.parseISO(clockOutText) ?? Date() },
+                                set: { clockOutText = Self.formatISO($0) }
+                            ),
+                            displayedComponents: [.date, .hourAndMinute]
+                        )
+                        .accessibilityLabel("Clock-out timestamp")
                     }
                 }
 
@@ -353,6 +378,27 @@ public struct ClockEntryEditSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    /// ISO-8601 adapter — accepts both fractional ("2026-05-18T13:00:00.000Z")
+    /// and plain forms so the existing stored value round-trips regardless of
+    /// which producer wrote it (see ShiftTimestampParser memo).
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+    fileprivate static func parseISO(_ raw: String) -> Date? {
+        if let d = isoFractional.date(from: raw) { return d }
+        return isoPlain.date(from: raw)
+    }
+    fileprivate static func formatISO(_ date: Date) -> String {
+        isoPlain.string(from: date)
     }
 }
 
