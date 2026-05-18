@@ -121,7 +121,18 @@ export function PhotoMementosWallet({ customerId }: PhotoMementosWalletProps) {
               {photo.device_name ?? photo.order_id}
             </div>
             <div className="truncate text-[10px] text-surface-400 dark:text-surface-500">
-              {new Date(photo.created_at).toLocaleDateString()}
+              {/* BUGHUNT-2026-05-17: created_at is a SQLite datetime('now')
+                  string like "2026-05-17 03:14:22" (UTC, no 'Z' suffix). V8
+                  parses bare "YYYY-MM-DD HH:MM:SS" as LOCAL time, so a photo
+                  taken at 23:30 UTC (early next morning in the customer's
+                  local zone) shows as the *previous* day on screen. Append
+                  'Z' before parsing so toLocaleDateString shifts UTC →
+                  local correctly. */}
+              {new Date(
+                photo.created_at.includes('T') || photo.created_at.endsWith('Z')
+                  ? photo.created_at
+                  : `${photo.created_at.replace(' ', 'T')}Z`,
+              ).toLocaleDateString()}
             </div>
           </Link>
         ))}
