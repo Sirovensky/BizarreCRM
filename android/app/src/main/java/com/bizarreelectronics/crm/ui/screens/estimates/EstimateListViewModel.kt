@@ -7,6 +7,7 @@ import com.bizarreelectronics.crm.data.local.db.entities.EstimateEntity
 import com.bizarreelectronics.crm.data.repository.EstimateRepository
 import com.bizarreelectronics.crm.ui.screens.estimates.components.EstimateFilterState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -230,13 +231,26 @@ class EstimateListViewModel @Inject constructor(
     fun bulkSend() {
         val ids = _state.value.selectedIds.toList()
         viewModelScope.launch {
-            ids.forEach { id ->
-                runCatching { estimateRepository.sendEstimate(id, "sms") }
+            // BUGHUNT-2026-05-17: each runCatching here swallows
+            // CancellationException, so a nav-cancel mid-bulk-send was
+            // letting the rest of the loop continue dispatching SMS to
+            // every selected customer — TCPA-class double-send hazard.
+            // Re-throw cancellation so the loop breaks cleanly.
+            var sent = 0
+            for (id in ids) {
+                try {
+                    estimateRepository.sendEstimate(id, "sms")
+                    sent += 1
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w("EstimateList", "bulkSend $id failed: ${e.message}")
+                }
             }
             _state.value = _state.value.copy(
                 selectedIds = emptySet(),
                 isBulkMode = false,
-                actionMessage = "Sent ${ids.size} estimate(s)",
+                actionMessage = "Sent $sent of ${ids.size} estimate(s)",
             )
         }
     }
@@ -244,13 +258,24 @@ class EstimateListViewModel @Inject constructor(
     fun bulkDelete() {
         val ids = _state.value.selectedIds.toList()
         viewModelScope.launch {
-            ids.forEach { id ->
-                runCatching { estimateRepository.deleteEstimate(id) }
+            // BUGHUNT-2026-05-17: same antipattern as bulkSend. Nav cancel
+            // mid-loop kept deleting remaining estimates server-side. Use
+            // try/catch+rethrow so cancel actually stops the loop.
+            var deleted = 0
+            for (id in ids) {
+                try {
+                    estimateRepository.deleteEstimate(id)
+                    deleted += 1
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w("EstimateList", "bulkDelete $id failed: ${e.message}")
+                }
             }
             _state.value = _state.value.copy(
                 selectedIds = emptySet(),
                 isBulkMode = false,
-                actionMessage = "Deleted ${ids.size} estimate(s)",
+                actionMessage = "Deleted $deleted of ${ids.size} estimate(s)",
             )
         }
     }
