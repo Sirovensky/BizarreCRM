@@ -61,6 +61,12 @@ final class CreditNoteComposeViewModel {
 
         do {
             created = try await repo.create(req)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancels create POST, but
+            // server may have committed the credit note. Retap creates
+            // DUPLICATE credit note for the same amount — double-refund
+            // risk on subsequent apply. Stay silent.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

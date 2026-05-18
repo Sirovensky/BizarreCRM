@@ -54,6 +54,8 @@ final class CreditNoteApplyViewModel {
         do {
             let notes = try await repo.list(customerId: customerId)
             availableNotes = notes.filter { $0.status == .open }
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -80,6 +82,12 @@ final class CreditNoteApplyViewModel {
         do {
             _ = try await repo.apply(req)
             didApply = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancels apply POST, but
+            // server may have committed (credit note balance reduced +
+            // invoice paid down). Retap could over-apply the same credit
+            // note. Stay silent.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

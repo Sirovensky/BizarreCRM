@@ -139,6 +139,8 @@ public struct InvoiceCustomerPickerSheet: View {
                 as: CustomerPickerListResponse.self
             )
             results = items.customers
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: search debounce cancel
         } catch {
             errorMessage = error.localizedDescription
         }

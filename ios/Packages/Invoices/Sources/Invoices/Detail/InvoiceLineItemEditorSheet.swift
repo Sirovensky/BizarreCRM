@@ -75,6 +75,12 @@ final class InvoiceLineItemEditorViewModel {
             })
             try await api.updateInvoiceLines(invoiceId: invoiceId, body: body)
             saved = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancels line-item PATCH,
+            // but server may have committed. Stay silent so retap doesn't
+            // re-PATCH (audit row noise + potential 409 on updated_at).
+            isSubmitting = false
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

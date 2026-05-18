@@ -36,6 +36,13 @@ final class InvoiceConvertFromTicketViewModel {
         do {
             let response = try await api.convertTicketToInvoice(ticketId: id)
             convertedInvoiceId = response.resolvedInvoiceId
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancels convert POST, but
+            // server may have committed (invoice created from ticket).
+            // Retap creates DUPLICATE invoice for the same ticket — both
+            // try to bill the customer. Stay silent.
+            isConverting = false
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

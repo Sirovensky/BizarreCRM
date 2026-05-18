@@ -191,6 +191,11 @@ public struct OpenRegisterSheet: View {
             Task { await HapticCatalog.play(.drawerKick) }
             AppLog.pos.info("POS drawer opened: session=\(record.id ?? -1) float=\(cents)")
             onOpened(record)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancels openSession, but
+            // local store may have committed (drawer kicked). Retap hits
+            // alreadyOpen — already handled. Stay silent on cancel.
+            return
         } catch CashRegisterError.alreadyOpen {
             errorMessage = "A session is already open — reloading."
             if let current = try? await CashRegisterStore.shared.currentSession() {

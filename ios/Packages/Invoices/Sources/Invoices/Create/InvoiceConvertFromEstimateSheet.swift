@@ -36,6 +36,12 @@ final class InvoiceConvertFromEstimateViewModel {
         do {
             let response = try await api.convertEstimateToInvoice(estimateId: id)
             convertedInvoiceId = response.invoiceId
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancels convert POST, but
+            // server may have committed (invoice created). Retap creates
+            // DUPLICATE invoice from the same estimate. Stay silent.
+            isConverting = false
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
