@@ -208,6 +208,9 @@ public struct InventoryDetailView: View {
         do {
             try await api.deactivateInventoryItem(id: resp.item.id)
             onDeleted?()  // pop back — item is now invisible in list
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: deactivate is soft-delete; idempotent server-side but retry-prompt on cancellation banner is misleading. Silent return; if user navs back the item shows as deactivated on list refresh.
+            return
         } catch {
             AppLog.ui.error("Deactivate item failed: \(error.localizedDescription, privacy: .public)")
             actionError = error.localizedDescription
@@ -224,6 +227,9 @@ public struct InventoryDetailView: View {
         do {
             try await api.deactivateInventoryItem(id: resp.item.id)
             onDeleted?()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: delete is soft-delete; idempotent but retry-prompt is misleading. Silent return.
+            return
         } catch {
             AppLog.ui.error("Delete item failed: \(error.localizedDescription, privacy: .public)")
             actionError = error.localizedDescription

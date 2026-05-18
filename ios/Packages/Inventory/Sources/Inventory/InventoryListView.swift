@@ -305,6 +305,9 @@ public struct InventoryListView: View {
         do {
             let item = try await api.inventoryItemByBarcode(code)
             appendPath(item.id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: rapid scan cancels prior lookup; preserve last hidScanErrorMessage instead of false-negative "No item found".
+            return
         } catch {
             // Not found — surface briefly
             hidScanErrorMessage = "No item found for code \"\(code)\""
