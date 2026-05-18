@@ -522,7 +522,7 @@ private fun LeadSwipeRow(
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.SemiBold)
                             Spacer(Modifier.width(4.dp))
-                            Icon(Icons.Default.ArrowBack, contentDescription = null,
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null,
                                 tint = scheme.onErrorContainer)
                         }
                     }
