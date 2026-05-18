@@ -140,15 +140,24 @@ class PosEntryViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            runCatching {
-                customerApi.createCustomer(
+            // BUGHUNT-2026-05-17: createCustomer is an audit-writing POST that
+            // commits a `customers` row server-side. runCatching swallowed
+            // CancellationException, so a cancellation (cashier backed out)
+            // would fall into the `.onFailure` fallback, attach a bare walk-in
+            // locally, and on the next sale finalization the server might end
+            // up with two walk-in customer rows (the one this request committed
+            // before cancel-delivery + any phone-search-then-create retry).
+            // Explicit try/catch with re-throw stops the local fallback when
+            // the coroutine was cancelled rather than the network actually
+            // failing.
+            try {
+                val resp = customerApi.createCustomer(
                     CreateCustomerRequest(
                         firstName = "Walk-in",
                         lastName = null,
                         phone = phone.trim(),
                     )
                 )
-            }.onSuccess { resp ->
                 val detail = resp.data
                 val attached = if (detail != null) {
                     PosAttachedCustomer(
@@ -162,7 +171,9 @@ class PosEntryViewModel @Inject constructor(
                 }
                 coordinator.attachCustomer(attached)
                 _uiState.update { it.copy(attachedCustomer = attached) }
-            }.onFailure {
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
                 // Network / server error — fall back to bare walk-in so the
                 // sale is never blocked by a transient connectivity issue.
                 val walkIn = PosAttachedCustomer(id = 0L, name = "Walk-in customer", phone = phone.trim())
