@@ -12,6 +12,7 @@ import com.bizarreelectronics.crm.data.remote.dto.CreateTicketDeviceRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreateTicketRequest
 import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -376,19 +377,23 @@ class CheckInViewModel @Inject constructor(
             )
         }
         viewModelScope.launch {
-            runCatching {
+            // BUGHUNT-2026-05-17: runCatching swallowed CancellationException.
+            // POST/PATCH writes a default repair price — server-side row
+            // committed before nav cancellation, retap could create a
+            // duplicate (when existingPriceId branch was wrong) or 409 on
+            // unique-key conflict. Re-throw to preserve coroutine cancel.
+            try {
                 val request = UpsertRepairPriceRequest(
                     deviceModelId = candidate.deviceModelId,
                     repairServiceId = candidate.repairServiceId,
                     laborPrice = laborPrice,
                 )
                 val existingPriceId = candidate.existingPriceId
-                if (existingPriceId != null) {
+                val response = if (existingPriceId != null) {
                     repairPricingApi.updatePrice(existingPriceId, request)
                 } else {
                     repairPricingApi.createPrice(request)
                 }
-            }.onSuccess { response ->
                 val savedPriceId = response.data?.id
                 _uiState.update {
                     val updatedCandidate = if (savedPriceId != null) {
@@ -407,7 +412,9 @@ class CheckInViewModel @Inject constructor(
                 if (_uiState.value.currentStep == 4) {
                     advanceToStep(5)
                 }
-            }.onFailure { error ->
+            } catch (e: CancellationException) {
+                throw e
+            } catch (error: Exception) {
                 _uiState.update {
                     it.copy(
                         isSavingManualPriceDefault = false,
