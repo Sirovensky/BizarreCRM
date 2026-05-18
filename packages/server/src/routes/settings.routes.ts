@@ -455,66 +455,91 @@ const SENSITIVE_CONFIG_KEYS = new Set([
 //   wizard_completed: 'true' | 'skipped' | 'grandfathered' | null — wizard gate state.
 //     null means "brand new tenant, show the wizard" (only possible post-feature deploy)
 //   setup_imported_legacy_data: 'will_import' | 'later' | 'fresh' | null — setup import intent.
+// BUGHUNT-2026-05-17: wrap bare-async handler — `Promise.all` on four DB gets
+// rejects with the first failure; without try/catch it becomes an unhandledRejection.
 router.get('/setup-status', async (req, res) => {
-  const adb = req.asyncDb;
-  const [row, nameRow, wizardRow, importChoiceRow] = await Promise.all([
-    adb.get<any>("SELECT value FROM store_config WHERE key = 'setup_completed'"),
-    adb.get<any>("SELECT value FROM store_config WHERE key = 'store_name'"),
-    adb.get<any>("SELECT value FROM store_config WHERE key = 'wizard_completed'"),
-    adb.get<any>("SELECT value FROM store_config WHERE key = 'setup_imported_legacy_data'"),
-  ]);
-  const completed = row?.value === true || row?.value === 1 || row?.value === '1' || row?.value === 'true';
-  res.json({
-    success: true,
-    data: {
-      setup_completed: completed,
-      store_name: nameRow?.value || null,
-      wizard_completed: wizardRow?.value || null,
-      setup_imported_legacy_data: importChoiceRow?.value || null,
-    },
-  });
+  try {
+    const adb = req.asyncDb;
+    const [row, nameRow, wizardRow, importChoiceRow] = await Promise.all([
+      adb.get<any>("SELECT value FROM store_config WHERE key = 'setup_completed'"),
+      adb.get<any>("SELECT value FROM store_config WHERE key = 'store_name'"),
+      adb.get<any>("SELECT value FROM store_config WHERE key = 'wizard_completed'"),
+      adb.get<any>("SELECT value FROM store_config WHERE key = 'setup_imported_legacy_data'"),
+    ]);
+    const completed = row?.value === true || row?.value === 1 || row?.value === '1' || row?.value === 'true';
+    res.json({
+      success: true,
+      data: {
+        setup_completed: completed,
+        store_name: nameRow?.value || null,
+        wizard_completed: wizardRow?.value || null,
+        setup_imported_legacy_data: importChoiceRow?.value || null,
+      },
+    });
+  } catch (e: unknown) {
+    logger.error('settings_setup_status_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to load setup status' });
+    }
+  }
 });
 
 // POST /complete-setup — save initial store info and mark setup as done
 // V21: validate email / phone formats before persisting, not just trim.
+// BUGHUNT-2026-05-17: wrap bare-async handler — validateRequiredString /
+// validateEmail can throw structured AppErrors; without try/catch the rejection
+// crashes the server. (adminOnly already runs sync; the body is the risk surface.)
 router.post('/complete-setup', adminOnly, async (req, res) => {
-  const db = req.db;
-  const adb = req.asyncDb;
-  const { store_name, address, phone, email, timezone, currency } = req.body;
+  try {
+    const db = req.db;
+    const adb = req.asyncDb;
+    const { store_name, address, phone, email, timezone, currency } = req.body;
 
-  // V21: require a real store name, reject whitespace-only values.
-  const nameTrimmed = validateRequiredString(store_name, 'store_name', 255);
+    // V21: require a real store name, reject whitespace-only values.
+    const nameTrimmed = validateRequiredString(store_name, 'store_name', 255);
 
-  // V21: email must match a valid format (or be empty/undefined).
-  const emailValidated = validateEmail(email, 'store_email', false);
+    // V21: email must match a valid format (or be empty/undefined).
+    const emailValidated = validateEmail(email, 'store_email', false);
 
-  // V21: phone is normalized to digits-only first, then length-checked.
-  // Empty phone is allowed.
-  let phoneValidated: string | null = null;
-  if (phone !== undefined && phone !== null && String(phone).trim() !== '') {
-    const digits = normalizePhone(String(phone));
-    phoneValidated = validatePhoneDigits(digits, 'store_phone', false);
+    // V21: phone is normalized to digits-only first, then length-checked.
+    // Empty phone is allowed.
+    let phoneValidated: string | null = null;
+    if (phone !== undefined && phone !== null && String(phone).trim() !== '') {
+      const digits = normalizePhone(String(phone));
+      phoneValidated = validatePhoneDigits(digits, 'store_phone', false);
+    }
+
+    const addressTrimmed = typeof address === 'string' ? address.trim() : '';
+    const timezoneTrimmed = typeof timezone === 'string' ? timezone.trim() : '';
+    const currencyTrimmed = typeof currency === 'string' ? currency.trim() : '';
+
+    const queries: Array<{ sql: string; params: unknown[] }> = [];
+    const upsertSql = 'INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)';
+    queries.push({ sql: upsertSql, params: ['store_name', nameTrimmed] });
+    if (addressTrimmed) queries.push({ sql: upsertSql, params: ['store_address', addressTrimmed] });
+    if (phoneValidated) queries.push({ sql: upsertSql, params: ['store_phone', phoneValidated] });
+    if (emailValidated) queries.push({ sql: upsertSql, params: ['store_email', emailValidated] });
+    if (timezoneTrimmed) queries.push({ sql: upsertSql, params: ['timezone', timezoneTrimmed] });
+    if (currencyTrimmed) queries.push({ sql: upsertSql, params: ['currency', currencyTrimmed] });
+    if (phoneValidated) queries.push({ sql: upsertSql, params: ['phone', phoneValidated] });
+    if (addressTrimmed) queries.push({ sql: upsertSql, params: ['address', addressTrimmed] });
+    if (emailValidated) queries.push({ sql: upsertSql, params: ['email', emailValidated] });
+    queries.push({ sql: upsertSql, params: ['setup_completed', 'true'] });
+    await adb.transaction(queries);
+
+    res.json({ success: true, data: { message: 'Store setup completed' } });
+  } catch (e: unknown) {
+    // AppError instances carry their own status — preserve them for the client
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Validation failed' });
+      return;
+    }
+    logger.error('settings_complete_setup_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Setup failed' });
+    }
   }
-
-  const addressTrimmed = typeof address === 'string' ? address.trim() : '';
-  const timezoneTrimmed = typeof timezone === 'string' ? timezone.trim() : '';
-  const currencyTrimmed = typeof currency === 'string' ? currency.trim() : '';
-
-  const queries: Array<{ sql: string; params: unknown[] }> = [];
-  const upsertSql = 'INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)';
-  queries.push({ sql: upsertSql, params: ['store_name', nameTrimmed] });
-  if (addressTrimmed) queries.push({ sql: upsertSql, params: ['store_address', addressTrimmed] });
-  if (phoneValidated) queries.push({ sql: upsertSql, params: ['store_phone', phoneValidated] });
-  if (emailValidated) queries.push({ sql: upsertSql, params: ['store_email', emailValidated] });
-  if (timezoneTrimmed) queries.push({ sql: upsertSql, params: ['timezone', timezoneTrimmed] });
-  if (currencyTrimmed) queries.push({ sql: upsertSql, params: ['currency', currencyTrimmed] });
-  if (phoneValidated) queries.push({ sql: upsertSql, params: ['phone', phoneValidated] });
-  if (addressTrimmed) queries.push({ sql: upsertSql, params: ['address', addressTrimmed] });
-  if (emailValidated) queries.push({ sql: upsertSql, params: ['email', emailValidated] });
-  queries.push({ sql: upsertSql, params: ['setup_completed', 'true'] });
-  await adb.transaction(queries);
-
-  res.json({ success: true, data: { message: 'Store setup completed' } });
 });
 
 router.get('/config', async (req, res, next) => {
@@ -995,138 +1020,169 @@ function validateConfigValue(key: string, value: string): string | null {
   return null;
 }
 
+// BUGHUNT-2026-05-17: wrap bare-async handler — multiple `await adb.run` writes,
+// `upsertSetupNotificationTemplatesFromConfig`, and `encrypt/decryptConfigValue`
+// can each throw. Without a top-level catch every failure becomes an unhandled
+// rejection that crashes the server during config edits.
 router.put('/config', adminOnly, async (req, res) => {
-  const db = req.db;
-  const adb = req.asyncDb;
+  try {
+    const db = req.db;
+    const adb = req.asyncDb;
 
-  // SECURITY: In multi-tenant mode, block backup/server-level config keys
-  // These are managed by the platform super-admin, not tenant admins
-  const BLOCKED_IN_MULTITENANT = new Set([
-    'backup_path', 'backup_schedule', 'backup_retention',
-  ]);
+    // SECURITY: In multi-tenant mode, block backup/server-level config keys
+    // These are managed by the platform super-admin, not tenant admins
+    const BLOCKED_IN_MULTITENANT = new Set([
+      'backup_path', 'backup_schedule', 'backup_retention',
+    ]);
 
-  // Validate all incoming values before persisting (ENR-S3)
-  const validationErrors: string[] = [];
-  for (const [key, value] of Object.entries(req.body)) {
-    if (!ALLOWED_CONFIG_KEYS.has(key)) continue;
-    const error = validateConfigValue(key, String(value));
-    if (error) validationErrors.push(error);
-  }
-  if (validationErrors.length > 0) {
-    return res.status(400).json({ success: false, message: 'Validation failed', errors: validationErrors });
-  }
-
-  // SCAN-648: Reject if any value is not a string — indicates a client bug.
-  if (!isStringMap(req.body)) {
-    return res.status(400).json({ success: false, message: 'All config values must be strings' });
-  }
-
-  // ENR-S2: Read old values for audit trail before updating
-  const oldRows = await adb.all<any>('SELECT key, value FROM store_config');
-  const oldConfig: Record<string, string> = {};
-  for (const row of oldRows) {
-    oldConfig[row.key] = ENCRYPTED_CONFIG_KEYS.has(row.key) ? decryptConfigValue(row.value) : row.value;
-  }
-
-  for (const [key, value] of Object.entries(req.body)) {
-    if (!ALLOWED_CONFIG_KEYS.has(key)) continue;
-    if (config.multiTenant && BLOCKED_IN_MULTITENANT.has(key)) continue;
-    const strVal = value;
-    const storedVal = ENCRYPTED_CONFIG_KEYS.has(key) ? encryptConfigValue(strVal) : strVal;
-    await adb.run('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)', key, storedVal);
-
-    const oldValue = oldConfig[key] ?? null;
-    if (oldValue !== strVal) {
-      const safeOld = SENSITIVE_CONFIG_KEYS.has(key) ? '***' : (oldValue ?? '(unset)');
-      const safeNew = SENSITIVE_CONFIG_KEYS.has(key) ? '***' : strVal;
-      audit(db, 'setting_changed', req.user!.id, req.ip || 'unknown', { key, old_value: safeOld, new_value: safeNew });
+    // Validate all incoming values before persisting (ENR-S3)
+    const validationErrors: string[] = [];
+    for (const [key, value] of Object.entries(req.body)) {
+      if (!ALLOWED_CONFIG_KEYS.has(key)) continue;
+      const error = validateConfigValue(key, String(value));
+      if (error) validationErrors.push(error);
+    }
+    if (validationErrors.length > 0) {
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: validationErrors });
     }
 
-    const aliasKey = BOOKING_CONFIG_ALIASES[key];
-    if (aliasKey && !(aliasKey in req.body)) {
-      await adb.run('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)', aliasKey, strVal);
-      const oldAliasValue = oldConfig[aliasKey] ?? null;
-      if (oldAliasValue !== strVal) {
-        audit(db, 'setting_changed', req.user!.id, req.ip || 'unknown', {
-          key: aliasKey,
-          old_value: oldAliasValue ?? '(unset)',
-          new_value: strVal,
-          mirrored_from: key,
-        });
+    // SCAN-648: Reject if any value is not a string — indicates a client bug.
+    if (!isStringMap(req.body)) {
+      return res.status(400).json({ success: false, message: 'All config values must be strings' });
+    }
+
+    // ENR-S2: Read old values for audit trail before updating
+    const oldRows = await adb.all<any>('SELECT key, value FROM store_config');
+    const oldConfig: Record<string, string> = {};
+    for (const row of oldRows) {
+      oldConfig[row.key] = ENCRYPTED_CONFIG_KEYS.has(row.key) ? decryptConfigValue(row.value) : row.value;
+    }
+
+    for (const [key, value] of Object.entries(req.body)) {
+      if (!ALLOWED_CONFIG_KEYS.has(key)) continue;
+      if (config.multiTenant && BLOCKED_IN_MULTITENANT.has(key)) continue;
+      const strVal = value;
+      const storedVal = ENCRYPTED_CONFIG_KEYS.has(key) ? encryptConfigValue(strVal) : strVal;
+      await adb.run('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)', key, storedVal);
+
+      const oldValue = oldConfig[key] ?? null;
+      if (oldValue !== strVal) {
+        const safeOld = SENSITIVE_CONFIG_KEYS.has(key) ? '***' : (oldValue ?? '(unset)');
+        const safeNew = SENSITIVE_CONFIG_KEYS.has(key) ? '***' : strVal;
+        audit(db, 'setting_changed', req.user!.id, req.ip || 'unknown', { key, old_value: safeOld, new_value: safeNew });
+      }
+
+      const aliasKey = BOOKING_CONFIG_ALIASES[key];
+      if (aliasKey && !(aliasKey in req.body)) {
+        await adb.run('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)', aliasKey, strVal);
+        const oldAliasValue = oldConfig[aliasKey] ?? null;
+        if (oldAliasValue !== strVal) {
+          audit(db, 'setting_changed', req.user!.id, req.ip || 'unknown', {
+            key: aliasKey,
+            old_value: oldAliasValue ?? '(unset)',
+            new_value: strVal,
+            mirrored_from: key,
+          });
+        }
       }
     }
-  }
 
-  await upsertSetupNotificationTemplatesFromConfig(adb, req.body);
+    await upsertSetupNotificationTemplatesFromConfig(adb, req.body);
 
-  // MW5: Clear cached email transporter when SMTP settings change.
-  // PROD105: also clear on from_email change (per-tenant sender identity).
-  const smtpKeys = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from', 'from_email'];
-  if (smtpKeys.some(k => k in req.body)) {
-    clearEmailCache();
-  }
+    // MW5: Clear cached email transporter when SMTP settings change.
+    // PROD105: also clear on from_email change (per-tenant sender identity).
+    const smtpKeys = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from', 'from_email'];
+    if (smtpKeys.some(k => k in req.body)) {
+      clearEmailCache();
+    }
 
-  // BL-CRED: Evict the BlockChyp client cache when credentials change so the
-  // next terminal call uses the new keys immediately rather than after the
-  // 5-minute TTL. Mirrors the clearEmailCache() pattern for SMTP.
-  const blockchypCredKeys = ['blockchyp_api_key', 'blockchyp_bearer_token', 'blockchyp_signing_key', 'blockchyp_test_mode'];
-  if (blockchypCredKeys.some(k => k in req.body)) {
-    refreshBlockChypClient();
-  }
+    // BL-CRED: Evict the BlockChyp client cache when credentials change so the
+    // next terminal call uses the new keys immediately rather than after the
+    // 5-minute TTL. Mirrors the clearEmailCache() pattern for SMTP.
+    const blockchypCredKeys = ['blockchyp_api_key', 'blockchyp_bearer_token', 'blockchyp_signing_key', 'blockchyp_test_mode'];
+    if (blockchypCredKeys.some(k => k in req.body)) {
+      refreshBlockChypClient();
+    }
 
-  // Return all config (decrypt sensitive values for admin response)
-  const rows = await adb.all<any>('SELECT key, value FROM store_config');
-  const result: Record<string, string> = {};
-  for (const row of rows) {
-    result[row.key] = ENCRYPTED_CONFIG_KEYS.has(row.key) ? decryptConfigValue(row.value) : row.value;
+    // Return all config (decrypt sensitive values for admin response)
+    const rows = await adb.all<any>('SELECT key, value FROM store_config');
+    const result: Record<string, string> = {};
+    for (const row of rows) {
+      result[row.key] = ENCRYPTED_CONFIG_KEYS.has(row.key) ? decryptConfigValue(row.value) : row.value;
+    }
+    res.json({ success: true, data: result });
+  } catch (e: unknown) {
+    logger.error('settings_put_config_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to update config' });
+    }
   }
-  res.json({ success: true, data: result });
 });
 
 // ==================== Store Settings ====================
 
+// BUGHUNT-2026-05-17: wrap bare-async — `decryptConfigValue` throws on a
+// corrupted ciphertext / wrong tenant encryption key; without try/catch the
+// rejection crashes the process.
 router.get('/store', async (req, res) => {
-  const adb = req.asyncDb;
-  const rows = await adb.all<any>('SELECT key, value FROM store_config');
-  const isAdmin = req.user?.role != null && SETTINGS_ADMIN_ROLES.has(req.user.role.toLowerCase());
-  const cfg: Record<string, string> = {};
-  for (const row of rows) {
-    if (!isAdmin && SENSITIVE_CONFIG_KEYS.has(row.key)) continue;
-    cfg[row.key] = (isAdmin && ENCRYPTED_CONFIG_KEYS.has(row.key))
-      ? decryptConfigValue(row.value)
-      : row.value;
+  try {
+    const adb = req.asyncDb;
+    const rows = await adb.all<any>('SELECT key, value FROM store_config');
+    const isAdmin = req.user?.role != null && SETTINGS_ADMIN_ROLES.has(req.user.role.toLowerCase());
+    const cfg: Record<string, string> = {};
+    for (const row of rows) {
+      if (!isAdmin && SENSITIVE_CONFIG_KEYS.has(row.key)) continue;
+      cfg[row.key] = (isAdmin && ENCRYPTED_CONFIG_KEYS.has(row.key))
+        ? decryptConfigValue(row.value)
+        : row.value;
+    }
+    res.json({ success: true, data: cfg });
+  } catch (e: unknown) {
+    logger.error('settings_get_store_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to load store config' });
+    }
   }
-  res.json({ success: true, data: cfg });
 });
 
+// BUGHUNT-2026-05-17: wrap bare-async — per-key `await adb.run` writes inside
+// the loop can throw on DB lock; without try/catch the partially-applied
+// settings persist and the server crashes.
 router.put('/store', adminOnly, async (req, res) => {
-  const db = req.db;
-  const adb = req.asyncDb;
-  // SCAN-648: Reject if any value is not a string.
-  if (!isStringMap(req.body)) {
-    logger.warn('PUT /store: non-string value in request body — potential client bug');
-    return res.status(400).json({ success: false, message: 'All store values must be strings' });
-  }
-  const allowed = ['store_name','address','phone','email','timezone','currency','tax_rate','receipt_header','receipt_footer','logo_url','sms_provider','tcx_host','tcx_extension','tcx_password','smtp_host','smtp_port','smtp_user','smtp_from','business_hours','store_logo'];
-  for (const [key, value] of Object.entries(req.body)) {
-    if (!allowed.includes(key)) continue;
-    const strVal = value;
-    const storedVal = ENCRYPTED_CONFIG_KEYS.has(key) ? encryptConfigValue(strVal) : strVal;
-    await adb.run('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)', key, storedVal);
-  }
+  try {
+    const db = req.db;
+    const adb = req.asyncDb;
+    // SCAN-648: Reject if any value is not a string.
+    if (!isStringMap(req.body)) {
+      logger.warn('PUT /store: non-string value in request body — potential client bug');
+      return res.status(400).json({ success: false, message: 'All store values must be strings' });
+    }
+    const allowed = ['store_name','address','phone','email','timezone','currency','tax_rate','receipt_header','receipt_footer','logo_url','sms_provider','tcx_host','tcx_extension','tcx_password','smtp_host','smtp_port','smtp_user','smtp_from','business_hours','store_logo'];
+    for (const [key, value] of Object.entries(req.body)) {
+      if (!allowed.includes(key)) continue;
+      const strVal = value;
+      const storedVal = ENCRYPTED_CONFIG_KEYS.has(key) ? encryptConfigValue(strVal) : strVal;
+      await adb.run('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)', key, storedVal);
+    }
 
-  // MW5: Clear cached email transporter when any SMTP credential changes.
-  // Previously smtp_pass was missing, so a password rotation wouldn't take
-  // effect until the next server restart.
-  const smtpStoreKeys = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from'];
-  if (smtpStoreKeys.some(k => k in req.body)) {
-    clearEmailCache();
-  }
+    // MW5: Clear cached email transporter when any SMTP credential changes.
+    // Previously smtp_pass was missing, so a password rotation wouldn't take
+    // effect until the next server restart.
+    const smtpStoreKeys = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from'];
+    if (smtpStoreKeys.some(k => k in req.body)) {
+      clearEmailCache();
+    }
 
-  const rows = await adb.all<any>('SELECT key, value FROM store_config');
-  const cfg: Record<string, string> = {};
-  for (const row of rows) cfg[row.key] = row.value;
-  res.json({ success: true, data: cfg });
+    const rows = await adb.all<any>('SELECT key, value FROM store_config');
+    const cfg: Record<string, string> = {};
+    for (const row of rows) cfg[row.key] = row.value;
+    res.json({ success: true, data: cfg });
+  } catch (e: unknown) {
+    logger.error('settings_put_store_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to update store config' });
+    }
+  }
 });
 
 // ==================== Ticket Statuses ====================

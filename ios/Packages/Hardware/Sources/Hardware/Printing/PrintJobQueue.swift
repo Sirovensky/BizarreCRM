@@ -125,6 +125,16 @@ public actor PrintJobQueue {
                 pendingJobs.insert(entry, at: pendingJobs.startIndex)
                 AppLog.hardware.info("PrintJobQueue: drain cancelled — re-queued job \(entry.id, privacy: .public)")
                 return
+            } catch PrintEngineError.cancelled {
+                // BUGHUNT-2026-05-17: AirPrint label engine throws
+                // `PrintEngineError.cancelled` when the user taps Cancel in the
+                // iOS print sheet. `AppError.isCancellation` doesn't recognise
+                // it (it's not a CancellationError), so the catch-all below
+                // would burn retry attempts re-presenting the print sheet to
+                // an annoyed user. Treat user-explicit cancel as final: drop
+                // the job entirely without retry or dead-letter.
+                AppLog.hardware.info("PrintJobQueue: job \(entry.id, privacy: .public) cancelled by user — dropping without retry")
+                continue
             } catch {
                 entry.lastError = error.localizedDescription
                 AppLog.hardware.warning("PrintJobQueue: job \(entry.id, privacy: .public) failed attempt \(entry.attempts)/\(self.policy.maxAttempts): \(error.localizedDescription, privacy: .public)")
