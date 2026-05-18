@@ -41,6 +41,12 @@ public final class NoShowPolicySettingsViewModel {
     }
 
     public func save() async {
+        // BUGHUNT-2026-05-17: Re-entry guard — no-show policy gates automatic
+        // deposit charges. A double-tap on Save without this guard PUTs the
+        // policy twice with possibly different threshold/deposit values
+        // mid-typing — wrong policy values pull wrong dollar amounts from
+        // customer payment methods downstream. Money-critical.
+        guard !isSaving else { return }
         isSaving = true
         errorMessage = nil
         defer { isSaving = false }
@@ -59,6 +65,12 @@ public final class NoShowPolicySettingsViewModel {
             BrandHaptics.success()
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             showSuccess = false
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PUT no-show policy. Money-critical: a retap
+            // from a "Cancelled" toast can apply a stale draft (deposit
+            // changed mid-tap) and silently bill customers the wrong amount.
+            // Stay silent; admin must explicitly re-open to retry.
+            return
         } catch {
             AppLog.ui.error("NoShowPolicy save: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
