@@ -120,6 +120,12 @@ public final class LateFeeWaiverViewModel {
                 )
             )
             state = .success
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: waiveLateFee is money — POST reduces
+            // invoice balance. Cancellation banner tempts retap that
+            // double-waives. Reset to .idle so retry is intentional.
+            state = .idle
+            return
         } catch {
             AppLog.ui.error("Late fee waiver failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(AppError.from(error).errorDescription ?? "Waiver failed.")
