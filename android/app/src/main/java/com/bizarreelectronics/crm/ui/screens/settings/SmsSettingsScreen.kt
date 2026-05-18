@@ -11,6 +11,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -161,7 +164,12 @@ fun SmsSettingsScreen(
                 }
             }
             uiState.error != null -> {
-                Box(Modifier.fillMaxSize().padding(padding)) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                        .semantics { liveRegion = LiveRegionMode.Assertive },
+                ) {
                     ErrorState(message = uiState.error!!, onRetry = { viewModel.load() })
                 }
             }

@@ -46,6 +46,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -140,10 +143,16 @@ fun PerformanceReviewScreen(
                     subtitle = "Performance reviews are not configured on this server.",
                 )
 
-                state.error != null -> ErrorState(
-                    message = state.error!!,
-                    onRetry = { viewModel.refresh() },
-                )
+                state.error != null -> Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .semantics { liveRegion = LiveRegionMode.Assertive },
+                ) {
+                    ErrorState(
+                        message = state.error!!,
+                        onRetry = { viewModel.refresh() },
+                    )
+                }
 
                 state.reviews.isEmpty() -> EmptyState(
                     icon = Icons.Default.Assessment,
