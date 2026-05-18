@@ -133,6 +133,12 @@ public struct BlockChypHeartbeatView: View {
         do {
             let status = try await api.getTerminalHeartbeat()
             heartbeatState = .online(terminalName: status.terminalName)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: poll Task cancelled (view popped / re-poll
+            // racing). Don't flip to .offline — that paints a misleading
+            // red badge in the POS chrome whenever the heartbeat task is
+            // torn down. Leave the previous state intact.
+            return
         } catch let APITransportError.httpStatus(code, _) where code == 501 {
             // Endpoint not yet live — treat as unknown (not error).
             heartbeatState = .unknown
