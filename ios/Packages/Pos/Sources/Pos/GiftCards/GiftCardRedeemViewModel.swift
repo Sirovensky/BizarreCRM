@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Foundation
 import Observation
+import Core
 import Networking
 
 // MARK: - GiftCardRedeemViewModel
@@ -107,6 +108,15 @@ public final class GiftCardRedeemViewModel {
                 invoiceReference: invoiceId.map { String($0) }
             )
             state = .redeemed(remainingBalanceCents: response.remainingBalanceCents)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: Sheet dismissed mid-redeem cancelled the Task.
+            // Server-side decrement may or may not have committed. Painting
+            // .failure invites a retry that could double-decrement the balance.
+            // Revert to .idle so the cashier sees the form unchanged and any
+            // retry is intentional; the audit log will only contain the
+            // confirmed redemption from the server response we never received.
+            state = .idle
+            return
         } catch let APITransportError.httpStatus(code, message) {
             let msg = (message?.isEmpty == false) ? message! : "Redeem failed"
             state = .failure("Redeem failed (\(code)): \(msg)")
