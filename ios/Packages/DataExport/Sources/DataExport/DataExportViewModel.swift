@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import Core
 
 // MARK: - DataExportViewModel
 
@@ -185,6 +186,16 @@ public final class DataExportViewModel {
             } else {
                 legacySchedules = legacySchedules + [saved]
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: legacy saveSchedule is POST without an
+            // idempotency key. A "cancelled" toast tempted a re-tap that —
+            // if the server had already accepted the first POST — would
+            // create a SECOND scheduled-export row firing on every cadence
+            // tick (and emailing/uploading the file to the destination
+            // every time, possibly to a customer-facing inbox if the
+            // destination was misconfigured). Stay silent on cancellation;
+            // the schedule list refresh reveals whether the create landed.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
