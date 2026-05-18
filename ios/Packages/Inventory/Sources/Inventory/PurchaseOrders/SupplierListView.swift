@@ -255,9 +255,42 @@ public struct SupplierListView: View {
                 if let contact = s.contactName {
                     Text(contact).font(.brandBodyLarge()).foregroundStyle(.bizarreOnSurfaceMuted)
                 }
-                Text(s.email).font(.brandMono(size: 13)).foregroundStyle(.bizarreOnSurfaceMuted).textSelection(.enabled)
-                Text(s.phone).font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted).textSelection(.enabled)
-                Text(s.address).font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted)
+                // BUGHUNT-2026-05-18: supplier detail had copy-only email/
+                // phone/address — same fix as PurchaseOrderDetailView. Whole
+                // row taps to compose / dial / open Maps.
+                if !s.email.isEmpty, let mailto = URL(string: "mailto:\(s.email)") {
+                    Link(destination: mailto) {
+                        HStack(spacing: BrandSpacing.xs) {
+                            Image(systemName: "envelope").foregroundStyle(.bizarreOnSurfaceMuted)
+                            Text(s.email).font(.brandMono(size: 13)).foregroundStyle(.bizarreOrange)
+                        }
+                    }.accessibilityHint("Compose email")
+                } else {
+                    Text(s.email).font(.brandMono(size: 13)).foregroundStyle(.bizarreOnSurfaceMuted).textSelection(.enabled)
+                }
+                let supplierDigits = s.phone.filter { $0.isNumber || $0 == "+" }
+                if !supplierDigits.isEmpty, let tel = URL(string: "tel:\(supplierDigits)") {
+                    Link(destination: tel) {
+                        HStack(spacing: BrandSpacing.xs) {
+                            Image(systemName: "phone").foregroundStyle(.bizarreOnSurfaceMuted)
+                            Text(s.phone).font(.brandBodyMedium()).foregroundStyle(.bizarreOrange)
+                        }
+                    }.accessibilityHint("Call supplier")
+                } else {
+                    Text(s.phone).font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted).textSelection(.enabled)
+                }
+                if !s.address.isEmpty,
+                   let q = s.address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+                   let mapsURL = URL(string: "maps://?q=\(q)") {
+                    Link(destination: mapsURL) {
+                        HStack(spacing: BrandSpacing.xs) {
+                            Image(systemName: "mappin.and.ellipse").foregroundStyle(.bizarreOnSurfaceMuted)
+                            Text(s.address).font(.brandBodyMedium()).foregroundStyle(.bizarreOrange)
+                        }
+                    }.accessibilityHint("Open in Maps")
+                } else {
+                    Text(s.address).font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted)
+                }
                 Text("Terms: \(s.paymentTerms)").font(.brandLabelLarge()).foregroundStyle(.bizarreOnSurfaceMuted)
                 Text("Lead time: \(s.leadTimeDays) days").font(.brandLabelLarge()).foregroundStyle(.bizarreOnSurfaceMuted)
                 Button("Edit Supplier") { vm.editTarget = s }

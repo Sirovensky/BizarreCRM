@@ -294,14 +294,39 @@ private struct ContactInfo: View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             Text("Contact").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
 
+            // BUGHUNT-2026-05-18: Mobile/Phone/Email rows were plain Text —
+            // user had to long-press to copy and paste into another app.
+            // Same expectation as Leads / Invoices detail: tap the row to
+            // open Dialer / Mail. Address opens Maps. Org stays text-only.
             if let mobile = detail.mobile, !mobile.isEmpty {
-                row(icon: "phone", label: "Mobile", value: PhoneFormatter.format(mobile), mono: true)
+                tappableRow(
+                    icon: "phone",
+                    label: "Mobile",
+                    value: PhoneFormatter.format(mobile),
+                    mono: true,
+                    url: dialUrl(mobile),
+                    a11yHint: "Dial mobile number"
+                )
             }
             if let phone = detail.phone, !phone.isEmpty, phone != detail.mobile {
-                row(icon: "phone", label: "Phone", value: PhoneFormatter.format(phone), mono: true)
+                tappableRow(
+                    icon: "phone",
+                    label: "Phone",
+                    value: PhoneFormatter.format(phone),
+                    mono: true,
+                    url: dialUrl(phone),
+                    a11yHint: "Dial phone number"
+                )
             }
             if let email = detail.email, !email.isEmpty {
-                row(icon: "envelope", label: "Email", value: email)
+                tappableRow(
+                    icon: "envelope",
+                    label: "Email",
+                    value: email,
+                    mono: false,
+                    url: URL(string: "mailto:\(email)"),
+                    a11yHint: "Compose email"
+                )
             }
             if let addr = detail.addressLine {
                 addressRow(addr: addr)
@@ -347,16 +372,38 @@ private struct ContactInfo: View {
     }
 
     /// Address row with a copy-to-clipboard chip alongside the text.
+    /// Tap the row to open Maps; the copy chip stays on the trailing edge.
     @MainActor
     private func addressRow(addr: String) -> some View {
-        HStack(alignment: .top, spacing: BrandSpacing.sm) {
+        // BUGHUNT-2026-05-18: address was only copyable, not navigable.
+        // Most tech/repair shops dispatch customers; open in Maps was the
+        // missing default action. Whole-row tap routes through Apple Maps
+        // — falls back gracefully to nothing if the URL doesn't escape.
+        let mapsURL = URL(string: "maps://?q=\(addr.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")")
+        return HStack(alignment: .top, spacing: BrandSpacing.sm) {
             Image(systemName: "mappin.and.ellipse").foregroundStyle(.bizarreOnSurfaceMuted).frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Address").font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted)
-                Text(addr)
-                    .font(.brandBodyMedium())
-                    .foregroundStyle(.bizarreOnSurface)
-                    .textSelection(.enabled)
+                if let mapsURL {
+                    Link(destination: mapsURL) {
+                        HStack(spacing: BrandSpacing.xs) {
+                            Text(addr)
+                                .font(.brandBodyMedium())
+                                .foregroundStyle(.bizarreOnSurface)
+                                .multilineTextAlignment(.leading)
+                            Image(systemName: "arrow.up.right.square")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.bizarreOrange)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .accessibilityHint("Opens in Maps")
+                } else {
+                    Text(addr)
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurface)
+                        .textSelection(.enabled)
+                }
             }
             Spacer(minLength: 0)
             // §5 address copy chip
@@ -372,6 +419,51 @@ private struct ContactInfo: View {
             .accessibilityLabel("Copy address")
         }
         .padding(.vertical, BrandSpacing.xxs)
+    }
+
+    /// Tappable variant of `row` — wraps the leading content in a `Link` when
+    /// `url` is non-nil so the whole row opens Dialer / Mail / Maps. Falls
+    /// back to the plain `row` rendering when the URL is invalid.
+    @ViewBuilder
+    private func tappableRow(
+        icon: String,
+        label: String,
+        value: String,
+        mono: Bool,
+        url: URL?,
+        a11yHint: String
+    ) -> some View {
+        if let url {
+            Link(destination: url) {
+                HStack(alignment: .top, spacing: BrandSpacing.sm) {
+                    Image(systemName: icon).foregroundStyle(.bizarreOnSurfaceMuted).frame(width: 22)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(label).font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted)
+                        Text(value)
+                            .font(mono ? .brandMono(size: 14) : .brandBodyMedium())
+                            .foregroundStyle(.bizarreOnSurface)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)
+                }
+                .padding(.vertical, BrandSpacing.xxs)
+                .contentShape(Rectangle())
+            }
+            .accessibilityHint(a11yHint)
+        } else {
+            row(icon: icon, label: label, value: value, mono: mono)
+        }
+    }
+
+    /// Build a `tel:` URL by stripping non-digit chars. Returns nil when the
+    /// stripped string is empty (e.g. extension-only "ext. 4").
+    private func dialUrl(_ raw: String) -> URL? {
+        let digits = raw.filter { $0.isNumber || $0 == "+" }
+        guard !digits.isEmpty else { return nil }
+        return URL(string: "tel:\(digits)")
     }
 }
 

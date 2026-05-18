@@ -86,15 +86,39 @@ public struct CustomerContactListView: View {
                         .font(.brandLabelLarge())
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                 }
+                // BUGHUNT-2026-05-18: sub-contact phone/email were plain
+                // text. The pencil edits the contact, but tapping the phone
+                // number itself should call / email — that's where the
+                // techncian's thumb lands when "I need to reach the dad
+                // listed as secondary contact."
                 if let phone = c.phone, !phone.isEmpty {
-                    Text(PhoneFormatter.format(phone))
-                        .font(.brandBodyMedium())
-                        .foregroundStyle(.bizarreOnSurface)
+                    let digits = phone.filter { $0.isNumber || $0 == "+" }
+                    if !digits.isEmpty, let tel = URL(string: "tel:\(digits)") {
+                        Link(destination: tel) {
+                            Text(PhoneFormatter.format(phone))
+                                .font(.brandBodyMedium())
+                                .foregroundStyle(.bizarreOrange)
+                        }
+                        .accessibilityHint("Call \(c.name)")
+                    } else {
+                        Text(PhoneFormatter.format(phone))
+                            .font(.brandBodyMedium())
+                            .foregroundStyle(.bizarreOnSurface)
+                    }
                 }
                 if let email = c.email, !email.isEmpty {
-                    Text(email)
-                        .font(.brandBodyMedium())
-                        .foregroundStyle(.bizarreOnSurface)
+                    if let mailto = URL(string: "mailto:\(email)") {
+                        Link(destination: mailto) {
+                            Text(email)
+                                .font(.brandBodyMedium())
+                                .foregroundStyle(.bizarreOrange)
+                        }
+                        .accessibilityHint("Email \(c.name)")
+                    } else {
+                        Text(email)
+                            .font(.brandBodyMedium())
+                            .foregroundStyle(.bizarreOnSurface)
+                    }
                 }
             }
             Spacer(minLength: 0)

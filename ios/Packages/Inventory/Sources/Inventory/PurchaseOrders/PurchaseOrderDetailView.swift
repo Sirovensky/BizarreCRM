@@ -365,14 +365,43 @@ public struct PurchaseOrderDetailView: View {
                     if let contact = supplier.contactName {
                         Text(contact).font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted)
                     }
-                    Text(supplier.email)
-                        .font(.brandMono(size: 13))
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                        .textSelection(.enabled)
-                    Text(supplier.phone)
-                        .font(.brandBodyMedium())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                        .textSelection(.enabled)
+                    // BUGHUNT-2026-05-18: supplier email/phone were
+                    // copy-only; buyers reviewing a PO often need to call/
+                    // email the supplier — make the whole row a Link.
+                    if !supplier.email.isEmpty, let mailto = URL(string: "mailto:\(supplier.email)") {
+                        Link(destination: mailto) {
+                            HStack(spacing: BrandSpacing.xs) {
+                                Image(systemName: "envelope").foregroundStyle(.bizarreOnSurfaceMuted)
+                                Text(supplier.email)
+                                    .font(.brandMono(size: 13))
+                                    .foregroundStyle(.bizarreOrange)
+                            }
+                        }
+                        .accessibilityHint("Compose email to supplier")
+                    } else if !supplier.email.isEmpty {
+                        Text(supplier.email)
+                            .font(.brandMono(size: 13))
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .textSelection(.enabled)
+                    }
+                    let phoneDigits = supplier.phone.filter { $0.isNumber || $0 == "+" }
+                    if !supplier.phone.isEmpty, !phoneDigits.isEmpty,
+                       let tel = URL(string: "tel:\(phoneDigits)") {
+                        Link(destination: tel) {
+                            HStack(spacing: BrandSpacing.xs) {
+                                Image(systemName: "phone").foregroundStyle(.bizarreOnSurfaceMuted)
+                                Text(supplier.phone)
+                                    .font(.brandBodyMedium())
+                                    .foregroundStyle(.bizarreOrange)
+                            }
+                        }
+                        .accessibilityHint("Call supplier")
+                    } else if !supplier.phone.isEmpty {
+                        Text(supplier.phone)
+                            .font(.brandBodyMedium())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .textSelection(.enabled)
+                    }
                     Text("Terms: \(supplier.paymentTerms)")
                         .font(.brandLabelLarge())
                         .foregroundStyle(.bizarreOnSurfaceMuted)
