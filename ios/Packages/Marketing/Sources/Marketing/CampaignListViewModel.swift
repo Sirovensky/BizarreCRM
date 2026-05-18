@@ -57,6 +57,10 @@ public final class CampaignListViewModel {
         do {
             let rows = try await api.listCampaignsServer()
             allCampaigns = rows.map { Campaign.from($0) }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: tab-switch cancel — don't paint a phantom
+            // load-failed banner. Next .task reload picks up state.
+            return
         } catch {
             AppLog.ui.error("Campaign list load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription

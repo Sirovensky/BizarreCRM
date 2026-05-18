@@ -24,6 +24,9 @@ public final class WaitlistListViewModel {
         do {
             entries = try await api.listWaitlistEntries()
                 .sorted { $0.createdAt < $1.createdAt }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: nav cancel — .task re-fires on reopen
+            return
         } catch {
             AppLog.ui.error("Waitlist load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
