@@ -101,6 +101,9 @@ public final class GroupListViewModel {
         do {
             try await repo.deleteGroup(id: id)
             groups = groups.filter { $0.id != id }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: DELETE may have committed; retap 404s.
+            return
         } catch {
             AppLog.ui.error("Group delete failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
