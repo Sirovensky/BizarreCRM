@@ -8,6 +8,7 @@ import com.bizarreelectronics.crm.data.remote.dto.PurchaseOrderItemRequest
 import com.bizarreelectronics.crm.data.remote.dto.SupplierRow
 import com.bizarreelectronics.crm.data.repository.PurchaseOrderRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -117,6 +118,14 @@ class PurchaseOrderCreateViewModel @Inject constructor(
                 )
                 val po = repository.createPurchaseOrder(request)
                 _state.value = _state.value.copy(isSubmitting = false, createdPoId = po.id)
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: purchase orders are real spending
+                // commitments to a supplier and the create endpoint has no
+                // idempotency key. A "Failed" banner tempted a re-tap that
+                // produced a duplicate PO. Clear in-progress state without
+                // an actionable error so the user must reopen the sheet.
+                _state.value = _state.value.copy(isSubmitting = false)
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "submit failed: ${e.message}")
                 _state.value = _state.value.copy(
