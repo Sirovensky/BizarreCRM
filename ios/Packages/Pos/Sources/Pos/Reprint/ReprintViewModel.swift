@@ -121,6 +121,15 @@ public final class ReprintViewModel {
                 try await logReprintEvent(saleId: sale.id, reason: reason)
                 self.phase = .done
                 AppLog.pos.info("ReprintVM: reprinted sale \(self.sale.id, privacy: .private), reason=\(reason.rawValue, privacy: .public)")
+            } catch let e where AppError.isCancellation(e) {
+                // BUGHUNT-2026-05-17: print job has already been dispatched
+                // synchronously above, so cancellation of the audit POST does
+                // NOT mean the receipt didn't print. Mark .done so the cashier
+                // doesn't see a misleading "Reprint failed" alert next to a
+                // printed receipt; the audit POST will be retried by the
+                // server-side log job if it really didn't land.
+                self.phase = .done
+                return
             } catch {
                 let message = (error as? AppError)?.localizedDescription ?? error.localizedDescription
                 self.phase = .error(message)
