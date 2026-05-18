@@ -245,9 +245,13 @@ class EstimateRepository @Inject constructor(
     /** Full pull from server — used by SyncManager. */
     suspend fun refreshFromServer() {
         if (!serverMonitor.isEffectivelyOnline.value) return
+        // BUGHUNT-2026-05-17: hard pagination cap (D8). A misbehaving server
+        // reporting bogus `totalPages` could trap the client in an infinite
+        // refresh loop. Mirror the cap used by InventoryRepository and
+        // InvoiceRepository.
         try {
             var page = 1
-            while (true) {
+            while (page <= MAX_PAGINATION_PAGES) {
                 val response = estimateApi.getEstimates(mapOf("pagesize" to "200", "page" to page.toString()))
                 val estimates = response.data?.estimates ?: break
                 if (estimates.isEmpty()) break
@@ -255,6 +259,9 @@ class EstimateRepository @Inject constructor(
                 val pagination = response.data?.pagination
                 if (pagination == null || page >= pagination.totalPages) break
                 page++
+            }
+            if (page > MAX_PAGINATION_PAGES) {
+                Log.w(TAG, "Estimate pagination hit safety cap of $MAX_PAGINATION_PAGES pages — aborting refresh")
             }
         } catch (e: CancellationException) {
             throw e
@@ -304,6 +311,8 @@ class EstimateRepository @Inject constructor(
 
     companion object {
         private const val TAG = "EstimateRepository"
+        /** D8 safety cap — same value as InventoryRepository / InvoiceRepository. */
+        private const val MAX_PAGINATION_PAGES = 1000
     }
 }
 
