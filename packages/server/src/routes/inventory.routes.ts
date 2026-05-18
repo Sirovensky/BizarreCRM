@@ -425,9 +425,16 @@ router.post('/bulk-action', requirePermission('inventory.bulk_action'), asyncHan
 router.get('/low-stock', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const limit = parsePageSize(req.query.limit, 100);
+  // BUGHUNT-2026-05-17: previously this dedicated low-stock listing did NOT
+  // filter `low_stock_dismissed_at IS NULL`, so items the user had dismissed
+  // from `GET /inventory?low_stock=true` would reappear here. The reports
+  // queries (`reports.routes.ts:896, 1193`) already respect the dismiss,
+  // and so does the main list filter (line 167) — bring this dedicated
+  // endpoint into line with the rest of the surface.
   const items = await adb.all(`
     SELECT * FROM inventory_items
-    WHERE is_active = 1 AND item_type != 'service' AND is_reorderable = 1 AND in_stock <= reorder_level
+    WHERE is_active = 1 AND item_type != 'service' AND is_reorderable = 1
+      AND in_stock <= reorder_level AND low_stock_dismissed_at IS NULL
     ORDER BY in_stock ASC
     LIMIT ?
   `, limit);
