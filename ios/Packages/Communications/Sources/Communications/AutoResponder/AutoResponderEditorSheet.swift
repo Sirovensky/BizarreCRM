@@ -87,6 +87,14 @@ final class AutoResponderEditorViewModel: Sendable {
                 rule = try await api.createAutoResponder(builtRule)
             }
             onSave(rule)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: createAutoResponder is a POST with no
+            // idempotency key. If the server accepted the rule before cancel
+            // and we paint "Failed", a re-tap creates a duplicate rule that
+            // double-fires on every inbound trigger — operator-visible bug +
+            // duplicate auto-reply SMS billed to the customer-facing line.
+            // Stay silent; the rules list will show the actual state on next load.
+            return
         } catch {
             AppLog.ui.error("AutoResponder save: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
