@@ -152,6 +152,10 @@ public struct ZReportDetailView: View {
         defer { isLoading = false }
         do {
             sessions = try await repository.recentSessions(limit: 50)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: view popped mid-load. Don't paint a fake
+            // error — next .task retries.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
