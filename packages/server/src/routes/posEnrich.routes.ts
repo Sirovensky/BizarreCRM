@@ -511,7 +511,14 @@ router.post(
       ? closedRaw
       : `${closedRaw.replace(' ', 'T')}Z`;
     const closedMs = Date.parse(closedNormalized);
-    if (Number.isFinite(closedMs) && Date.now() - closedMs > 7 * 24 * 60 * 60 * 1000) {
+    // BUGHUNT-2026-05-18: fail-CLOSED on parse failure. Original
+    // `isFinite && >7d` short-circuited the expiry on any NaN, letting an
+    // operator reopen a shift with a corrupt `closed_at` indefinitely —
+    // bypassing the 7-day audit-tooling window. Reject instead.
+    if (!Number.isFinite(closedMs)) {
+      throw new AppError('Shift close-timestamp is unreadable — escalate to audit tooling', 409);
+    }
+    if (Date.now() - closedMs > 7 * 24 * 60 * 60 * 1000) {
       throw new AppError('Shift was closed more than 7 days ago — reopen window expired', 409);
     }
 

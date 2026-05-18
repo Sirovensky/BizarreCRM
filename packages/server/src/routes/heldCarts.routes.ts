@@ -281,8 +281,16 @@ router.post(
 
     // 24h TTL — match the LIST filter so a cashier with the recall URL
     // bookmarked / cached can't resurrect a stale cart.
+    // BUGHUNT-2026-05-18: fail-CLOSED on unparseable created_at. Previously
+    // an isFinite() guard meant any timestamp parse failure (corruption,
+    // mid-migration row, unexpected format) silently skipped the TTL — a
+    // months-old cart with a garbled timestamp could be recalled and
+    // charged at last week's prices. Reject the recall instead.
     const createdMs = Date.parse(cart.created_at + 'Z');
-    if (Number.isFinite(createdMs) && Date.now() - createdMs > 24 * 60 * 60 * 1000) {
+    if (!Number.isFinite(createdMs)) {
+      throw new AppError('Cart timestamp is unreadable — please start a new sale.', 410);
+    }
+    if (Date.now() - createdMs > 24 * 60 * 60 * 1000) {
       throw new AppError('Cart has expired (>24h old). Start a new sale.', 410);
     }
 

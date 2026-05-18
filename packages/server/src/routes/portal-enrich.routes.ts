@@ -538,8 +538,15 @@ router.delete(
       return;
     }
 
-    const ageHours =
-      (Date.now() - new Date(row.uploaded_at + 'Z').getTime()) / (1000 * 60 * 60);
+    // BUGHUNT-2026-05-18: fail-CLOSED on unparseable uploaded_at. NaN > anything
+    // is false, so a corrupt timestamp made `ageHours > windowHours` false and
+    // the delete went through even after the photo's window should have closed.
+    const uploadedMs = new Date(row.uploaded_at + 'Z').getTime();
+    if (!Number.isFinite(uploadedMs)) {
+      res.status(403).json({ success: false, message: 'Photo timestamp unreadable — cannot verify delete window' });
+      return;
+    }
+    const ageHours = (Date.now() - uploadedMs) / (1000 * 60 * 60);
     if (ageHours > windowHours) {
       res.status(403).json({ success: false, message: 'Delete window has closed' });
       return;

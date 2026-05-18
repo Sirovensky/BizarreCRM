@@ -1528,15 +1528,25 @@ router.post('/refresh', asyncHandler(async (req: Request, res: Response) => {
         ? rawActive
         : `${rawActive.replace(' ', 'T')}Z`;
       const lastActiveMs = new Date(normalizedActive).getTime();
-      if (!Number.isNaN(lastActiveMs)) {
-        const idleDays = (Date.now() - lastActiveMs) / (24 * 60 * 60 * 1000);
-        if (idleDays > 14) {
-          await adb.run('DELETE FROM sessions WHERE id = ?', payload.sessionId);
-          audit(db, 'refresh_failed', payload.userId ?? null, ip, { reason: 'idle_timeout' });
-          logTenantAuthEvent('refresh_failed', req, payload.userId ?? null, null, { reason: 'idle_timeout' });
-          res.status(401).json({ success: false, message: 'Session idle timeout' });
-          return;
-        }
+      // BUGHUNT-2026-05-18: fail-CLOSED on unparseable last_active. Previously
+      // `!isNaN` short-circuited the entire 14-day idle check on any NaN
+      // (corruption, mid-migration row, future schema drift), letting a
+      // stolen refresh token bypass idle expiry indefinitely. Reject the
+      // refresh and force re-auth instead.
+      if (Number.isNaN(lastActiveMs)) {
+        await adb.run('DELETE FROM sessions WHERE id = ?', payload.sessionId);
+        audit(db, 'refresh_failed', payload.userId ?? null, ip, { reason: 'last_active_unparseable' });
+        logTenantAuthEvent('refresh_failed', req, payload.userId ?? null, null, { reason: 'last_active_unparseable' });
+        res.status(401).json({ success: false, message: 'Session expired' });
+        return;
+      }
+      const idleDays = (Date.now() - lastActiveMs) / (24 * 60 * 60 * 1000);
+      if (idleDays > 14) {
+        await adb.run('DELETE FROM sessions WHERE id = ?', payload.sessionId);
+        audit(db, 'refresh_failed', payload.userId ?? null, ip, { reason: 'idle_timeout' });
+        logTenantAuthEvent('refresh_failed', req, payload.userId ?? null, null, { reason: 'idle_timeout' });
+        res.status(401).json({ success: false, message: 'Session idle timeout' });
+        return;
       }
     }
 

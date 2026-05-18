@@ -4002,32 +4002,41 @@ router.delete('/api-keys/:id', requireFeature('apiKeys'), adminOnly, asyncHandle
 // entirely (BUG: no test-delivery existed for any role before this).
 
 // GET /webhook-failures — list this tenant's dead-lettered deliveries
+// BUGHUNT-2026-05-18: wrap bare-async — sync DB throws inside async escape as
+// unhandled rejections and crash the server. Mirror /webhook-test handler.
 router.get('/webhook-failures', adminOnly, async (req: Request, res: Response) => {
-  const db = req.db;
-  const tableExists = db
-    .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='webhook_delivery_failures'")
-    .get();
-  if (!tableExists) {
-    res.json({ success: true, data: { failures: [], total: 0 } });
-    return;
+  try {
+    const db = req.db;
+    const tableExists = db
+      .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='webhook_delivery_failures'")
+      .get();
+    if (!tableExists) {
+      res.json({ success: true, data: { failures: [], total: 0 } });
+      return;
+    }
+    const limit = Math.min(parseInt(req.query.limit as string || '50', 10), 200);
+    const rows = db
+      .prepare(
+        'SELECT id, endpoint, event, attempts, last_error, last_status, created_at, payload FROM webhook_delivery_failures ORDER BY created_at DESC LIMIT ?'
+      )
+      .all(limit) as Array<{
+        id: number; endpoint: string; event: string;
+        attempts: number; last_error: string | null; last_status: number | null; created_at: string; payload: string | null;
+      }>;
+    const failures = rows.map(({ payload, ...row }) => ({
+      ...row,
+      ...formatWebhookFailurePayloadPreview(payload),
+    }));
+    const totalRow = db
+      .prepare('SELECT COUNT(*) as c FROM webhook_delivery_failures')
+      .get() as { c: number };
+    res.json({ success: true, data: { failures, total: totalRow.c } });
+  } catch (e: unknown) {
+    logger.error('settings_webhook_failures_list_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to list webhook failures' });
+    }
   }
-  const limit = Math.min(parseInt(req.query.limit as string || '50', 10), 200);
-  const rows = db
-    .prepare(
-      'SELECT id, endpoint, event, attempts, last_error, last_status, created_at, payload FROM webhook_delivery_failures ORDER BY created_at DESC LIMIT ?'
-    )
-    .all(limit) as Array<{
-      id: number; endpoint: string; event: string;
-      attempts: number; last_error: string | null; last_status: number | null; created_at: string; payload: string | null;
-    }>;
-  const failures = rows.map(({ payload, ...row }) => ({
-    ...row,
-    ...formatWebhookFailurePayloadPreview(payload),
-  }));
-  const totalRow = db
-    .prepare('SELECT COUNT(*) as c FROM webhook_delivery_failures')
-    .get() as { c: number };
-  res.json({ success: true, data: { failures, total: totalRow.c } });
 });
 
 // POST /webhook-failures/:id/retry — operator retry of a single dead-lettered delivery

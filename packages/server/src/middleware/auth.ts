@@ -252,17 +252,29 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
           ? rawActive
           : `${rawActive.replace(' ', 'T')}Z`;
         const lastActiveMs = new Date(normalizedActive).getTime();
-        if (!Number.isNaN(lastActiveMs)) {
-          const idleMs = Date.now() - lastActiveMs;
-          const maxIdleMs = IDLE_SESSION_MAX_DAYS * 24 * 60 * 60 * 1000;
-          if (idleMs > maxIdleMs) {
-            // Clean up the idle session so a future refresh can't resurrect it.
-            try {
-              await req.asyncDb.run('DELETE FROM sessions WHERE id = ?', payload.sessionId);
-            } catch { /* audit-log best-effort */ }
-            res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_SESSION_IDLE, 'Session idle timeout', rid));
-            return;
-          }
+        // BUGHUNT-2026-05-18: fail-CLOSED on unparseable last_active. Previously
+        // `!isNaN` short-circuited the entire idle check on any NaN value,
+        // letting a stolen session token bypass the idle-timeout indefinitely
+        // if its last_active column ever got corrupted, migrated wrong, or
+        // populated with a non-standard format. Treat parse failure as
+        // "idle session, revoke" — same outcome as a session truly over the
+        // window — and the user must re-authenticate.
+        if (Number.isNaN(lastActiveMs)) {
+          try {
+            await req.asyncDb.run('DELETE FROM sessions WHERE id = ?', payload.sessionId);
+          } catch { /* audit-log best-effort */ }
+          res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_SESSION_IDLE, 'Session expired', rid));
+          return;
+        }
+        const idleMs = Date.now() - lastActiveMs;
+        const maxIdleMs = IDLE_SESSION_MAX_DAYS * 24 * 60 * 60 * 1000;
+        if (idleMs > maxIdleMs) {
+          // Clean up the idle session so a future refresh can't resurrect it.
+          try {
+            await req.asyncDb.run('DELETE FROM sessions WHERE id = ?', payload.sessionId);
+          } catch { /* audit-log best-effort */ }
+          res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_SESSION_IDLE, 'Session idle timeout', rid));
+          return;
         }
       }
 
