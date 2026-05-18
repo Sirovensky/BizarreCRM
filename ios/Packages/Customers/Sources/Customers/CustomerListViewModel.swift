@@ -122,6 +122,11 @@ public final class CustomerListViewModel {
                 )
                 customers = results
                 lastSyncedAt = await cached.lastSyncedAt
+            } catch let e where AppError.isCancellation(e) {
+                // BUGHUNT-2026-05-18: pull-to-refresh cancel — don't paint
+                // "force-refresh failed: cancelled" on the list. The next
+                // load() picks up state when the user re-pulls.
+                return
             } catch {
                 AppLog.ui.error("Customer force-refresh failed: \(error.localizedDescription, privacy: .public)")
                 errorMessage = error.localizedDescription
@@ -262,6 +267,14 @@ public final class CustomerListViewModel {
             hasMore = page.nextCursor != nil
             if showStats { stats = page.stats }
             lastSyncedAt = Date()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: don't fall through to legacy fallback on a
+            // cancel — issuing a second request after the parent task was
+            // cancelled wastes a round-trip and the next load() will paint
+            // the right state anyway. (Previously this entered the legacy
+            // branch with a doomed task and ended up painting "cancelled"
+            // as errorMessage via legacyErr.)
+            return
         } catch {
             // If cursor pagination not supported by server, fall back to legacy list.
             AppLog.ui.debug(
@@ -272,6 +285,8 @@ public final class CustomerListViewModel {
                 hasMore = false
                 nextCursor = nil
                 lastSyncedAt = Date()
+            } catch let legacyErr where AppError.isCancellation(legacyErr) {
+                return  // BUGHUNT-2026-05-18: legacy fallback cancel — same as above
             } catch let legacyErr {
                 AppLog.ui.error("Customer list load failed: \(legacyErr.localizedDescription, privacy: .public)")
                 errorMessage = legacyErr.localizedDescription
