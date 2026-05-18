@@ -98,6 +98,12 @@ public final class SmsListViewModel {
         }
         do {
             try await repo.markRead(phone: phone)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: markRead is a PATCH and the optimistic
+            // unreadCount = 0 already landed. Painting "failed" + reverting
+            // would re-show unread on a server-accepted write, then a re-tap
+            // would PATCH again. Keep the optimistic state on cancellation.
+            return
         } catch {
             AppLog.ui.error("markRead failed: \(error.localizedDescription, privacy: .public)")
             actionError = error.localizedDescription
@@ -126,6 +132,12 @@ public final class SmsListViewModel {
                     recentTicket: c.recentTicket
                 )
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: toggleFlag is a PATCH that flips a boolean
+            // server-side. If the server processed the toggle before cancel,
+            // painting "failed" tempts a re-tap that flips the flag back —
+            // visible mismatch with the next fetch. Stay silent.
+            return
         } catch {
             AppLog.ui.error("toggleFlag failed: \(error.localizedDescription, privacy: .public)")
             actionError = error.localizedDescription
@@ -158,6 +170,11 @@ public final class SmsListViewModel {
                 if !a.isPinned && b.isPinned { return false }
                 return false
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: togglePin is a PATCH that flips a boolean.
+            // Same hazard as toggleFlag — re-tap on cancel would undo a
+            // server-accepted toggle. Stay silent.
+            return
         } catch {
             AppLog.ui.error("togglePin failed: \(error.localizedDescription, privacy: .public)")
             actionError = error.localizedDescription
@@ -175,6 +192,11 @@ public final class SmsListViewModel {
                 // Unarchived — reload so it reappears correctly sorted.
                 await fetch(force: true)
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: toggleArchive is a PATCH that flips a
+            // boolean. Re-tap on cancel would undo a server-accepted toggle.
+            // Stay silent.
+            return
         } catch {
             AppLog.ui.error("toggleArchive failed: \(error.localizedDescription, privacy: .public)")
             actionError = error.localizedDescription
