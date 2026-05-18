@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -215,6 +216,17 @@ fun FieldServiceScreen(
                         icon = Icons.Default.Work,
                         title = stringResource(R.string.field_service_offline_title),
                         subtitle = stringResource(R.string.field_service_offline_subtitle),
+                        action = {
+                            FilledTonalButton(onClick = { viewModel.loadJobs() }) {
+                                Icon(
+                                    Icons.Default.Refresh,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(Modifier.size(8.dp))
+                                Text(stringResource(R.string.action_retry))
+                            }
+                        },
                     )
                 }
             }
