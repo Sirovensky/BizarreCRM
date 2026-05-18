@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import Factory
+import Core
 
 // MARK: - RolesMatrixViewModel
 
@@ -125,11 +126,26 @@ public final class RolesMatrixViewModel {
     // MARK: Create / Delete
 
     public func createRole(name: String, description: String? = nil, preset: String? = nil, capabilities: Set<String> = []) async {
+        // BUGHUNT-2026-05-17: re-entry guard — Create-Role sheet's primary
+        // action does not disable on tap, so a fast double-tap or
+        // SwiftUI-replay would fire createRole twice. POST is not
+        // idempotent (no key on the route) → two roles with the same name
+        // and same capability set get created; the second tenant audit row
+        // is misleading evidence of duplicate-admin intent.
+        guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
         do {
             let role = try await repository.create(name: name, description: description, capabilities: capabilities)
             roles.append(role)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: POST may have already created the role
+            // server-side when the task was cancelled (sheet dismissed
+            // before the response arrived). A red banner would tempt the
+            // user to tap Create again → second duplicate role. Stay
+            // silent; next list reload reconciles.
+            isLoading = false
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -137,11 +153,23 @@ public final class RolesMatrixViewModel {
     }
 
     public func deleteRole(_ role: Role) async {
+        // BUGHUNT-2026-05-17: re-entry guard — confirmation dialog's
+        // destructive action isn't disabled on tap. Double-tap → two
+        // DELETE requests; the second 404s but the audit trail still
+        // records a "delete attempt" on a missing role, which security
+        // review reads as a misconfiguration probe.
+        guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
         do {
             try await repository.delete(roleId: role.id)
             roles.removeAll { $0.id == role.id }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: DELETE may have committed server-side
+            // before the task was cancelled. A red banner misleads —
+            // the role may already be gone. Stay silent.
+            isLoading = false
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -185,6 +213,15 @@ public final class RolesMatrixViewModel {
             if let idx = roles.firstIndex(where: { $0.id == role.id }) {
                 roles[idx] = updated
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: capability toggle PATCH is audited
+            // server-side. If the PATCH committed but the task was
+            // cancelled (column switch, screen tear-down, .rolesChanged
+            // refresh racing in), surfacing an error tempts a retry tap
+            // → second PATCH writes a second audit row for the same
+            // permission change. Stay silent; the next loadRole()
+            // reconciles state.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
