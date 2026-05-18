@@ -113,6 +113,10 @@ public struct LocationEditorView: View {
     }
 
     private func save() async {
+        // BUGHUNT-2026-05-17: re-entry guard — primary action stays
+        // enabled until SwiftUI redraws on `isSaving=true`. Two rapid
+        // taps would otherwise fire two parallel create/update calls.
+        guard !isSaving else { return }
         errorMessage = nil
         isSaving = true
         defer { isSaving = false }
@@ -152,6 +156,13 @@ public struct LocationEditorView: View {
                 )
             }
             onSave(saved)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: location create POST has no idempotency
+            // key. A cancellation banner tempted retap that — if the
+            // server accepted the first POST — created a duplicate
+            // location row (two physical stores with identical address
+            // confuses inventory transfers and tax routing).
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
