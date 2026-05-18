@@ -180,6 +180,14 @@ public final class EstimateCreateViewModel {
             let created = try await api.createEstimateIdempotent(body)
             createdId = created.id
             await _draftAutoSaverValue.clear()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: Estimate create is money-binding. POST may
+            // have already been accepted server-side when user dismissed the
+            // sheet; painting an error tempts a retap. The idempotency key
+            // would dedupe in theory, but a cleaner user signal is to stay
+            // silent — let the list reload show the row. Reset for next
+            // attempt via resetIdempotencyKey() on explicit re-open.
+            return
         } catch {
             let appError = AppError.from(error)
             AppLog.ui.error("Estimate create failed: \(error.localizedDescription, privacy: .public)")
