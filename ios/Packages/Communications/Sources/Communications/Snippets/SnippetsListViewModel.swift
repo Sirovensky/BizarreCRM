@@ -85,6 +85,11 @@ public final class SnippetsListViewModel {
         snippets = snippets.filter { $0.id != id }
         do {
             try await api.deleteSnippet(id: id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: DELETE may have committed. Reverting via
+            // load() races the cancellation and may also be cancelled.
+            // Keep optimistic state; next list reload reconciles.
+            return
         } catch {
             AppLog.ui.error("Snippet delete failed: \(error.localizedDescription, privacy: .public)")
             // Revert on failure
