@@ -225,16 +225,33 @@ async function processSchedule(slug: string | null, db: Database.Database, sched
   // contains the filename only (safe — no PII in the path).
   if (succeeded && schedule.delivery_email) {
     const fileName = filePath ? path.basename(filePath) : 'export.json';
+    // BUGHUNT-2026-05-17 [XSS in delivery email]: schedule.name and
+    // fileName were interpolated unescaped into the HTML body. An
+    // admin who named a schedule `<img src=x onerror=alert(1)>` would
+    // produce a stored-XSS payload for any mail-client (or webmail
+    // preview) that renders the body. email.ts strips `on*=` handlers
+    // and `<script>` blocks defensively, but a bare `<img src=...>` or
+    // `<a href=...>` still embeds. Escape every interpolated value.
+    const escapeHtmlLocal = (v: string): string =>
+      v
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    const safeName = escapeHtmlLocal(schedule.name ?? '');
+    const safeFile = escapeHtmlLocal(fileName);
+    const safeType = escapeHtmlLocal(exportType);
     try {
       await sendEmail(db, {
         to: schedule.delivery_email,
         subject: `Data export ready — ${schedule.name}`,
         html: [
-          `<p>Your scheduled data export "<strong>${schedule.name}</strong>" has completed.</p>`,
+          `<p>Your scheduled data export "<strong>${safeName}</strong>" has completed.</p>`,
           `<ul>`,
-          `<li>Export type: ${exportType}</li>`,
+          `<li>Export type: ${safeType}</li>`,
           `<li>Rows exported: ${rowCount.toLocaleString()}</li>`,
-          `<li>File: ${fileName}</li>`,
+          `<li>File: ${safeFile}</li>`,
           `</ul>`,
           `<p>Contact your administrator to retrieve the file from the server exports directory.</p>`,
         ].join(''),
