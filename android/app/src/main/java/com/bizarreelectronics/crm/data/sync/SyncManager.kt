@@ -508,19 +508,32 @@ class SyncManager @Inject constructor(
             ticketDao.upsert(entity)
             return
         }
-        // 1. Insert the real row under its server-assigned id. Upsert avoids the
-        //    delete-and-replace path that would CASCADE-wipe the children.
-        ticketDao.upsert(entity)
-        // 2. Re-point children at the new id BEFORE the temp row is removed.
-        //    These DAOs may not be injected here today; the SQL is executed via
-        //    a transactional callback so the migration is one atomic step.
-        // NOTE: SyncManager doesn't currently take TicketDeviceDao / TicketNoteDao
-        // dependencies. The repointing SQL is inlined via execSQL on the underlying
-        // SupportSQLiteDatabase. If/when those DAOs land, swap these calls for
-        // typed `updateTicketIdForDevices(tempId, entity.id)` queries.
-        ticketRepository.repointChildRowsToServerId(tempId = tempId, serverId = entity.id)
-        // 3. Now safely remove the temp row. Children no longer reference it.
-        ticketDao.deleteById(tempId)
+        // BUGHUNT-2026-05-17: wrap the 3-step reconciliation in a single
+        // Room transaction so a coroutine cancellation (Doze, SyncWorker
+        // replacement) between any two steps cannot strand the device in
+        // a half-reconciled state. Previously the steps were independent
+        // suspend calls — a cancel between step 1 and step 3 would leave
+        // both the temp row and the real row visible in Room, and the
+        // next flushQueue tick would re-POST the same ticket create
+        // (queue entry not yet marked completed) — duplicating the
+        // ticket on the server if /tickets has no idempotency key, or
+        // 409-cycling through dispatch retries until dead-letter.
+        // Mirrors reconcileCustomerTempId's existing withTransaction.
+        database.withTransaction {
+            // 1. Insert the real row under its server-assigned id. Upsert avoids the
+            //    delete-and-replace path that would CASCADE-wipe the children.
+            ticketDao.upsert(entity)
+            // 2. Re-point children at the new id BEFORE the temp row is removed.
+            //    These DAOs may not be injected here today; the SQL is executed via
+            //    a transactional callback so the migration is one atomic step.
+            // NOTE: SyncManager doesn't currently take TicketDeviceDao / TicketNoteDao
+            // dependencies. The repointing SQL is inlined via execSQL on the underlying
+            // SupportSQLiteDatabase. If/when those DAOs land, swap these calls for
+            // typed `updateTicketIdForDevices(tempId, entity.id)` queries.
+            ticketRepository.repointChildRowsToServerId(tempId = tempId, serverId = entity.id)
+            // 3. Now safely remove the temp row. Children no longer reference it.
+            ticketDao.deleteById(tempId)
+        }
     }
 
     /**
