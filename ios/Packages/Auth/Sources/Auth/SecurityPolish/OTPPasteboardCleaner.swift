@@ -39,10 +39,23 @@ public enum OTPPasteboardCleaner {
     /// Compatibility shim for callers that detected a pasted OTP and want a
     /// 30-second auto-clear. The canonical path is `copy(_:)` which sets an
     /// OS-enforced expiry; for paste-detection we schedule an async clear.
+    ///
+    /// BUGHUNT-2026-05-17: only wipe if the clipboard still holds the OTP we
+    /// observed. Previously this unconditionally wiped the clipboard after
+    /// 30s — destroying whatever the user copied in the meantime (a
+    /// password, a URL, a customer's address) when the auth screen
+    /// auto-detected an OTP.
     public static func scheduleWipe() {
+        let pasteboard = UIPasteboard.general
+        let originalChangeCount = pasteboard.changeCount
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 30_000_000_000)
-            UIPasteboard.general.items = []
+            // If the user has copied anything new in the past 30s, leave the
+            // pasteboard alone — UIPasteboard.changeCount is bumped on every
+            // write so this is the canonical "did the clipboard change?" test.
+            if UIPasteboard.general.changeCount == originalChangeCount {
+                UIPasteboard.general.items = []
+            }
         }
     }
 }
