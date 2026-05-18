@@ -80,6 +80,12 @@ public final class InvoiceEmailReceiptViewModel {
             }
 
             state = .success
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: email-receipt + sms-receipt routes have no
+            // idempotency keys. A "failed" toast tempted a re-tap that sent
+            // the customer a duplicate receipt. Revert to idle so the user
+            // reopens the sheet rather than reacting to a misleading banner.
+            state = .idle
         } catch {
             AppLog.ui.error("Email receipt failed: \(error.localizedDescription, privacy: .public)")
             let appError = AppError.from(error)
