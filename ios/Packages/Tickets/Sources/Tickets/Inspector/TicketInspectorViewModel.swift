@@ -129,6 +129,17 @@ public final class TicketInspectorViewModel {
 
             didSave = true
             onSaved()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: save() does up to two server PATCHes — status
+            // and assignee. If the inspector sheet is dismissed mid-flight,
+            // both calls observe CancellationError. Painting "cancelled" into
+            // errorMessage made it look like the save failed even when the
+            // server already accepted the status PATCH (which fires first),
+            // and tempted the user to re-save which would re-PATCH the same
+            // status. Suppress cancellation as a save error; parent view's
+            // onSaved is intentionally not called (truly partial state),
+            // and a subsequent refresh will reconcile.
+            return
         } catch {
             AppLog.ui.error("Inspector save failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
