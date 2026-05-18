@@ -92,15 +92,19 @@ class EstimateDetailViewModel @Inject constructor(
 
     fun loadApiDetail() {
         viewModelScope.launch {
-            runCatching { estimateApi.getEstimate(estimateId) }
-                .onSuccess { response ->
-                    val detail = response.data ?: return@onSuccess
-                    _state.value = _state.value.copy(
-                        lineItems = detail.lineItems ?: emptyList(),
-                        versionNumber = detail.versionNumber ?: 1,
-                    )
-                }
-                .onFailure { /* non-critical; Room entity covers the rest */ }
+            // BUGHUNT-2026-05-17: runCatching swallows CancellationException.
+            try {
+                val response = estimateApi.getEstimate(estimateId)
+                val detail = response.data ?: return@launch
+                _state.value = _state.value.copy(
+                    lineItems = detail.lineItems ?: emptyList(),
+                    versionNumber = detail.versionNumber ?: 1,
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                /* non-critical; Room entity covers the rest */
+            }
         }
     }
 
@@ -108,19 +112,21 @@ class EstimateDetailViewModel @Inject constructor(
 
     fun loadVersions() {
         viewModelScope.launch {
-            runCatching { estimateApi.getVersions(estimateId) }
-                .onSuccess { response ->
-                    _state.value = _state.value.copy(
-                        versions = response.data ?: emptyList(),
-                    )
+            // BUGHUNT-2026-05-17: runCatching swallows CancellationException.
+            try {
+                val response = estimateApi.getVersions(estimateId)
+                _state.value = _state.value.copy(
+                    versions = response.data ?: emptyList(),
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // 404 = server doesn't support versions yet — silently use empty list
+                if (e is HttpException && e.code() == 404) {
+                    _state.value = _state.value.copy(versions = emptyList())
                 }
-                .onFailure { e ->
-                    // 404 = server doesn't support versions yet — silently use empty list
-                    if (e is HttpException && e.code() == 404) {
-                        _state.value = _state.value.copy(versions = emptyList())
-                    }
-                    // Other errors also silently ignored for versions (non-critical)
-                }
+                // Other errors also silently ignored for versions (non-critical)
+            }
         }
     }
 
@@ -342,35 +348,40 @@ class EstimateDetailViewModel @Inject constructor(
     fun markAsExpired() {
         _state.value = _state.value.copy(showExpireConfirm = false, isActionInProgress = true)
         viewModelScope.launch {
-            // Try PATCH first; fall back to POST .../expire on 404.
-            val patchResult = runCatching {
+            // BUGHUNT-2026-05-17: runCatching swallows CancellationException
+            // on the expire PATCH. Use try/catch+rethrow so coroutine cancel
+            // doesn't get masked as a 404 fallback. Fall back to dedicated
+            // /expire only on real 404, not on cancellation.
+            val patchError: Throwable? = try {
                 estimateApi.patchEstimate(estimateId, mapOf("status" to "expired"))
-            }
-            if (patchResult.isSuccess) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
                     actionMessage = "Estimate marked as expired",
                 )
                 loadEstimate()
                 return@launch
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                e
             }
-            val patchError = patchResult.exceptionOrNull()
             if (patchError is HttpException && patchError.code() == 404) {
                 // Fallback to dedicated expire endpoint
-                runCatching { estimateApi.expireEstimate(estimateId) }
-                    .onSuccess {
-                        _state.value = _state.value.copy(
-                            isActionInProgress = false,
-                            actionMessage = "Estimate marked as expired",
-                        )
-                        loadEstimate()
-                    }
-                    .onFailure { e ->
-                        _state.value = _state.value.copy(
-                            isActionInProgress = false,
-                            actionMessage = e.message ?: "Failed to expire estimate",
-                        )
-                    }
+                try {
+                    estimateApi.expireEstimate(estimateId)
+                    _state.value = _state.value.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Estimate marked as expired",
+                    )
+                    loadEstimate()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    _state.value = _state.value.copy(
+                        isActionInProgress = false,
+                        actionMessage = e.message ?: "Failed to expire estimate",
+                    )
+                }
             } else {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
