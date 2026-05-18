@@ -61,6 +61,17 @@ public final class ChangePasswordViewModel {
             currentPassword = ""
             newPassword = ""
             confirmPassword = ""
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss / sign-out mid-change
+            // cancels response, but server may have committed the new
+            // password. Retap with stored currentPassword field would
+            // now FAIL with 401 ("Current password is incorrect"),
+            // locking the user out of further password changes. Stay
+            // silent and clear the form so the user starts fresh.
+            currentPassword = ""
+            newPassword = ""
+            confirmPassword = ""
+            return
         } catch APITransportError.httpStatus(let code, _) where code == 401 {
             errorMessage = "Current password is incorrect."
         } catch {

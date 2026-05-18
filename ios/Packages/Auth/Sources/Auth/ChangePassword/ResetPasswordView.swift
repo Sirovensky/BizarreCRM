@@ -52,6 +52,13 @@ public final class ResetPasswordViewModel {
         do {
             try await api.resetPassword(token: token, newPassword: newPassword)
             isSuccess = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: view dismiss cancels reset POST, but
+            // server may have committed (token consumed + password reset).
+            // Retap with same token would hit 410 ("link expired or used"),
+            // misleading the user into requesting a new email when their
+            // password is already reset. Stay silent.
+            return
         } catch APITransportError.httpStatus(let code, let msg) {
             switch code {
             case 410:

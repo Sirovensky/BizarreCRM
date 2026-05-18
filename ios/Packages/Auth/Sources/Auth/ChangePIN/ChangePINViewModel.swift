@@ -70,6 +70,19 @@ public final class ChangePINViewModel {
             currentPIN = ""
             newPIN = ""
             confirmPIN = ""
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancels response, but
+            // server may have committed the new PIN. Retap with the
+            // stored currentPIN would hit 401, painting "Current PIN is
+            // incorrect" and trapping the user. Worse, the local
+            // PINStore.enrol() didn't run, so unlock would diverge from
+            // server. Best-effort: write the new PIN to PINStore in case
+            // server did commit, then clear fields.
+            try? PINStore.shared.enrol(pin: newPIN)
+            currentPIN = ""
+            newPIN = ""
+            confirmPIN = ""
+            return
         } catch APITransportError.httpStatus(let code, _) where code == 401 {
             errorMessage = "Current PIN is incorrect."
         } catch {

@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import SwiftUI
+import Core
 import DesignSystem
 import Networking
 
@@ -158,6 +159,12 @@ final class PinForgotViewModel {
         do {
             try await api.pinResetRequest(userId: userId)
             isSent = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: view dismiss cancels POST, but server
+            // may have committed (manager-reset email dispatched). Retap
+            // double-sends the email; TCPA-like manager noise. Stay silent.
+            isSending = false
+            return
         } catch {
             errorMessage = "Could not send the reset link. Please contact your manager."
         }

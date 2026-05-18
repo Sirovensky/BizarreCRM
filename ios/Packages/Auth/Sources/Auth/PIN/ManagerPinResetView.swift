@@ -175,6 +175,14 @@ final class ManagerPinResetViewModel {
         do {
             try await api.managerPinReset(staffUserId: staffUserId, managerPin: managerPin)
             isDone = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancels response, but
+            // server may have committed the staff PIN reset. Surfacing
+            // "Check your manager PIN" misleads — the manager PIN is
+            // correct, and the staff PIN is already reset server-side.
+            // Stay silent.
+            isSubmitting = false
+            return
         } catch {
             errorMessage = "Could not reset the PIN. Check your manager PIN and try again."
         }

@@ -117,6 +117,14 @@ public final class SignupFlowViewModel {
         do {
             _ = try await api.signup(request: req)
             isComplete = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: view dismiss mid-POST cancels response,
+            // but server may have committed the tenant + initial user.
+            // Surfacing .error tempts a retap that hits 409 ("username
+            // taken") — misleading the user into a different username
+            // and creating a DUPLICATE tenant (orphaning the first).
+            // Stay silent; user can verify by logging in.
+            return
         } catch APITransportError.httpStatus(let code, let msg) {
             switch code {
             case 409:

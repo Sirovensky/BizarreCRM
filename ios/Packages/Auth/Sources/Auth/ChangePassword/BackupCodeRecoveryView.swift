@@ -72,6 +72,13 @@ public final class BackupCodeRecoveryViewModel {
                 backupCode: normalised
             )
             recoveryToken = response.recoveryToken
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: view dismiss cancels POST, but server
+            // may have committed (backup code burned, recovery token
+            // issued). Retap with same code hits 410 ("already used"),
+            // wasting one of the user's limited backup codes from their
+            // pool. Stay silent.
+            return
         } catch APITransportError.httpStatus(let code, let msg) {
             switch code {
             case 400:
