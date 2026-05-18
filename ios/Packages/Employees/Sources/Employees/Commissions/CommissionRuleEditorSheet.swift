@@ -46,6 +46,11 @@ public final class CommissionRuleEditorViewModel {
 
     public func save() async {
         guard isValid else { return }
+        // BUGHUNT-2026-05-17: re-entry guard. The Save button is .disabled
+        // while isSaving but a quick double-tap fires two POSTs/PATCHes —
+        // for a *new* rule that creates two identical commission rules
+        // that both apply to commission calculations, doubling payouts.
+        guard !isSaving else { return }
         isSaving = true
         errorMessage = nil
         defer { isSaving = false }
@@ -77,6 +82,15 @@ public final class CommissionRuleEditorViewModel {
             }
             savedRule = saved
             onSave(saved)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: createCommissionRule/updateCommissionRule
+            // may have landed before cancellation fired. Painting
+            // "cancelled" as errorMessage tempts the admin to retap Save —
+            // for a new rule that produces two duplicate rules both applying
+            // to commission math, doubling payouts. Suppress the error;
+            // the rules list refresh on dismiss reveals the actual saved
+            // state.
+            errorMessage = nil
         } catch {
             let appError = AppError.from(error)
             errorMessage = appError.errorDescription
