@@ -70,6 +70,10 @@ public final class TimesheetViewModel {
             breaks = newBreaks
             overtimeBreakdown = breakdown
             loadState = .loaded
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: period swap cancels prior fetch; leave
+            // state for newer fetch to set .loaded.
+            return
         } catch {
             loadState = .failed(error.localizedDescription)
         }
