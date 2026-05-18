@@ -158,6 +158,11 @@ public final class NotificationMatrixViewModel {
                 }
             }
             matrix = NotificationMatrixModel(rows: updatedRows)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: batchUpdate PUT may have committed when
+            // user navigated away. Reverting to snapshot would lie about
+            // server state. Keep current matrix; next reload reconciles.
+            return
         } catch {
             matrix = snapshot
             AppLog.ui.error("MatrixVM save failed: \(error.localizedDescription, privacy: .public)")
