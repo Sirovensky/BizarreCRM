@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -599,6 +600,9 @@ fun EstimateCreateScreen(
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 2,
                     maxLines = 5,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                    ),
                 )
             }
 
@@ -650,6 +654,10 @@ private fun CustomerPickerSection(
                 supportingText = if (state.selectedCustomer != null) {
                     { Text("Selected: ${state.selectedCustomer.email ?: state.selectedCustomer.phone ?: ""}", color = MaterialTheme.colorScheme.primary) }
                 } else null,
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.None,
+                    autoCorrect = false,
+                ),
             )
             if (state.customerResults.isNotEmpty()) {
                 ExposedDropdownMenu(expanded = state.showCustomerDropdown, onDismissRequest = viewModel::onDismissCustomerDropdown) {
@@ -829,6 +837,10 @@ private fun ServiceTab(state: EstimateCreateUiState, viewModel: EstimateCreateVi
         modifier = Modifier.fillMaxWidth(),
         singleLine = true,
         leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+        keyboardOptions = KeyboardOptions(
+            capitalization = KeyboardCapitalization.None,
+            autoCorrect = false,
+        ),
     )
     if (state.servicesLoading) {
         Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(modifier = Modifier.size(24.dp)) }
@@ -865,6 +877,10 @@ private fun PartTab(state: EstimateCreateUiState, viewModel: EstimateCreateViewM
         modifier = Modifier.fillMaxWidth(),
         singleLine = true,
         leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+        keyboardOptions = KeyboardOptions(
+            capitalization = KeyboardCapitalization.None,
+            autoCorrect = false,
+        ),
     )
     if (state.partsLoading) {
         Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(modifier = Modifier.size(24.dp)) }

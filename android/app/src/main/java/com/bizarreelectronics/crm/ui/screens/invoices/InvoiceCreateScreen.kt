@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -541,6 +542,9 @@ fun InvoiceCreateScreen(
                         .semantics { contentDescription = "Invoice notes" },
                     minLines = 2,
                     maxLines = 5,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                    ),
                 )
             }
 
@@ -677,6 +681,10 @@ private fun CustomerPickerSection(
                         )
                     }
                 } else null,
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.None,
+                    autoCorrect = false,
+                ),
             )
 
             if (results.isNotEmpty()) {
