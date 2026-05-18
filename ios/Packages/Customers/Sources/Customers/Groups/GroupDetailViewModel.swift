@@ -59,6 +59,8 @@ public final class GroupDetailViewModel {
             group = detail.group
             members = detail.members
             pagination = detail.pagination
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             AppLog.ui.error("Group detail load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -86,6 +88,8 @@ public final class GroupDetailViewModel {
             members = members + detail.members
             pagination = detail.pagination
             currentPage = nextPage
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: scroll-during-cancel
         } catch {
             AppLog.ui.error("Group page load failed: \(error.localizedDescription, privacy: .public)")
         }
@@ -113,6 +117,10 @@ public final class GroupDetailViewModel {
                     updatedAt: g.updatedAt
                 )
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels DELETE; server may have
+            // committed. Optimistic remove handles the local state.
+            return
         } catch {
             AppLog.ui.error("Remove member failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -129,6 +137,11 @@ public final class GroupDetailViewModel {
                 // Reload to get fresh member list with names
                 await load()
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancels add POST, but
+            // server may have committed. Retap re-adds (idempotent server-
+            // side for "already in group" but creates audit row noise).
+            return
         } catch {
             AppLog.ui.error("Add members failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription

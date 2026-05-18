@@ -42,6 +42,8 @@ public final class CustomerHealthViewModel {
 
         do {
             snapshot = try await repo.healthSnapshot(customerId: customerId)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: customer swap cancel
         } catch {
             AppLog.ui.error("CustomerHealth load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -59,6 +61,11 @@ public final class CustomerHealthViewModel {
         do {
             snapshot      = try await repo.recalculate(customerId: customerId)
             recalcMessage = "Score updated."
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels recalc POST, but server may
+            // have run the RFM recomputation. Retap re-runs the expensive
+            // recompute. Stay silent; reload reflects truth.
+            return
         } catch {
             AppLog.ui.error("CustomerHealth recalc failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = "Could not update score: \(error.localizedDescription)"

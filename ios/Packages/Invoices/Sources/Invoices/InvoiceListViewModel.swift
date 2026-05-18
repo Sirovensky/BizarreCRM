@@ -108,6 +108,8 @@ public final class InvoiceListViewModel {
             invoices.append(contentsOf: response.invoices)
             nextCursor = response.pagination?.page.map { String($0 + 1) }
             hasMore = (response.pagination?.totalPages).map { $0 > (response.pagination?.page ?? 0) } ?? false
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: filter swap cancels pagination
         } catch {
             AppLog.ui.error("Invoice load-more failed: \(error.localizedDescription, privacy: .public)")
         }
@@ -229,6 +231,8 @@ public final class InvoiceListViewModel {
                 nextCursor = response.pagination?.page.map { String($0 + 1) }
                 hasMore = (response.pagination?.totalPages).map { $0 > (response.pagination?.page ?? 0) } ?? false
             }
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: filter/refresh cancel
         } catch {
             AppLog.ui.error("Invoice list load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
