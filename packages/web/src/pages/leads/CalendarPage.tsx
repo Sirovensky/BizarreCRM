@@ -889,6 +889,10 @@ function CreateAppointmentModal({
                 onChange={(e) => { setCustomerQuery(e.target.value); setCustomerDropdownOpen(true); }}
                 onFocus={() => setCustomerDropdownOpen(true)}
                 placeholder="Search by name, phone, or email"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                aria-label="Search customers"
                 className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
               />
             )}

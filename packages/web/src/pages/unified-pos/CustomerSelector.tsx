@@ -281,11 +281,14 @@ export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSele
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-surface-400" />
         <input
-          type="text"
+          type="search"
           value={query}
           onChange={(e) => { setQuery(e.target.value); setIsOpen(true); }}
           onFocus={() => { if (results.length) setIsOpen(true); }}
           autoFocus={!inline}
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
           placeholder="Search by name, phone, or email…"
           aria-label="Search customers by name, phone, or email"
           className={cn(

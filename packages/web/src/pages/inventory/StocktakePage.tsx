@@ -426,6 +426,9 @@ export function StocktakePage() {
               value={sessionSearch}
               onChange={(e) => setSessionSearch(e.target.value)}
               placeholder="Search name or location…"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
               className="w-full rounded-md border border-surface-300 bg-white px-3 py-1.5 text-xs dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
               aria-label="Search stocktake sessions by name or location"
             />
@@ -825,6 +828,9 @@ export function StocktakePage() {
                   value={countsSearch}
                   onChange={(e) => setCountsSearch(e.target.value)}
                   placeholder="Search SKU or name…"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
                   className="flex-1 rounded-md border border-surface-300 bg-white px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
                   aria-label="Filter counts by SKU or item name"
                 />

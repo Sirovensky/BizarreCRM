@@ -557,11 +557,15 @@ function TemplatePicker({
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-surface-400" />
               <input
-                type="text"
+                type="search"
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder="Search templates..."
                 autoFocus
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                aria-label="Search templates"
                 className="w-full rounded-lg border-0 bg-surface-50 py-1.5 pl-8 pr-3 text-xs text-surface-900 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 dark:bg-surface-700 dark:text-surface-100"
           />
         </div>
@@ -1067,11 +1071,15 @@ function LinkCustomerPopover({
       <div className="p-3 border-b border-surface-200 dark:border-surface-700">
         <p className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Link to Customer</p>
         <input
-          type="text"
+          type="search"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search by name..."
           autoFocus
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          aria-label="Search customers by name"
           className="w-full rounded-lg border border-surface-300 px-3 py-1.5 text-sm dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400"
         />
       </div>
@@ -1854,10 +1862,14 @@ export function CommunicationPage() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
             <input
-              type="text"
+              type="search"
               placeholder="Search conversations..."
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              aria-label="Search conversations"
               className="w-full rounded-lg border border-surface-200 bg-surface-50 py-2 pl-9 pr-3 text-sm text-surface-900 placeholder:text-surface-400 focus-visible:border-primary-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
             />
           </div>

@@ -450,11 +450,15 @@ function IssueModal({ onClose }: IssueModalProps) {
             ) : (
               <div className="relative">
                 <input
-                  type="text"
+                  type="search"
                   value={customerSearch}
                   onChange={(e) => { setCustomerSearch(e.target.value); setShowCustomerDropdown(true); }}
                   onFocus={() => setShowCustomerDropdown(true)}
                   placeholder="Search name / phone / email…"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  aria-label="Search customers by name, phone, or email"
                   className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                 />
                 {showCustomerDropdown && debouncedCustomerSearch.length >= 2 && customerResults.length > 0 && (
@@ -966,10 +970,14 @@ export function GiftCardsListPage() {
         <div className="relative flex-1 max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-surface-400" />
           <input
-            type="text"
+            type="search"
             value={keyword}
             onChange={(e) => updateKeyword(e.target.value)}
             placeholder="Search code or recipient..."
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            aria-label="Search gift cards by code or recipient"
             className="w-full pl-9 pr-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-800"
           />
         </div>
