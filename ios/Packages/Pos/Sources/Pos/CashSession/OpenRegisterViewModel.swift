@@ -1,4 +1,5 @@
 import Foundation
+import Core
 import Persistence
 
 /// §39 — ViewModel that drives `OpenRegisterSheet`.
@@ -87,6 +88,14 @@ public final class OpenRegisterViewModel {
             } else {
                 errorMessage = "A session is already open."
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: bare `catch { errorMessage = ... }` painted
+            // "Task was cancelled" as a fake validation error on the Open
+            // Register sheet when the user dismissed mid-write. The DB write
+            // is fast and may have already committed; re-loading the screen
+            // would then show the session as already open. Stay silent on
+            // cancellation — the sheet's onAppear / refresh path reconciles.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

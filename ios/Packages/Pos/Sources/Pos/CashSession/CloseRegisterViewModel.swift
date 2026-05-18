@@ -1,4 +1,5 @@
 import Foundation
+import Core
 import Persistence
 
 /// §39 — ViewModel that drives `CloseRegisterSheet` and the Z-report flow.
@@ -100,6 +101,11 @@ public final class CloseRegisterViewModel {
             // for today via the cash_register table). Add the session's opening float so
             // the expected figure is relative to what should be physically in the drawer.
             expectedCents = session.openingFloat + state.cashSales + state.cashIn - state.cashOut
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: cancellation here (sheet dismissed mid-fetch)
+            // doesn't need to paint the "using local estimate" warning — the
+            // sheet's about to close anyway, and the next reopen will retry.
+            return
         } catch {
             // Non-fatal: we fall back to the local opening float seed.
             // Log for debugging but don't block the close flow.
@@ -131,6 +137,17 @@ public final class CloseRegisterViewModel {
             closedSession = record
         } catch CashRegisterError.noOpenSession {
             errorMessage = "No open session — reopen the register before closing."
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: close is a money-mutating step (locks counted
+            // cash, expected cash, variance, and notes into the cash_session
+            // row). Bare `catch { errorMessage = ... }` painted "Task was
+            // cancelled" as the alert beneath the Close button when the
+            // cashier dismissed the close sheet mid-write. The DB write may
+            // have ALREADY committed; tempting a retap then 400s with
+            // `noOpenSession` and the cashier sees two confusing errors in a
+            // row. Stay silent on cancellation — the next Close button reload
+            // / Z-report fetch reconciles the real state.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
