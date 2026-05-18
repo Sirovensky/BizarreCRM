@@ -74,6 +74,12 @@ public final class EntitySearchViewModel {
             let filter: EntityFilter? = selectedFilter == .all ? nil : selectedFilter
             let results = try await store.search(query: query, entity: filter, limit: 50)
             hits = results
+        } catch is CancellationError {
+            // BUGHUNT-2026-05-17: debounceTask cancellation on every keystroke
+            // previously fell through to errorMessage = "cancelled" and an
+            // empty hits array, blanking results mid-type. Leave the previous
+            // results visible until the new search returns.
+            return
         } catch {
             AppLog.ui.error("EntitySearchViewModel: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
