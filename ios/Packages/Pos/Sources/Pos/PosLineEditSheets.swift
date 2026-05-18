@@ -141,6 +141,9 @@ struct PosLineEditSheet: View {
             if showingNoteField {
                 lineRow(label: "Note") {
                     TextField("Receipt note…", text: $note)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.sentences)
+                        #endif
                         .font(.brandBodyMedium())
                         .foregroundStyle(.bizarreOnSurface)
                         .frame(maxWidth: 180)
