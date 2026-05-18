@@ -2619,6 +2619,10 @@ router.put('/config', requireStepUpTotpSuperAdmin('super_admin_config_write'), (
 // queued. Useful for triaging "the customer didn't get the SMS"
 // reports without SSHing into the tenant DB.
 
+// BUGHUNT-2026-05-17: wrap inner-`try/finally`-only block in a real catch.
+// `tdb.prepare(...).get()` / `.all()` can throw on schema drift or pool errors;
+// without a top-level catch the throw bubbles out as an unhandledRejection
+// because the finally only releases the DB handle, not the exception.
 router.get('/tenants/:slug/notifications', async (req: Request, res: Response) => {
   const slug = String(req.params.slug);
   if (!/^[a-z0-9-]{1,64}$/.test(slug)) {
@@ -2681,6 +2685,14 @@ router.get('/tenants/:slug/notifications', async (req: Request, res: Response) =
     ).get() as { total: number; pending: number; sent: number; failed: number; cancelled: number };
 
     res.json({ success: true, data: { rows, summary: summaryRow } });
+  } catch (err) {
+    logger.error('super_admin_tenant_notifications_query_error', {
+      slug,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_GENERIC, message: 'Failed to load notifications' });
+    }
   } finally {
     releaseTenantDb(slug);
   }
@@ -2693,6 +2705,9 @@ router.get('/tenants/:slug/notifications', async (req: Request, res: Response) =
 // were exhausted, so this list shows permanent failures the operator
 // probably needs to investigate on the downstream side.
 
+// BUGHUNT-2026-05-17: wrap inner-`try/finally`-only block in a real catch.
+// Same defect as the notifications handler above — exceptions from the DB
+// queries escape because the finally only releases the handle.
 router.get('/tenants/:slug/webhook-failures', async (req: Request, res: Response) => {
   const slug = String(req.params.slug);
   if (!/^[a-z0-9-]{1,64}$/.test(slug)) {
@@ -2761,6 +2776,14 @@ router.get('/tenants/:slug/webhook-failures', async (req: Request, res: Response
         },
       },
     });
+  } catch (err) {
+    logger.error('super_admin_tenant_webhook_failures_query_error', {
+      slug,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_GENERIC, message: 'Failed to load webhook failures' });
+    }
   } finally {
     releaseTenantDb(slug);
   }
