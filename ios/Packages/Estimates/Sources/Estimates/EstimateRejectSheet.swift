@@ -53,6 +53,13 @@ final class EstimateRejectSheetViewModel {
             )
             didReject = true
             AppLog.ui.info("Estimate \(self.estimateId) rejected. Reason: \(self.reason, privacy: .private)")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PUT flips status to rejected + writes the
+            // reason to notes. If the user dismisses mid-flight, server may
+            // have accepted; painting an error tempts a retap that re-writes
+            // the reason (potentially with an edited string) and re-fires any
+            // server-side rejection notification hook. Stay silent.
+            return
         } catch {
             errorMessage = AppError.from(error).errorDescription ?? error.localizedDescription
             AppLog.ui.error("Estimate reject failed: \(error.localizedDescription, privacy: .public)")
