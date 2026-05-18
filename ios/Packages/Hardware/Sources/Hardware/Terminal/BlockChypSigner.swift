@@ -90,10 +90,27 @@ public enum BlockChypSigner {
     // MARK: - Helpers (internal for testing)
 
     /// Generate a cryptographically random 32-byte nonce encoded as lowercase hex (64 chars).
+    ///
+    /// BUGHUNT-2026-05-17: check the SecRandomCopyBytes return code. The
+    /// previous implementation ignored it (`_ = SecRandom...`). If the
+    /// system PRNG ever fails (vanishingly rare on iOS, but possible on
+    /// older devices under entropy starvation), the `bytes` buffer stays
+    /// zero-filled — every BlockChyp request would then sign with the same
+    /// all-zero nonce, defeating the anti-replay guarantee. Fall back to
+    /// CryptoKit's SymmetricKey RNG which is also CSPRNG-backed; only
+    /// abort if even that fails (in which case the caller cannot safely
+    /// sign a request anyway).
     public static func randomNonce() -> String {
         var bytes = [UInt8](repeating: 0, count: 32)
-        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        return bytes.map { String(format: "%02x", $0) }.joined()
+        let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        if status == errSecSuccess {
+            return bytes.map { String(format: "%02x", $0) }.joined()
+        }
+        AppLog.hardware.error("BlockChypSigner: SecRandomCopyBytes failed status=\(status) — falling back to SymmetricKey")
+        let key = SymmetricKey(size: .bits256)
+        return key.withUnsafeBytes { raw in
+            raw.map { String(format: "%02x", $0) }.joined()
+        }
     }
 
     /// Format a `Date` as BlockChyp's required timestamp string: `"2006-01-02T15:04:05Z"`.
