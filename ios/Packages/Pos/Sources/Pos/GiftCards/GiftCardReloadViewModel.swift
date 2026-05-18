@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Foundation
 import Observation
+import Core
 import Networking
 
 // MARK: - GiftCardReloadViewModel
@@ -80,6 +81,12 @@ public final class GiftCardReloadViewModel {
         do {
             let response = try await api.reloadGiftCard(id: card.id, amountCents: amountCents)
             state = .success(newBalanceCents: response.newBalanceCents)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: Sheet dismissed mid-reload cancelled the Task.
+            // Painting .failure invites a retry that could double-credit the
+            // card balance. Revert to .idle so any retry is intentional.
+            state = .idle
+            return
         } catch let APITransportError.httpStatus(code, message) {
             let msg = (message?.isEmpty == false) ? message! : "Reload failed"
             state = .failure("Reload failed (\(code)): \(msg)")
