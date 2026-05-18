@@ -29,7 +29,21 @@ public struct TicketEditView: View {
                 }
 
                 Section("Scheduling") {
-                    LabeledField("Due on (YYYY-MM-DD)", text: $vm.dueOn, keyboard: .numbersAndPunctuation, autocapitalize: .never)
+                    // BUGHUNT-2026-05-18: same free-text date trap as the
+                    // create flow — swap to DatePicker bound through a
+                    // String<->Date adapter so server contract stays
+                    // YYYY-MM-DD regardless of device locale.
+                    DatePicker(
+                        "Due on",
+                        selection: Binding(
+                            get: { Self.parseDueOn(vm.dueOn) ?? Date().addingTimeInterval(60 * 60 * 24 * 3) },
+                            set: { newDate in vm.dueOn = Self.formatDueOn(newDate) }
+                        ),
+                        in: Date()...,
+                        displayedComponents: .date
+                    )
+                    .datePickerStyle(.compact)
+                    .accessibilityLabel("Due on date")
                 }
 
                 if let err = vm.errorMessage {
@@ -66,6 +80,22 @@ public struct TicketEditView: View {
                 }
             }
         }
+    }
+
+    /// Adapter helpers for the Due-on `DatePicker`. Pinned to en_US_POSIX
+    /// UTC so wire format ("YYYY-MM-DD") matches regardless of device locale.
+    private static let dueOnFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f
+    }()
+    fileprivate static func parseDueOn(_ raw: String) -> Date? {
+        dueOnFormatter.date(from: raw)
+    }
+    fileprivate static func formatDueOn(_ date: Date) -> String {
+        dueOnFormatter.string(from: date)
     }
 }
 
