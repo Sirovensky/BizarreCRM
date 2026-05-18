@@ -38,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -208,7 +209,10 @@ fun BusinessInfoScreen(
                         onValueChange = { viewModel.update { copy(storeName = it) } },
                         label = { Text("Shop name") },
                         modifier = Modifier.fillMaxWidth(),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Next,
+                            capitalization = KeyboardCapitalization.Words,
+                        ),
                         singleLine = true,
                     )
                     OutlinedTextField(
@@ -216,7 +220,10 @@ fun BusinessInfoScreen(
                         onValueChange = { viewModel.update { copy(address = it) } },
                         label = { Text("Address") },
                         modifier = Modifier.fillMaxWidth(),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Next,
+                            capitalization = KeyboardCapitalization.Words,
+                        ),
                         minLines = 2,
                         maxLines = 3,
                     )
@@ -256,7 +263,11 @@ fun BusinessInfoScreen(
                         onValueChange = { viewModel.update { copy(taxId = it) } },
                         label = { Text("Tax ID / EIN") },
                         modifier = Modifier.fillMaxWidth(),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Next,
+                            capitalization = KeyboardCapitalization.Characters,
+                            autoCorrect = false,
+                        ),
                         singleLine = true,
                     )
                 }
@@ -276,6 +287,8 @@ fun BusinessInfoScreen(
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Uri,
                             imeAction = ImeAction.Next,
+                            capitalization = KeyboardCapitalization.None,
+                            autoCorrect = false,
                         ),
                         singleLine = true,
                     )
@@ -287,6 +300,8 @@ fun BusinessInfoScreen(
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Uri,
                             imeAction = ImeAction.Next,
+                            capitalization = KeyboardCapitalization.None,
+                            autoCorrect = false,
                         ),
                         singleLine = true,
                     )
@@ -295,7 +310,11 @@ fun BusinessInfoScreen(
                         onValueChange = { viewModel.update { copy(socialInstagram = it) } },
                         label = { Text("Instagram handle") },
                         modifier = Modifier.fillMaxWidth(),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Done,
+                            capitalization = KeyboardCapitalization.None,
+                            autoCorrect = false,
+                        ),
                         singleLine = true,
                     )
                 }
