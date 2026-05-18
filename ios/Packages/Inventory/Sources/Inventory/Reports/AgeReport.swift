@@ -103,6 +103,9 @@ public final class AgeReportViewModel {
             items = try await api.ageReport()
             grouped = AgingCalculator.groupByTier(items: items)
             suggestions = AgingCalculator.clearanceSuggestions(for: items)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: report nav-away cancellation; preserve last data.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

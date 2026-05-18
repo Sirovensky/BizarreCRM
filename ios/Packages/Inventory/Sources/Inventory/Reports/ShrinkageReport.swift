@@ -117,6 +117,9 @@ public final class ShrinkageReportViewModel {
             points = try await api.shrinkageReport(months: periodMonths)
             summary = ShrinkageCalculator.summary(from: points)
             byReason = ShrinkageCalculator.byReason(from: points)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: report period-change cancels prior fetch; keep last data instead of empty chart flash.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

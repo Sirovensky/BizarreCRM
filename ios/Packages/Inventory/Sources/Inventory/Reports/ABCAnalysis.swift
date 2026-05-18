@@ -99,6 +99,9 @@ public final class ABCAnalysisViewModel {
             let response = try await api.abcAnalysis()
             items = response
             groupCounts = ABCClassifier.groupCounts(from: response)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: report nav-away cancellation; preserve last data.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
