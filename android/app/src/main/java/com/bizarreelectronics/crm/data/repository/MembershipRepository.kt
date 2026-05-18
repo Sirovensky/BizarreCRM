@@ -4,6 +4,7 @@ import com.bizarreelectronics.crm.data.remote.api.EnrollMemberRequest
 import com.bizarreelectronics.crm.data.remote.api.Membership
 import com.bizarreelectronics.crm.data.remote.api.MembershipApi
 import com.bizarreelectronics.crm.data.remote.api.MembershipTier
+import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
 import timber.log.Timber
 import javax.inject.Inject
@@ -41,12 +42,18 @@ class MembershipRepository @Inject constructor(
     // ── Customer membership ───────────────────────────────────────────────────
 
     suspend fun getCustomerMembership(customerId: Long): Result<Membership?> = safeCall {
-        runCatching { api.getCustomerMembership(customerId) }
-            .getOrElse { e ->
-                if (e is HttpException && e.code() == 404) return@safeCall null
-                throw e
-            }
-            .data?.membership
+        // BUGHUNT-2026-05-17: runCatching wraps CancellationException via
+        // kotlin.Result/Throwable, so a cancelled lookup would be reported as
+        // "failure" with a CE message and the safeCall outer recover would
+        // bubble it as a real error. Use try/catch so CE propagates and only
+        // HttpException(404) degrades to null.
+        try {
+            api.getCustomerMembership(customerId).data?.membership
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: HttpException) {
+            if (e.code() == 404) null else throw e
+        }
     }
 
     // ── Enroll ────────────────────────────────────────────────────────────────
@@ -89,13 +96,21 @@ class MembershipRepository @Inject constructor(
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private suspend fun <T> safeCall(block: suspend () -> T): Result<T> =
-        runCatching { block() }
-            .recoverCatching { e ->
-                Timber.w(e, "MembershipRepository.safeCall")
-                when {
-                    e is HttpException && e.code() == 404 -> throw NotAvailableException()
-                    else -> throw e
-                }
-            }
+    // BUGHUNT-2026-05-17: runCatching wraps Throwable — including
+    // CancellationException — so a cancelled enroll/cancel/renew call would
+    // surface to the ViewModel as Result.failure with a CE message. The user
+    // would then see a "failed" toast and likely tap retry, which would
+    // re-issue an enroll/payment and double-charge. Catch CE first and
+    // re-throw so structured concurrency unwinds the upstream scope instead.
+    private suspend fun <T> safeCall(block: suspend () -> T): Result<T> = try {
+        Result.success(block())
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: HttpException) {
+        Timber.w(e, "MembershipRepository.safeCall http")
+        if (e.code() == 404) Result.failure(NotAvailableException()) else Result.failure(e)
+    } catch (e: Exception) {
+        Timber.w(e, "MembershipRepository.safeCall")
+        Result.failure(e)
+    }
 }
