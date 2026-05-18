@@ -251,11 +251,19 @@ private struct TimeOffRequestRow: View {
     }
 
     private func formatted(_ iso: String) -> String {
-        guard let d = ISO8601DateFormatter().date(from: iso) else { return iso }
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .none
-        return f.string(from: d)
+        // BUGHUNT-2026-05-18: time_off_requests.start_date / end_date are
+        // stored as date-only `YYYY-MM-DD` (validateIsoDate accepts both
+        // shapes but the iOS time-off form sends date-only). Default
+        // ISO8601DateFormatter requires full datetime — bare `.date(from:)`
+        // returned nil and the sidebar showed raw "2026-05-18" instead of
+        // "May 18, 2026."
+        if let d = TimeOffDateParser.parse(iso) {
+            let f = DateFormatter()
+            f.dateStyle = .medium
+            f.timeStyle = .none
+            return f.string(from: d)
+        }
+        return iso
     }
 
     private var typeColor: Color {
@@ -268,6 +276,26 @@ private struct TimeOffRequestRow: View {
 
     private var a11yLabel: String {
         "\(request.employeeDisplayName) requests \(request.kind.rawValue) from \(dateRangeLabel)"
+    }
+}
+
+// MARK: - TimeOffDateParser
+
+/// Parses time-off request dates. The server validates with `validateIsoDate`
+/// which accepts both `YYYY-MM-DD` and full datetimes; the iOS form sends
+/// date-only. The sidebar display formatter needs to handle both shapes.
+private enum TimeOffDateParser {
+    private static let dateOnly: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f
+    }()
+
+    static func parse(_ raw: String) -> Date? {
+        ShiftTimestampParser.parse(raw)
+            ?? dateOnly.date(from: String(raw.prefix(10)))
     }
 }
 
