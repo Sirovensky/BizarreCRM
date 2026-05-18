@@ -64,9 +64,20 @@ class ImportPollingWorker @AssistedInject constructor(
         setForeground(buildForegroundInfo("Importing from ${source.label}…", indeterminate = true))
 
         var consecutiveErrors = 0
+        // BUGHUNT-2026-05-17: hard cap on poll iterations. Without this,
+        // a misbehaving server stuck reporting is_active=true (or a server
+        // bug that never transitions the run to terminal status) would
+        // trap this worker in an infinite 5-second poll loop, draining
+        // battery and pinning a foreground notification the user cannot
+        // dismiss. 2160 iterations * 5 s = 3 hours, well past any
+        // legitimate import time. After the cap, surface a clear
+        // "import timed out" notification so the user can re-check
+        // from history.
+        var pollCount = 0
 
-        while (true) {
+        while (pollCount < MAX_POLL_ITERATIONS) {
             delay(POLL_INTERVAL_MS)
+            pollCount++
             try {
                 val response = when (source) {
                     ImportSource.REPAIR_DESK -> importApi.getRepairDeskStatus()
@@ -143,6 +154,16 @@ class ImportPollingWorker @AssistedInject constructor(
                 }
             }
         }
+
+        // BUGHUNT-2026-05-17: poll-iteration cap hit. Surface an explicit
+        // "import timed out" notification rather than dropping silently.
+        Log.w(TAG, "ImportPollingWorker hit poll cap of $MAX_POLL_ITERATIONS — exiting; check server status")
+        notifyCompletion(
+            "Import timed out",
+            "Import did not finish within the expected time. Check import history.",
+            isError = true,
+        )
+        return Result.failure()
     }
 
     private fun buildForegroundInfo(
@@ -202,6 +223,15 @@ class ImportPollingWorker @AssistedInject constructor(
 
         private const val POLL_INTERVAL_MS = 5_000L
         private const val MAX_CONSECUTIVE_ERRORS = 5
+
+        /**
+         * BUGHUNT-2026-05-17: hard cap on poll iterations to bound the
+         * worker's lifetime in case the server never transitions the
+         * import to a terminal status. 2160 * 5s = 3h, generous for
+         * legitimate imports but short enough to surface a stuck import
+         * to the user the same day.
+         */
+        private const val MAX_POLL_ITERATIONS = 2160
 
         /**
          * Enqueue the poller for the given source.
