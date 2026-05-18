@@ -81,6 +81,15 @@ public struct InvoiceCustomerPickerSheet: View {
                         )
                     } else if results.isEmpty && !query.isEmpty {
                         ContentUnavailableView.search(text: query)
+                    } else if query.isEmpty {
+                        // BUGHUNT-2026-05-18: empty query rendered an empty
+                        // `List(results)` — the sheet looked broken on first
+                        // open. Show a helpful prompt while we wait for input.
+                        ContentUnavailableView(
+                            "Search for a customer",
+                            systemImage: "magnifyingglass",
+                            description: Text("Start typing a name, email, or phone number.")
+                        )
                     } else {
                         List(results) { row in
                             Button {
