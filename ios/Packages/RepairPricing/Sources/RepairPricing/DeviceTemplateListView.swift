@@ -345,6 +345,13 @@ final class DeviceTemplateListViewModel {
                 selectedTemplate = nil
                 showingEditor = false
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: DELETE can land server-side even when the
+            // calling task is cancelled (swipe-to-delete followed by quick
+            // pull-to-refresh tearing down the task). Showing a red banner
+            // would lie — the template may already be gone on the next
+            // load. Stay silent; the refresh will reconcile.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
