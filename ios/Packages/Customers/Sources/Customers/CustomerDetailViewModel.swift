@@ -37,6 +37,10 @@ public final class CustomerDetailViewModel {
         // Primary fetch — fail the screen if we can't even load the core detail.
         do {
             snapshot.detail = try await repo.detail(id: customerId)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancellation; keep prior detail
+            // visible and skip secondary fetches.
+            return
         } catch {
             AppLog.ui.error("Customer detail load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
