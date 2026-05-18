@@ -44,11 +44,24 @@ public final class TemporarySuspensionViewModel {
     }
 
     public func suspend() async {
+        // BUGHUNT-2026-05-17: re-entry guard against a confirm-dialog
+        // double-tap. Without this the manager could fire two PATCHes
+        // before the dialog dismisses.
+        guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
         do {
             try await api.setEmployeeSuspended(id: employeeId, isSuspended: true)
             suspensionState = .suspended
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PATCH may have landed before
+            // cancellation — the employee is already suspended on the
+            // server. Painting "cancelled" tempts a retap; that retap
+            // succeeds idempotently (is_suspended already true) so the
+            // manager sees no surface error, but a second audit-log
+            // entry records two suspension events with the same
+            // timestamp. Suppress the error.
+            errorMessage = nil
         } catch {
             AppLog.ui.error("Suspend failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -58,11 +71,17 @@ public final class TemporarySuspensionViewModel {
     }
 
     public func resume() async {
+        // BUGHUNT-2026-05-17: matching re-entry guard for resume.
+        guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
         do {
             try await api.setEmployeeSuspended(id: employeeId, isSuspended: false)
             suspensionState = .active
+        } catch let e where AppError.isCancellation(e) {
+            // Same reasoning as suspend — PATCH may have landed; retap
+            // would double-stamp the resume audit entry.
+            errorMessage = nil
         } catch {
             AppLog.ui.error("Resume failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
