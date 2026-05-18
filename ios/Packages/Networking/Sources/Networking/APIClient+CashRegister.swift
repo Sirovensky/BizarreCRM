@@ -130,16 +130,37 @@ public extension APIClient {
 
     // MARK: Notifications (used by PosReceiptViewModel)
 
-    /// `POST /api/v1/notifications/send-receipt` — send receipt via email or SMS.
+    /// Send a receipt via email or SMS.
+    ///
+    /// BUGHUNT-2026-05-17: previously POSTed `{invoiceId, channel,
+    /// destination}` to `/notifications/send-receipt`. Server actually
+    /// has TWO separate routes — `/send-receipt` (email) reads
+    /// `{invoice_id, recipient_email}` and `/send-receipt-sms` reads
+    /// `{invoice_id, recipient_phone}` (see notifications.routes.ts
+    /// L207 and L376). There is no `channel` discriminator. The
+    /// previous body never matched the destructure, so every receipt
+    /// dispatch from PosReceiptViewModel hit `recipient_email required`
+    /// or `invoice_id required` and 400'd.
+    ///
     /// - Parameters:
     ///   - invoiceId:   Server invoice ID.
-    ///   - channel:     `"email"` or `"sms"`. SMS deferred (POS-SMS-001).
-    ///   - destination: Email address or phone number.
+    ///   - channel:     `"email"` or `"sms"` — selects which server route to hit.
+    ///   - destination: Email address (email channel) or phone number (sms channel).
     /// - Returns: Server `messageId` when available.
     func postSendReceipt(invoiceId: Int64, channel: String, destination: String) async throws -> String? {
-        let body = PosNotificationSendReceiptBody(invoiceId: invoiceId, channel: channel, destination: destination)
-        let resp = try await post("/api/v1/notifications/send-receipt", body: body, as: PosNotificationSendReceiptResponse.self)
-        return resp.data?.messageId
+        switch channel.lowercased() {
+        case "sms":
+            let body = PosNotificationSendReceiptSmsBody(invoiceId: invoiceId, recipientPhone: destination)
+            let resp = try await post("/api/v1/notifications/send-receipt-sms", body: body, as: PosNotificationSendReceiptResponse.self)
+            return resp.data?.messageId
+        default:
+            // Default to email for any other channel value — the UI only
+            // ever passes "email" or "sms" but this matches the previous
+            // behaviour of falling through to the email endpoint.
+            let body = PosNotificationSendReceiptEmailBody(invoiceId: invoiceId, recipientEmail: destination)
+            let resp = try await post("/api/v1/notifications/send-receipt", body: body, as: PosNotificationSendReceiptResponse.self)
+            return resp.data?.messageId
+        }
     }
 }
 
@@ -190,10 +211,29 @@ private struct PosCashMoveBody: Encodable, Sendable {
     let reason: String?
 }
 
-private struct PosNotificationSendReceiptBody: Encodable, Sendable {
+// BUGHUNT-2026-05-17: replaced the old `PosNotificationSendReceiptBody`
+// with channel-specific bodies that match each server route's destructure.
+// The previous "destination" field name had no server counterpart and the
+// `channel` field doesn't exist on either route.
+
+private struct PosNotificationSendReceiptEmailBody: Encodable, Sendable {
     let invoiceId: Int64
-    let channel: String
-    let destination: String
+    let recipientEmail: String
+
+    enum CodingKeys: String, CodingKey {
+        case invoiceId      = "invoice_id"
+        case recipientEmail = "recipient_email"
+    }
+}
+
+private struct PosNotificationSendReceiptSmsBody: Encodable, Sendable {
+    let invoiceId: Int64
+    let recipientPhone: String
+
+    enum CodingKeys: String, CodingKey {
+        case invoiceId      = "invoice_id"
+        case recipientPhone = "recipient_phone"
+    }
 }
 
 // MARK: - Notification response DTOs
