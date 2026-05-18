@@ -396,6 +396,11 @@ public struct CustomerPortalMagicLinkCopy: View {
             // Reset the "Copied!" state after 2 seconds.
             try? await Task.sleep(for: .seconds(2))
             withAnimation(.easeInOut(duration: 0.2)) { isCopied = false }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: portal-link POST mints a tokened URL +
+            // logs to audit. Cancellation banner tempts retap that mints
+            // a SECOND token (rotating the first if rotation is enabled).
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
