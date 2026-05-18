@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import Networking
 import Factory
 import DesignSystem
@@ -313,6 +314,17 @@ final class RoleUsersInspectorViewModel {
             // Optimistic overlay: mark this user as assigned.
             unassignedOverrides.remove(user.id)
             assignedOverrides.insert(user.id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: assignEmployeeRole PATCH is audited
+            // server-side. If it committed but the task was cancelled
+            // (sheet dismissed before response, screen tear-down), the
+            // user already holds the role but our local overlay says
+            // "still unassigned". Showing a red banner tempts the user
+            // to tap Assign again → second PATCH writes a duplicate
+            // audit row for the same role grant. Stay silent and let
+            // the next load() reconcile.
+            showAssignSheet = false
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -331,6 +343,13 @@ final class RoleUsersInspectorViewModel {
             // Optimistic overlay: mark this user as no longer assigned.
             assignedOverrides.remove(user.id)
             unassignedOverrides.insert(user.id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: unassign PATCH may have committed
+            // server-side before cancellation (column switch, screen
+            // pop). The audit row is already written; surfacing a red
+            // banner tempts re-tap → duplicate revocation audit row.
+            // Stay silent; next load() picks up the real state.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
