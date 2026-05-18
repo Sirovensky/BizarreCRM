@@ -256,6 +256,14 @@ public final class FirmwareManager {
             )
             await refresh()
             return .success(newVersion: newVersion)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancel — optimistic: server may have committed
+            // the flash to the terminal. Do NOT allow a retap to re-flash — the
+            // firmware write may already be in progress on the device and a second
+            // applyUpdate() call mid-flash risks corrupting the firmware partition.
+            AppLog.hardware.warning("FirmwareManager: applyUpdate task cancelled — flash state unknown for \(info.deviceName)")
+            isLoading = false
+            return .cancelled
         } catch {
             let reason = error.localizedDescription
             AppLog.hardware.error("FirmwareManager: update failed — \(reason)")
@@ -305,6 +313,13 @@ public final class FirmwareManager {
             )
             await refresh()
             return .success(newVersion: rolledBackVersion)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancel — optimistic: server may have committed
+            // the rollback flash. Do NOT retap rollback — mid-flash re-rollback risks
+            // firmware corruption. Check device status before retrying.
+            AppLog.hardware.warning("FirmwareManager: rollback task cancelled — flash state unknown for \(info.deviceName)")
+            isLoading = false
+            return .cancelled
         } catch {
             let reason = error.localizedDescription
             errorMessage = reason

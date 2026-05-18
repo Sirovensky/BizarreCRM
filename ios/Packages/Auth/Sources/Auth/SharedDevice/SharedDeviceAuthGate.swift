@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import SwiftUI
 import LocalAuthentication
+import Core
 import DesignSystem
 import Networking
 
@@ -162,6 +163,13 @@ public struct SharedDeviceAuthGate: View {
         do {
             try await api.verifyManagementPin(pin: managementPin)
             await onAuthorized(true)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancel — optimistic: server may have committed
+            // the PIN verification. onAuthorized was NOT called, so the POS lock state
+            // is NOT changed. If the user was mid-enable/disable, the shared-device
+            // mode toggle did NOT fire — safe to retry from scratch.
+            isVerifying = false
+            return
         } catch {
             errorMessage = "Incorrect management PIN. Try again."
             managementPin = ""

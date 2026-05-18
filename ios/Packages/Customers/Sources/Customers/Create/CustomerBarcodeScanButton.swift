@@ -104,6 +104,8 @@ public struct CustomerBarcodeScanSheet: View {
             let customerId = try await api.lookupCustomerByCardCode(code: code)
             onFound?(customerId)
             onDismiss()
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = "Customer not found for code \"\(code)\". Try again."
             isLooking = false
