@@ -129,6 +129,16 @@ final class TicketStatusTransitionViewModel {
         do {
             _ = try await api.changeTicketStatus(id: ticketId, statusId: statusId)
             committedTransition = transition
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: status transition is a PATCH /tickets/:id/status
+            // — a server-state mutation. The broad catch painted "Status
+            // transition failed" into errorMessage when the sheet dismissed
+            // mid-PATCH, even though the server may have already accepted
+            // the change. That tempted a re-confirm which would re-PATCH the
+            // same status (a no-op if successful but a 409 if the ticket
+            // moved on, and a confusing UX either way). Let the next detail
+            // refresh reconcile the real status.
+            return
         } catch {
             AppLog.ui.error("Status transition failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = AppError.from(error).errorDescription ?? error.localizedDescription
