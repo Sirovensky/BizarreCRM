@@ -171,6 +171,8 @@ final class LocationTransferListViewModel {
             transfers = try await repo.fetchTransfers(locationId: activeLocationId.isEmpty ? nil : activeLocationId)
             loadState = .loaded
         } catch {
+            // On cancellation leave state as-is (don't paint an error for a torn-down view).
+            guard !AppError.isCancellation(error) else { return }
             loadState = .error(error.localizedDescription)
         }
     }
@@ -184,6 +186,9 @@ final class LocationTransferListViewModel {
             let updated = try await repo.updateTransferStatus(id: id, status: status)
             transfers = transfers.map { $0.id == updated.id ? updated : $0 }
         } catch {
+            // On cancellation preserve the optimistic local state: the server may have
+            // committed the status change; painting .error would be wrong.
+            guard !AppError.isCancellation(error) else { return }
             loadState = .error(error.localizedDescription)
         }
     }

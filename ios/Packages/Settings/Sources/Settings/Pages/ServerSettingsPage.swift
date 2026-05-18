@@ -51,6 +51,10 @@ public final class ServerSettingsViewModel: Sendable {
             let latencyMs = try await api.pingHealth()
             connectionResult = .success(latencyMs: latencyMs, tlsCN: nil)
         } catch {
+            guard !AppError.isCancellation(error) else {
+                connectionResult = .idle
+                return
+            }
             connectionResult = .failure(error.localizedDescription)
         }
     }

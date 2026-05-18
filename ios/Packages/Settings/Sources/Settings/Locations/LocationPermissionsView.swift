@@ -222,7 +222,8 @@ final class LocationPermissionsViewModel {
                 }
                 entries = entries + merged
             } catch {
-                // Non-fatal
+                // Non-fatal per-location load failure; stop the loop on cancellation.
+                if AppError.isCancellation(error) { return }
             }
         }
     }
@@ -242,7 +243,11 @@ final class LocationPermissionsViewModel {
                 updated.first(where: { $0.id == old.id }) ?? old
             }
         } catch {
-            // Revert optimistic on failure by reloading
+            // On cancellation skip reload: server may have committed the change; reloading
+            // would overwrite the correct optimistic state with a potentially-mid-change
+            // server snapshot.
+            guard !AppError.isCancellation(error) else { return }
+            // Revert optimistic on genuine failure by reloading
             await load()
         }
     }

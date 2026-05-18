@@ -103,6 +103,13 @@ public final class BugReportViewModel {
             )
             submissionResult = .success(ticketID: response.ticketID ?? "")
         } catch {
+            // IMPORTANT: Do NOT paint .failure on cancellation. The POST may have been
+            // accepted by the server before the task was cancelled — showing .failure and
+            // allowing re-tap would create a duplicate bug report. Reset to idle instead.
+            guard !AppError.isCancellation(error) else {
+                submissionResult = nil
+                return
+            }
             submissionResult = .failure(message: error.localizedDescription)
         }
     }
