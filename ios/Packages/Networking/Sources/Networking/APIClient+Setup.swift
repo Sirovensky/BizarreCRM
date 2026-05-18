@@ -246,11 +246,22 @@ public struct CreatedUser: Decodable, Sendable {
 
 public extension APIClient {
 
+    // BUGHUNT-2026-05-18: every path in this file was missing the `/api/v1`
+    // prefix that the doc comments above each function call out. APIClient
+    // appends paths to a shop-origin base URL, so requests landed on
+    // `<baseURL>/settings/setup-status` etc. — caught by the SPA catchall
+    // and returned as HTML. Dashboard's OnboardingChecklistCard
+    // (`fetchOnboardingState` + `fetchSetupStatus`) showed an empty/error
+    // checklist on every load, and TenantAdminView.removeSampleData
+    // failed silently. Settings + onboardingRoutes are mounted at
+    // `/api/v1/settings` (index.ts L1678) and `/api/v1/onboarding`
+    // (L1779) respectively.
+
     // MARK: Settings — Setup Status
 
     /// GET /api/v1/settings/setup-status
     func fetchSetupStatus() async throws -> SetupStatusData {
-        try await get("settings/setup-status", as: SetupStatusData.self)
+        try await get("/api/v1/settings/setup-status", as: SetupStatusData.self)
     }
 
     // MARK: Settings — Complete Setup
@@ -258,14 +269,14 @@ public extension APIClient {
     /// POST /api/v1/settings/complete-setup
     /// Saves store info and marks wizard_completed='true'.
     func completeSetupWizard(_ body: CompleteSetupBody) async throws -> CompleteSetupData {
-        try await post("settings/complete-setup", body: body, as: CompleteSetupData.self)
+        try await post("/api/v1/settings/complete-setup", body: body, as: CompleteSetupData.self)
     }
 
     // MARK: Onboarding State
 
     /// GET /api/v1/onboarding/state
     func fetchOnboardingState() async throws -> OnboardingState {
-        try await get("onboarding/state", as: OnboardingState.self)
+        try await get("/api/v1/onboarding/state", as: OnboardingState.self)
     }
 
     // MARK: Onboarding — Sample Data
@@ -274,14 +285,14 @@ public extension APIClient {
     /// Idempotent: if data already loaded, returns `created: false`.
     /// Admin/manager/owner role required on the server.
     func loadSampleData() async throws -> SampleDataResult {
-        try await post("onboarding/sample-data", body: EmptyBody(), as: SampleDataResult.self)
+        try await post("/api/v1/onboarding/sample-data", body: EmptyBody(), as: SampleDataResult.self)
     }
 
     /// DELETE /api/v1/onboarding/sample-data
     /// Removes all sample rows tagged with [Sample].
     /// Returns the result including removed count, then re-fetches state to surface updated counts.
     func removeSampleData() async throws {
-        try await delete("onboarding/sample-data")
+        try await delete("/api/v1/onboarding/sample-data")
     }
 
     // MARK: Onboarding — Shop Type
@@ -289,7 +300,7 @@ public extension APIClient {
     /// POST /api/v1/onboarding/set-shop-type
     func setShopType(_ shopType: String) async throws -> SetShopTypeResult {
         let body = SetShopTypeBody(shopType: shopType)
-        return try await post("onboarding/set-shop-type", body: body, as: SetShopTypeResult.self)
+        return try await post("/api/v1/onboarding/set-shop-type", body: body, as: SetShopTypeResult.self)
     }
 
     // MARK: Settings — Users (first employee)
@@ -297,6 +308,6 @@ public extension APIClient {
     /// POST /api/v1/settings/users
     /// Admin only. Creates a new user (employee) account.
     func createFirstEmployee(_ body: CreateUserBody) async throws -> CreatedUser {
-        try await post("settings/users", body: body, as: CreatedUser.self)
+        try await post("/api/v1/settings/users", body: body, as: CreatedUser.self)
     }
 }
