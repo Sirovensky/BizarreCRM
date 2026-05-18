@@ -31,6 +31,10 @@ public final class CommissionReportViewModel {
         errorMessage = nil
         do {
             payouts = try await api.fetchCommissionReport(employeeId: employeeId)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: employee nav cancellation; keep prior
+            // payouts visible.
+            return
         } catch {
             AppLog.ui.error("Commission report load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
