@@ -96,42 +96,48 @@ class CallsViewModel @Inject constructor(
                 if (dir != "All") put("direction", dir.lowercase())
                 put("limit", "50")
             }
-            runCatching { voiceApi.listCalls(filters) }
-                .onSuccess { resp ->
-                    val items = resp.data?.items ?: emptyList()
-                    // §42.1 — resolve caller-ID names off the main thread
-                    val resolvedNames = withContext(Dispatchers.IO) {
-                        items.mapNotNull { entry ->
-                            // Only look up numbers that don't already have a server-provided name
-                            if (entry.customer_name == null) {
-                                val name = callerIdLookupHelper.lookupName(entry.from_number)
-                                if (name != null) entry.from_number to name else null
-                            } else null
-                        }.toMap()
-                    }
-                    // Recent outbound numbers for §42.5 dial prompt
-                    val recentOutbound = items
-                        .filter { it.direction == "outbound" }
-                        .distinctBy { it.to_number }
-                        .take(5)
-                        .map { it.to_number }
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        isRefreshing = false,
-                        calls = items,
-                        callerIdNames = resolvedNames,
-                        recentOutboundNumbers = recentOutbound,
-                    )
+            // BUGHUNT-2026-05-17: runCatching swallows CancellationException
+            // and paints a fake "Failed to load calls" banner on filter swap.
+            // Switch to try/catch with explicit re-throw to preserve coroutine
+            // cancellation; CancellationException returns early instead of
+            // hitting onFailure.
+            try {
+                val resp = voiceApi.listCalls(filters)
+                val items = resp.data?.items ?: emptyList()
+                // §42.1 — resolve caller-ID names off the main thread
+                val resolvedNames = withContext(Dispatchers.IO) {
+                    items.mapNotNull { entry ->
+                        // Only look up numbers that don't already have a server-provided name
+                        if (entry.customer_name == null) {
+                            val name = callerIdLookupHelper.lookupName(entry.from_number)
+                            if (name != null) entry.from_number to name else null
+                        } else null
+                    }.toMap()
                 }
-                .onFailure { e ->
-                    val is404 = (e as? HttpException)?.code() == 404
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        isRefreshing = false,
-                        notConfigured = is404,
-                        error = if (is404) null else (e.message ?: "Failed to load calls"),
-                    )
-                }
+                // Recent outbound numbers for §42.5 dial prompt
+                val recentOutbound = items
+                    .filter { it.direction == "outbound" }
+                    .distinctBy { it.to_number }
+                    .take(5)
+                    .map { it.to_number }
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    isRefreshing = false,
+                    calls = items,
+                    callerIdNames = resolvedNames,
+                    recentOutboundNumbers = recentOutbound,
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val is404 = (e as? HttpException)?.code() == 404
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    isRefreshing = false,
+                    notConfigured = is404,
+                    error = if (is404) null else (e.message ?: "Failed to load calls"),
+                )
+            }
         }
     }
 
@@ -249,23 +255,25 @@ class CallsViewModel @Inject constructor(
                 put("status", if (showAll) "all" else "new")
                 put("limit", "25")
             }
-            runCatching { voiceApi.listVoicemails(filters) }
-                .onSuccess { resp ->
-                    _voicemailState.value = _voicemailState.value.copy(
-                        isLoading = false,
-                        isRefreshing = false,
-                        voicemails = resp.data?.items ?: emptyList(),
-                    )
-                }
-                .onFailure { e ->
-                    val is404 = (e as? HttpException)?.code() == 404
-                    _voicemailState.value = _voicemailState.value.copy(
-                        isLoading = false,
-                        isRefreshing = false,
-                        notConfigured = is404,
-                        error = if (is404) null else (e.message ?: "Failed to load voicemails"),
-                    )
-                }
+            // BUGHUNT-2026-05-17: switch from runCatching to try/catch+rethrow.
+            try {
+                val resp = voiceApi.listVoicemails(filters)
+                _voicemailState.value = _voicemailState.value.copy(
+                    isLoading = false,
+                    isRefreshing = false,
+                    voicemails = resp.data?.items ?: emptyList(),
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val is404 = (e as? HttpException)?.code() == 404
+                _voicemailState.value = _voicemailState.value.copy(
+                    isLoading = false,
+                    isRefreshing = false,
+                    notConfigured = is404,
+                    error = if (is404) null else (e.message ?: "Failed to load voicemails"),
+                )
+            }
         }
     }
 
@@ -276,26 +284,42 @@ class CallsViewModel @Inject constructor(
 
     fun markVoicemailHeard(id: Long) {
         viewModelScope.launch {
-            runCatching { voiceApi.markVoicemailHeard(id) }
-                .onSuccess {
-                    _voicemailState.value = _voicemailState.value.copy(
-                        voicemails = _voicemailState.value.voicemails.map { vm ->
-                            if (vm.id == id) vm.copy(status = "heard") else vm
-                        },
-                    )
-                }
+            // BUGHUNT-2026-05-17: runCatching swallows CancellationException,
+            // breaking structured concurrency. Switch to try/catch with
+            // explicit re-throw so VM cancellation doesn't leak.
+            try {
+                voiceApi.markVoicemailHeard(id)
+                _voicemailState.value = _voicemailState.value.copy(
+                    voicemails = _voicemailState.value.voicemails.map { vm ->
+                        if (vm.id == id) vm.copy(status = "heard") else vm
+                    },
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Best-effort; keep silent
+            }
         }
     }
 
     fun deleteVoicemail(id: Long) {
         viewModelScope.launch {
-            runCatching { voiceApi.deleteVoicemail(id) }
-                .onSuccess {
-                    _voicemailState.value = _voicemailState.value.copy(
-                        voicemails = _voicemailState.value.voicemails.filterNot { it.id == id },
-                        actionMessage = "Voicemail deleted",
-                    )
-                }
+            // BUGHUNT-2026-05-17: same antipattern. Optimistic local
+            // removal also moved INTO try so cancellation between server
+            // ack and local update doesn't desync; on commit-then-cancel
+            // the server already removed it, so we keep the local remove
+            // consistent.
+            try {
+                voiceApi.deleteVoicemail(id)
+                _voicemailState.value = _voicemailState.value.copy(
+                    voicemails = _voicemailState.value.voicemails.filterNot { it.id == id },
+                    actionMessage = "Voicemail deleted",
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Best-effort; keep silent
+            }
         }
     }
 
@@ -308,37 +332,41 @@ class CallsViewModel @Inject constructor(
     fun loadCallDetail(id: Long) {
         viewModelScope.launch {
             _detailState.value = CallDetailUiState(isLoading = true)
-            runCatching { voiceApi.getCall(id) }
-                .onSuccess { resp ->
-                    _detailState.value = CallDetailUiState(entry = resp.data)
-                }
-                .onFailure { e ->
-                    val is404 = (e as? HttpException)?.code() == 404
-                    _detailState.value = CallDetailUiState(
-                        isLoading = false,
-                        error = if (is404) "VoIP not configured on this server" else (e.message ?: "Failed to load call"),
-                    )
-                }
+            // BUGHUNT-2026-05-17: runCatching swallows CancellationException.
+            try {
+                val resp = voiceApi.getCall(id)
+                _detailState.value = CallDetailUiState(entry = resp.data)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val is404 = (e as? HttpException)?.code() == 404
+                _detailState.value = CallDetailUiState(
+                    isLoading = false,
+                    error = if (is404) "VoIP not configured on this server" else (e.message ?: "Failed to load call"),
+                )
+            }
         }
     }
 
     fun loadTranscription(callId: Long) {
         viewModelScope.launch {
             _detailState.value = _detailState.value.copy(transcriptionLoading = true)
-            runCatching { voiceApi.getTranscription(callId) }
-                .onSuccess { resp ->
-                    _detailState.value = _detailState.value.copy(
-                        transcriptionLoading = false,
-                        transcription = resp.data?.text ?: "Transcription not available",
-                    )
-                }
-                .onFailure { e ->
-                    val is404 = (e as? HttpException)?.code() == 404
-                    _detailState.value = _detailState.value.copy(
-                        transcriptionLoading = false,
-                        transcription = if (is404) "Transcription not available on this server" else "Failed to load transcription",
-                    )
-                }
+            // BUGHUNT-2026-05-17: runCatching swallows CancellationException.
+            try {
+                val resp = voiceApi.getTranscription(callId)
+                _detailState.value = _detailState.value.copy(
+                    transcriptionLoading = false,
+                    transcription = resp.data?.text ?: "Transcription not available",
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val is404 = (e as? HttpException)?.code() == 404
+                _detailState.value = _detailState.value.copy(
+                    transcriptionLoading = false,
+                    transcription = if (is404) "Transcription not available on this server" else "Failed to load transcription",
+                )
+            }
         }
     }
 }
