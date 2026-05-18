@@ -111,9 +111,12 @@ public actor SyncFlusher {
                 try await SyncQueueStore.shared.markSucceeded(id)
                 AppLog.sync.info("sync replay OK: \(kind, privacy: .public) id=\(id)")
             } catch is CancellationError {
-                // Leave the row in `in_flight` — a subsequent flush will
-                // see it back in `due` once the markInFlight TTL expires,
-                // without consuming an attempt.
+                // Reset back to `queued` so the next syncNow() can pick the
+                // row up immediately rather than waiting for the cold-start
+                // resetStaleInFlight sweep (60s by default). `markCancelled`
+                // is itself nested inside a Task that survives the
+                // cancellation propagation so the row never gets stuck.
+                Task { try? await SyncQueueStore.shared.markCancelled(id) }
                 AppLog.sync.info("sync flush cancelled mid-record (kind=\(kind, privacy: .public) id=\(id))")
                 break
             } catch {
