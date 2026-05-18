@@ -34,6 +34,11 @@ public final class ReviewAcknowledgementViewModel {
             errorMessage = "Please sign to acknowledge the review."
             return
         }
+        // BUGHUNT-2026-05-17: re-entry guard. Re-acknowledging the same
+        // review overwrites the signature timestamp, weakening the audit
+        // trail. The toolbar swaps the button for a ProgressView, but a
+        // quick double-tap can still fire two POSTs.
+        guard !isSaving else { return }
         isSaving = true
         defer { isSaving = false }
         errorMessage = nil
@@ -43,6 +48,14 @@ public final class ReviewAcknowledgementViewModel {
                 UpdateReviewRequest(acknowledgement: signatureBase64, status: .acknowledged)
             )
             onAcknowledged(updated)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: updateReview may have landed before
+            // cancellation. The signed acknowledgement is now on the
+            // server but the UI shows "cancelled" — the employee retaps,
+            // overwriting the original signature's timestamp (and on
+            // tolerant servers stacking two acknowledgement_at rows).
+            // Suppress the error and let the parent reload.
+            errorMessage = nil
         } catch {
             AppLog.ui.error("ReviewAcknowledgement save failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
