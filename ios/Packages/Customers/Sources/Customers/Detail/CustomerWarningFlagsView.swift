@@ -216,6 +216,11 @@ public final class CustomerWarningFlagsEditorViewModel {
             let req = UpdateCustomerFlagsRequest(flags: Array(activeFlags).map(\.rawValue))
             try await api.updateCustomerFlags(id: customerId, req)
             savedSuccessfully = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: warning flags PUT may have committed.
+            // Banner tempts retap that double-PUTs same set (audit row
+            // noise + flag-changed webhook fires twice).
+            return
         } catch {
             errorMessage = AppError.from(error).localizedDescription
         }
