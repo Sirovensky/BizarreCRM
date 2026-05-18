@@ -1,5 +1,8 @@
 package com.bizarreelectronics.crm.ui.screens.leads
 
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
@@ -10,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -1025,6 +1029,7 @@ fun LeadDetailScreen(
 
                     // Contact info card
                     item {
+                        val context = LocalContext.current
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier.padding(16.dp),
@@ -1035,15 +1040,32 @@ fun LeadDetailScreen(
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.SemiBold,
                                 )
+                                // BUGHUNT-2026-05-18: phone/email rows were
+                                // non-interactive Text — iOS opens dialer /
+                                // mail on tap; Android should match.
                                 LabelValueRow(
                                     icon = Icons.Default.Phone,
                                     label = "Phone",
                                     value = lead.phone?.let { PhoneFormatter.format(it) },
+                                    onClick = lead.phone?.takeIf { it.isNotBlank() }?.let { phone ->
+                                        {
+                                            context.startActivity(
+                                                Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", phone, null))
+                                            )
+                                        }
+                                    },
                                 )
                                 LabelValueRow(
                                     icon = Icons.Default.Email,
                                     label = "Email",
                                     value = lead.email,
+                                    onClick = lead.email?.takeIf { it.isNotBlank() }?.let { email ->
+                                        {
+                                            context.startActivity(
+                                                Intent(Intent.ACTION_SENDTO, Uri.fromParts("mailto", email, null))
+                                            )
+                                        }
+                                    },
                                 )
                                 val locationLine = listOfNotNull(
                                     lead.address?.takeIf { it.isNotBlank() },
@@ -1053,6 +1075,14 @@ fun LeadDetailScreen(
                                     icon = Icons.Default.LocationOn,
                                     label = "Address",
                                     value = locationLine,
+                                    onClick = locationLine?.let { addr ->
+                                        {
+                                            val encoded = Uri.encode(addr)
+                                            context.startActivity(
+                                                Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=$encoded"))
+                                            )
+                                        }
+                                    },
                                 )
                             }
                         }
@@ -1217,18 +1247,27 @@ private fun LabelValueRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     value: String?,
+    onClick: (() -> Unit)? = null,
 ) {
     if (value.isNullOrBlank()) return
+    val rowModifier = if (onClick != null) {
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    } else Modifier
     Row(
+        modifier = rowModifier,
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Icon(
             icon,
-            // decorative — non-clickable label-value row; sibling label + value Text carry the announcement
+            // decorative — sibling label + value Text carry the announcement; row click intent
+            // is announced via the row's clickable modifier when present.
             contentDescription = null,
             modifier = Modifier.size(18.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = if (onClick != null) MaterialTheme.colorScheme.primary
+                   else MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -1239,6 +1278,8 @@ private fun LabelValueRow(
             Text(
                 value,
                 style = MaterialTheme.typography.bodyMedium,
+                color = if (onClick != null) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurface,
             )
         }
     }
