@@ -1,6 +1,7 @@
 package com.bizarreelectronics.crm.ui.screens.inventory.components
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.*
@@ -8,6 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 
@@ -80,6 +82,10 @@ fun InventoryBinPicker(
                     trailingIcon = {
                         ExposedDropdownMenuDefaults.TrailingIcon(expanded = showDropdown)
                     },
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Characters,
+                        autoCorrect = false,
+                    ),
                 )
 
                 ExposedDropdownMenu(
