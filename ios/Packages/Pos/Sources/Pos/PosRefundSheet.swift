@@ -121,6 +121,7 @@ struct PosRefundSheet: View {
                     }
                     TextField("Notes", text: $vm.notes, axis: .vertical)
                         .lineLimit(2...4)
+                        .textInputAutocapitalization(.sentences)
                         .accessibilityIdentifier("pos.refund.notes")
                 }
 

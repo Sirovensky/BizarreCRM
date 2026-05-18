@@ -227,6 +227,7 @@ struct PosPaymentLinkFormView: View {
             Section("Memo") {
                 TextField("Description", text: $vm.description, axis: .vertical)
                     .lineLimit(1...3)
+                    .textInputAutocapitalization(.sentences)
             }
             Section {
                 Picker("Expires in", selection: $vm.expiryDays) {

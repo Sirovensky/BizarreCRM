@@ -33,6 +33,7 @@ struct PosCustomLineSheet: View {
                         .keyboardType(.decimalPad)
                     TextField("Notes", text: $notes, axis: .vertical)
                         .lineLimit(2...4)
+                        .textInputAutocapitalization(.sentences)
                 }
                 if let err = errorMessage {
                     Section {

@@ -138,6 +138,7 @@ private struct QuickSaleHotkeyEditorSheet: View {
                 Form {
                     Section("Tile label") {
                         TextField("e.g. Screen Protector", text: $name)
+                            .textInputAutocapitalization(.words)
                             .accessibilityIdentifier("quickSaleEditor.name")
                     }
                     Section("Price (dollars)") {
@@ -147,6 +148,9 @@ private struct QuickSaleHotkeyEditorSheet: View {
                     }
                     Section("SKU (optional)") {
                         TextField("SKU", text: $sku)
+                            .textInputAutocapitalization(.characters)
+                            .autocorrectionDisabled()
+                            .font(.brandMono(size: 15))
                             .accessibilityIdentifier("quickSaleEditor.sku")
                     }
                     if hotkey != nil {

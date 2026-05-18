@@ -328,12 +328,14 @@ public struct ClockEntryEditSheet: View {
                 Section("Notes (optional)") {
                     TextField("Notes", text: $notesText, axis: .vertical)
                         .lineLimit(2, reservesSpace: true)
+                        .textInputAutocapitalization(.sentences)
                         .accessibilityLabel("Notes")
                 }
 
                 Section("Reason (required for audit log)") {
                     TextField("Correction reason", text: $reason, axis: .vertical)
                         .lineLimit(3, reservesSpace: true)
+                        .textInputAutocapitalization(.sentences)
                         .accessibilityLabel("Correction reason")
                 }
 

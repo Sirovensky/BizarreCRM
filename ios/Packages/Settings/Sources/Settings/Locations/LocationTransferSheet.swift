@@ -44,9 +44,11 @@ public struct LocationTransferSheet: View {
                 Section("Item") {
                     TextField("SKU", text: $sku)
                         .font(.brandMono(size: 15))
+                        .textInputAutocapitalization(.characters)
                         .autocorrectionDisabled()
                         .accessibilityLabel("SKU")
                     TextField("Item name (optional)", text: $itemName)
+                        .textInputAutocapitalization(.words)
                         .accessibilityLabel("Item name")
                     Stepper("Quantity: \(quantity)", value: $quantity, in: 1...9999)
                         .accessibilityLabel("Quantity \(quantity)")

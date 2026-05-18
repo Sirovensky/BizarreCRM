@@ -93,6 +93,9 @@ public struct WalletSettingsView: View {
                 TextField("Points expire after 12 months…", text: $vm.backTerms, axis: .vertical)
                     .lineLimit(3...6)
                     .font(.brandBodyMedium())
+                    #if canImport(UIKit)
+                    .textInputAutocapitalization(.sentences)
+                    #endif
                     .accessibilityLabel("Pass back terms and conditions")
             }
         }

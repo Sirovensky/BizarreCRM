@@ -187,7 +187,11 @@ public struct LeadCreateView: View {
                 }
 
                 Section("Notes") {
-                    TextField("Notes", text: $vm.notes, axis: .vertical).lineLimit(3...6)
+                    TextField("Notes", text: $vm.notes, axis: .vertical)
+                        .lineLimit(3...6)
+                        #if !os(macOS)
+                        .textInputAutocapitalization(.sentences)
+                        #endif
                 }
                 if let err = vm.errorMessage {
                     Section { Text(err).foregroundStyle(.bizarreError) }

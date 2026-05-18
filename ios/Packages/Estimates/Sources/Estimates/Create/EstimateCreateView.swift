@@ -395,6 +395,9 @@ private struct LineItemRow: View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             HStack {
                 TextField("Description", text: $item.description)
+                    #if canImport(UIKit)
+                    .textInputAutocapitalization(.sentences)
+                    #endif
                     .font(.brandBodyMedium())
                     .foregroundStyle(.bizarreOnSurface)
                     .accessibilityLabel("Line item description")
