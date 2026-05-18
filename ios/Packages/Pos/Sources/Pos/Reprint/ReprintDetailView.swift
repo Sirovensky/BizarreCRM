@@ -243,6 +243,11 @@ public struct ReprintDetailView: View {
         loadError = nil
         do {
             saleRecord = try await repository.fetchSale(id: summary.id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: view popped mid-fetch. Don't paint a fake
+            // error — next .task / retry tap re-fires.
+            isLoading = false
+            return
         } catch {
             loadError = (error as? AppError)?.localizedDescription ?? error.localizedDescription
         }

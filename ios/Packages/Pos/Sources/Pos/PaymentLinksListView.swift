@@ -115,6 +115,11 @@ public final class PaymentLinksListViewModel {
         errorMessage = nil
         do {
             links = try await api.listPaymentLinks()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: list popped or refresh re-fired mid-load.
+            // Don't paint a fake banner — next .task / pull-refresh retries.
+            isLoading = false
+            return
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription
                 ?? "Could not load payment links."
@@ -126,6 +131,11 @@ public final class PaymentLinksListViewModel {
         do {
             try await api.cancelPaymentLink(id: id)
             await load()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: cancel POST cancelled. The link may already
+            // be cancelled server-side; painting "Could not cancel" tempts a
+            // retry that just rolls a redundant audit log entry. Stay silent.
+            return
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription
                 ?? "Could not cancel payment link."
