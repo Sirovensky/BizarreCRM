@@ -8,6 +8,10 @@ public struct LocationListView: View {
     @State private var vm: LocationListViewModel
     @State private var showEditor: Bool = false
     @State private var editingLocation: Location? = nil
+    /// BUGHUNT-2026-05-18: location delete cascades through FK-bearing
+    /// rows (tickets, invoices, customers assigned to this location).
+    /// Stage the target into a confirmation dialog before firing DELETE.
+    @State private var pendingDelete: Location? = nil
 
     private let repo: any LocationRepository
 
@@ -41,6 +45,24 @@ public struct LocationListView: View {
             }
             .task { await vm.load() }
             .refreshable { await vm.load() }
+            .confirmationDialog(
+                pendingDelete.map { "Delete \"\($0.name)\"?" } ?? "Delete location?",
+                isPresented: Binding(
+                    get: { pendingDelete != nil },
+                    set: { if !$0 { pendingDelete = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    if let target = pendingDelete {
+                        Task { await vm.delete(id: target.id) }
+                    }
+                    pendingDelete = nil
+                }
+                Button("Cancel", role: .cancel) { pendingDelete = nil }
+            } message: {
+                Text("Records (tickets, invoices, customers) assigned here may be affected. Consider deactivating the location instead.")
+            }
     }
 
     @ViewBuilder
@@ -75,7 +97,7 @@ public struct LocationListView: View {
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button(role: .destructive) {
-                            Task { await vm.delete(id: loc.id) }
+                            pendingDelete = loc
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
