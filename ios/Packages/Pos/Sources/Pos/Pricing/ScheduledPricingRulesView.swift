@@ -82,6 +82,10 @@ public final class ScheduledPricingRulesViewModel {
                     ($0.rule.validFrom ?? .distantPast) < ($1.rule.validFrom ?? .distantPast)
                 }
             loadState = .loaded
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: month nav cancels load; leave state alone
+            // for newer fetch to set .loaded.
+            return
         } catch {
             loadState = .error(error.localizedDescription)
         }
