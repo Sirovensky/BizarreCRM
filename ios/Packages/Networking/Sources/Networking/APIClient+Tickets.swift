@@ -288,9 +288,32 @@ private struct CheckinDepositBody: Encodable, Sendable {
     let notes: String?
     let idempotencyKey: String
     enum CodingKeys: String, CodingKey {
-        case depositCents = "deposit_cents"
+        case amount  // BUGHUNT-2026-05-17: server reads dollars under `amount`
         case method, notes
         case idempotencyKey = "idempotency_key"
+        case paymentType    = "payment_type"
+    }
+
+    // BUGHUNT-2026-05-17: previously emitted `{deposit_cents, method, notes,
+    // idempotency_key}`. Server `POST /invoices/:id/payments`
+    // (invoices.routes.ts L1181) reads `amount` (dollars, validated via
+    // `validatePositiveAmount`) along with `method`, `method_detail`,
+    // `transaction_id`, `payment_type`, `notes`. With no `amount` field
+    // the deposit recorded as $0 every time — or 400'd via
+    // `validatePositiveAmount` — so a check-in screen that took $50 cash
+    // left the customer's invoice still showing $0 paid. Convert the
+    // cent-based UI value to dollars at this boundary so the rest of the
+    // POS keeps working in cents.
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(Double(depositCents) / 100.0, forKey: .amount)
+        try c.encode(method, forKey: .method)
+        if let notes, !notes.isEmpty { try c.encode(notes, forKey: .notes) }
+        try c.encode(idempotencyKey, forKey: .idempotencyKey)
+        // Mark this as a deposit so downstream accounting buckets it
+        // correctly — the route accepts `payment_type` and defaults to
+        // 'payment' when missing.
+        try c.encode("deposit", forKey: .paymentType)
     }
 }
 
