@@ -57,6 +57,12 @@ public final class EstimateListViewModel {
 
     @ObservationIgnored private let repo: EstimateRepository
     @ObservationIgnored private var searchTask: Task<Void, Never>?
+    /// BUGHUNT-2026-05-17: tracks the in-flight fetch task. Rapid taps on the
+    /// status filter tabs (or filter sheet changes) used to spawn concurrent
+    /// fetch() calls; whichever finished last would clobber `items`,
+    /// producing a list that didn't match the visible active tab. Cancel
+    /// the previous task on every new fetch to keep state coherent.
+    @ObservationIgnored private var fetchTask: Task<Void, Never>?
 
     public init(repo: EstimateRepository) { self.repo = repo }
 
@@ -83,16 +89,29 @@ public final class EstimateListViewModel {
     public func load() async {
         if items.isEmpty { isLoading = true }
         defer { isLoading = false }
-        await fetch(forceRemote: false, resetCursor: true)
+        await runFetch(forceRemote: false, resetCursor: true)
     }
 
     public func refresh() async {
-        await fetch(forceRemote: true, resetCursor: true)
+        await runFetch(forceRemote: true, resetCursor: true)
     }
 
     public func applyStatusFilter(_ filter: EstimateStatusFilter) async {
         statusFilter = filter
-        await fetch(forceRemote: true, resetCursor: true)
+        await runFetch(forceRemote: true, resetCursor: true)
+    }
+
+    /// BUGHUNT-2026-05-17: serialises every list fetch through a single
+    /// cancellable task so rapid status-tab taps don't race. Whichever
+    /// fetch is in flight gets cancelled before the next starts; cursor +
+    /// items only mutate from the surviving call.
+    private func runFetch(forceRemote: Bool, resetCursor: Bool) async {
+        fetchTask?.cancel()
+        let task = Task { @MainActor in
+            await fetch(forceRemote: forceRemote, resetCursor: resetCursor)
+        }
+        fetchTask = task
+        await task.value
     }
 
     public func loadMore() async {
@@ -154,10 +173,18 @@ public final class EstimateListViewModel {
             // §8.1: Try cursor-based pagination first page.
             do {
                 let page = try await repo.listPage(cursor: nil, keyword: keyword, status: statusFilter.serverValue)
+                // BUGHUNT-2026-05-17: abandon assignment if a newer fetch
+                // cancelled this one; otherwise the stale page would clobber
+                // the in-flight call's state.
+                if Task.isCancelled { return }
                 items = page.estimates
                 nextCursor = page.nextCursor
                 hasMore = page.hasMore
                 lastSyncedAt = Date()
+                return
+            } catch let e where AppError.isCancellation(e) {
+                // BUGHUNT-2026-05-17: New tab tap cancelled this fetch.
+                // Stay silent and let the new fetch own the visible state.
                 return
             } catch {
                 // Cursor endpoint not yet supported — fall through to legacy path.
@@ -177,12 +204,17 @@ public final class EstimateListViewModel {
             } else {
                 all = try await repo.list(keyword: keyword)
             }
+            if Task.isCancelled { return }
             // §8.1: client-side status tab filter
             if let sv = statusFilter.serverValue {
                 items = all.filter { ($0.status ?? "").lowercased() == sv }
             } else {
                 items = all
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: Stay silent on cancellation; another fetch
+            // is running.
+            return
         } catch {
             AppLog.ui.error("Estimates load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
