@@ -11,6 +11,8 @@ import com.bizarreelectronics.crm.data.remote.dto.StocktakeSummary
 import com.bizarreelectronics.crm.data.repository.InventoryRepository
 import com.bizarreelectronics.crm.data.repository.StocktakeRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
@@ -66,6 +68,12 @@ class StocktakeSessionDetailViewModel @Inject constructor(
     private val _state = MutableStateFlow(StocktakeSessionDetailUiState())
     val state = _state.asStateFlow()
 
+    // BUGHUNT-2026-05-17: track outstanding type-ahead search so a slow result
+    // for "a" cannot stomp a fast result for "ab" via the long-lived collect.
+    private var searchJob: Job? = null
+    // Track loadSession so refresh/init races converge on the latest result.
+    private var loadJob: Job? = null
+
     init {
         loadSession()
     }
@@ -73,7 +81,10 @@ class StocktakeSessionDetailViewModel @Inject constructor(
     // ── Load session ──────────────────────────────────────────────────────────
 
     fun loadSession() {
-        viewModelScope.launch {
+        // BUGHUNT-2026-05-17: cancel any prior load so a slower initial fetch
+        // can't overwrite a faster refresh.
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
             try {
                 val detail = stocktakeRepository.getSession(sessionId)
@@ -91,6 +102,10 @@ class StocktakeSessionDetailViewModel @Inject constructor(
                 }
                 Log.w(TAG, "GET /stocktake/$sessionId HTTP ${e.code()}: ${e.message()}")
                 _state.value = _state.value.copy(isLoading = false, error = msg)
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: don't paint "Network error" when the
+                // user just back-navs mid-load.
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "GET /stocktake/$sessionId failed: ${e.message}")
                 _state.value = _state.value.copy(isLoading = false, error = "Network error — check connection")
@@ -129,6 +144,11 @@ class StocktakeSessionDetailViewModel @Inject constructor(
                 }
                 Log.w(TAG, "POST /stocktake/$sessionId/counts HTTP ${e.code()}: ${e.message()}")
                 _state.value = _state.value.copy(isUpsertingCount = false, error = msg)
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: upsertCount is a real POST mutation. A
+                // bare catch would paint "Network error" on back-nav and
+                // tempt the user to re-tap, double-posting the count.
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "upsertCount failed: ${e.message}")
                 _state.value = _state.value.copy(isUpsertingCount = false, error = "Network error")
@@ -161,6 +181,11 @@ class StocktakeSessionDetailViewModel @Inject constructor(
                     isUpsertingCount = false,
                     error = "Failed to update count (HTTP ${e.code()})",
                 )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: same as upsertCount — re-throw so a back-nav
+                // mid-mutation doesn't paint a fake "Network error" snackbar that
+                // would tempt double-tap.
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "updateCountQty failed: ${e.message}")
                 _state.value = _state.value.copy(isUpsertingCount = false, error = "Network error")
@@ -190,8 +215,11 @@ class StocktakeSessionDetailViewModel @Inject constructor(
 
     fun onSearchQueryChanged(query: String) {
         _state.value = _state.value.copy(searchQuery = query)
+        // BUGHUNT-2026-05-17: cancel previous search collect so a slower result
+        // for "a" cannot stomp a fast result for "ab".
+        searchJob?.cancel()
         if (query.length >= 2) {
-            viewModelScope.launch {
+            searchJob = viewModelScope.launch {
                 inventoryRepository.searchItems(query).collect { results ->
                     _state.value = _state.value.copy(searchResults = results.take(20))
                 }
@@ -222,6 +250,12 @@ class StocktakeSessionDetailViewModel @Inject constructor(
      * On success sets [committedSuccess] = true so the screen navigates out.
      */
     fun commitSession() {
+        // BUGHUNT-2026-05-17: re-entry guard. Double-tap on Commit while the
+        // first POST is in-flight would queue a second commit — server may 409
+        // on the duplicate but it's better to reject locally first. The
+        // button is disabled in the UI while isCommitting, but a fast tap
+        // before recomposition could still slip through.
+        if (_state.value.isCommitting) return
         viewModelScope.launch {
             _state.value = _state.value.copy(isCommitting = true, error = null)
             try {
