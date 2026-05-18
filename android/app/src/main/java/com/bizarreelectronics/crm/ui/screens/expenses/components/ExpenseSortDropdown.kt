@@ -1,7 +1,7 @@
 package com.bizarreelectronics.crm.ui.screens.expenses.components
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 
@@ -19,7 +19,7 @@ fun ExpenseSortDropdown(
     var expanded by remember { mutableStateOf(false) }
 
     IconButton(onClick = { expanded = true }) {
-        Icon(Icons.Default.Sort, contentDescription = "Sort expenses by ${currentSort.label}")
+        Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort expenses by ${currentSort.label}")
     }
     DropdownMenu(
         expanded = expanded,
@@ -35,7 +35,7 @@ fun ExpenseSortDropdown(
                 trailingIcon = {
                     if (sort == currentSort) {
                         Icon(
-                            Icons.Default.Sort,
+                            Icons.AutoMirrored.Filled.Sort,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                         )

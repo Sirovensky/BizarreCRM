@@ -2,7 +2,7 @@ package com.bizarreelectronics.crm.ui.screens.tickets.components
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -48,7 +48,7 @@ fun TicketSortDropdown(
     Box(contentAlignment = Alignment.TopEnd) {
         IconButton(onClick = { expanded = true }) {
             Icon(
-                imageVector = Icons.Default.Sort,
+                imageVector = Icons.AutoMirrored.Filled.Sort,
                 contentDescription = "Sort tickets",
                 tint = MaterialTheme.colorScheme.onSurface,
             )
