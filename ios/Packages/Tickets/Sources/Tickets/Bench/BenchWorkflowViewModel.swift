@@ -124,6 +124,11 @@ public final class BenchWorkflowViewModel {
             committedAction = action
             // Refresh detail in background so the view updates after commit.
             await load()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: bench workflow status change PUT may have
+            // committed + fired SMS/email hook. Retap doubles customer
+            // notification. Silent return.
+            return
         } catch {
             AppLog.ui.error(
                 "BenchWorkflow action \(action.rawValue) failed: \(error.localizedDescription, privacy: .public)"
