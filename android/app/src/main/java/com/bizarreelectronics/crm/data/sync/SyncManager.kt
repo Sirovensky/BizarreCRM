@@ -305,6 +305,18 @@ class SyncManager @Inject constructor(
                 syncQueueDao.updateStatus(entry.id, "syncing", null)
                 dispatchSyncEntry(entry)
                 syncQueueDao.updateStatus(entry.id, "completed", null)
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: cancellation is NOT a sync failure. The
+                // previous `catch (e: Exception)` incremented the retry
+                // counter on every cancelled dispatch, so a few app
+                // backgroundings could dead-letter a perfectly valid row.
+                // Reset the in-flight row back to pending under
+                // NonCancellable so the next flush picks it up cleanly,
+                // then propagate the cancel so the sync loop unwinds.
+                withContext(NonCancellable) {
+                    syncQueueDao.updateStatus(entry.id, "pending", null)
+                }
+                throw e
             } catch (e: Exception) {
                 syncQueueDao.incrementRetry(entry.id)
                 // NB: entry.retries is the snapshot BEFORE incrementRetry was called, so
