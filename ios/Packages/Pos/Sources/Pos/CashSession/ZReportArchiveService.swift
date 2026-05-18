@@ -283,6 +283,11 @@ public struct ZReportArchiveButton: View {
             AppLog.pos.info(
                 "Z-report archive: \(r.wasUploaded ? "uploaded" : "local only", privacy: .public)"
             )
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: archive upload may have committed server-side
+            // before cancellation. Painting "cancelled" tempts a retry which
+            // duplicates the archive entry. Stay silent.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
