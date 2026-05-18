@@ -40,6 +40,13 @@ public struct InvoiceCustomerPickerSheet: View {
                             .font(.brandBodyMedium())
                             .foregroundStyle(.bizarreOnSurface)
                             .autocorrectionDisabled()
+                            #if canImport(UIKit)
+                            // BUGHUNT-2026-05-18: match search-bar convention —
+                            // default `.sentences` capitalizes the first letter
+                            // of the query, which broke email lookups against
+                            // the lowercase server column.
+                            .textInputAutocapitalization(.never)
+                            #endif
                             .onChange(of: query) { _, newVal in
                                 scheduleSearch(query: newVal)
                             }

@@ -41,6 +41,10 @@ public struct TicketMergeCandidatePicker: View {
                 .accessibilityHidden(true)
             TextField("Search by ID, customer, device…", text: $vm.candidateSearchQuery)
                 .font(.brandBodyMedium())
+                #if canImport(UIKit)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                #endif
                 .accessibilityLabel("Search tickets")
         }
         .padding(BrandSpacing.md)
