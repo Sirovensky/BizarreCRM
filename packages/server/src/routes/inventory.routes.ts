@@ -1162,44 +1162,59 @@ router.post('/:id/image', requirePermission('inventory.edit'), enforceUploadQuot
     : path.join(config.uploadsPath, 'inventory');
 } }), async (req, res, next) => {
   if (!/^\d+$/.test(req.params.id as string)) return next();
-  const adb: AsyncDb = req.asyncDb;
-  const itemId = parseInt(req.params.id as string, 10);
+  try {
+    const adb: AsyncDb = req.asyncDb;
+    const itemId = parseInt(req.params.id as string, 10);
 
-  // Per-tenant DB isolation: req.asyncDb is scoped to the current tenant's DB file,
-  // so a cross-tenant item_id lookup is architecturally impossible here (SCAN-845).
-  const item = await adb.get('SELECT id FROM inventory_items WHERE id = ? AND is_active = 1', itemId);
-  if (!item) throw new AppError('Item not found', 404);
+    // Per-tenant DB isolation: req.asyncDb is scoped to the current tenant's DB file,
+    // so a cross-tenant item_id lookup is architecturally impossible here (SCAN-845).
+    const item = await adb.get('SELECT id FROM inventory_items WHERE id = ? AND is_active = 1', itemId);
+    if (!item) throw new AppError('Item not found', 404);
 
-  const file = (req as any).file;
-  if (!file) throw new AppError('No image file provided', 400);
+    const file = (req as any).file;
+    if (!file) throw new AppError('No image file provided', 400);
 
-  // Atomic storage reservation
-  const fileSize = file.size ?? 0;
-  if (!reserveStorage(req.tenantId, fileSize, req.tenantLimits?.storageLimitMb ?? null)) {
-    if (file.path) { try { fs.unlinkSync(file.path); } catch {} }
-    res.status(403).json({
-      success: false,
-      upgrade_required: true,
-      feature: 'storage_limit',
-      message: `Storage limit (${req.tenantLimits?.storageLimitMb} MB) reached. Upgrade to Pro for 30 GB storage.`,
+    // Atomic storage reservation
+    const fileSize = file.size ?? 0;
+    if (!reserveStorage(req.tenantId, fileSize, req.tenantLimits?.storageLimitMb ?? null)) {
+      if (file.path) { try { fs.unlinkSync(file.path); } catch {} }
+      res.status(403).json({
+        success: false,
+        upgrade_required: true,
+        feature: 'storage_limit',
+        message: `Storage limit (${req.tenantLimits?.storageLimitMb} MB) reached. Upgrade to Pro for 30 GB storage.`,
+      });
+      return;
+    }
+
+    // Build the URL path (relative to uploads root)
+    const tenantSlug = (req as any).tenantSlug;
+    const relativePath = tenantSlug
+      ? `/uploads/${tenantSlug}/inventory/${file.filename}`
+      : `/uploads/inventory/${file.filename}`;
+
+    await adb.run("UPDATE inventory_items SET image_url = ?, updated_at = datetime('now') WHERE id = ?",
+      relativePath, itemId);
+    audit(req.db, 'inventory_image_uploaded', req.user!.id, req.ip || 'unknown', { item_id: itemId, image_url: relativePath });
+
+    res.json({
+      success: true,
+      data: { image_url: relativePath },
     });
-    return;
+  } catch (e: unknown) {
+    // BUGHUNT-2026-05-17: bare-async + await + throw AppError = crash vector.
+    // The adb.get/run rejections and the AppError throws would otherwise
+    // become unhandledRejection and kill the process.
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Image upload failed' });
+      return;
+    }
+    logger.error('inventory_image_upload_error', { error: (e as Error).message });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Unexpected error' });
+    }
   }
-
-  // Build the URL path (relative to uploads root)
-  const tenantSlug = (req as any).tenantSlug;
-  const relativePath = tenantSlug
-    ? `/uploads/${tenantSlug}/inventory/${file.filename}`
-    : `/uploads/inventory/${file.filename}`;
-
-  await adb.run("UPDATE inventory_items SET image_url = ?, updated_at = datetime('now') WHERE id = ?",
-    relativePath, itemId);
-  audit(req.db, 'inventory_image_uploaded', req.user!.id, req.ip || 'unknown', { item_id: itemId, image_url: relativePath });
-
-  res.json({
-    success: true,
-    data: { image_url: relativePath },
-  });
 });
 
 // POST /inventory
