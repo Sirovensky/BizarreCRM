@@ -504,6 +504,14 @@ public struct CustomerAddNoteSheet: View {
             )
             onSaved?()
             dismiss()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: createCustomerNoteV2 is POST without an
+            // idempotency key. A "cancelled" toast tempted a re-tap that —
+            // if the server had already accepted the first POST — could
+            // create a duplicate note AND re-fire the @mention push
+            // notifications to teammates. Stay silent; the customer timeline
+            // refresh shows whether the note landed.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

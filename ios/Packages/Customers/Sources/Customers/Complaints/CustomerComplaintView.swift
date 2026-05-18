@@ -213,6 +213,14 @@ public struct CustomerNewComplaintSheet: View {
             )
             onSaved?()
             dismiss()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: createCustomerComplaint is POST without an
+            // idempotency key. A "cancelled" toast tempted a re-tap that, if
+            // the server had already accepted the first POST, persisted a
+            // duplicate complaint row (with its own audit trail). Stay
+            // silent — the customer detail refresh shows whether the
+            // complaint landed.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
