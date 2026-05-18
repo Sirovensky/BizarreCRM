@@ -60,6 +60,14 @@ public final class ShareMyShopViewModel {
         errorMessage = nil
         do {
             profile = try await api.shopPublicProfile()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: Share My Shop is reached via a settings
+            // tab — navigating away mid-load cancels the in-flight Task.
+            // The catch-all painted "cancelled" as a user-facing error
+            // pane, making the page look broken on return because the
+            // stale error showed for an instant before the next `.task`
+            // re-ran.
+            errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
         }
