@@ -37,6 +37,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -1533,7 +1534,10 @@ private fun CustomerEditContent(
             modifier = Modifier.fillMaxWidth(),
             label = { Text("First Name *") },
             singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Words,
+                imeAction = ImeAction.Next,
+            ),
             keyboardActions = onNext,
         )
 
@@ -1543,7 +1547,10 @@ private fun CustomerEditContent(
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Last Name") },
             singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Words,
+                imeAction = ImeAction.Next,
+            ),
             keyboardActions = onNext,
         )
 
@@ -1579,7 +1586,10 @@ private fun CustomerEditContent(
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Organization") },
             singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Words,
+                imeAction = ImeAction.Next,
+            ),
             keyboardActions = onNext,
         )
 
@@ -1589,7 +1599,10 @@ private fun CustomerEditContent(
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Address") },
             singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Words,
+                imeAction = ImeAction.Next,
+            ),
             keyboardActions = onNext,
         )
 
@@ -1603,7 +1616,10 @@ private fun CustomerEditContent(
                 modifier = Modifier.weight(1f),
                 label = { Text("City") },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Words,
+                    imeAction = ImeAction.Next,
+                ),
                 keyboardActions = onNext,
             )
 
@@ -1613,7 +1629,10 @@ private fun CustomerEditContent(
                 modifier = Modifier.weight(1f),
                 label = { Text("State") },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Words,
+                    imeAction = ImeAction.Next,
+                ),
                 keyboardActions = onNext,
             )
             OutlinedTextField(
