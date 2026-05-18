@@ -68,6 +68,16 @@ public final class FieldLocationPrivacyViewModel {
             historyEntries = []
             didDeleteHistory = true
             AppLog.ui.info("Field location history deleted")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: DELETE may have already purged history
+            // server-side before the task was cancelled. Painting
+            // "cancelled" as errorMessage on a privacy-sensitive purge is
+            // particularly alarming — the user thinks the delete failed
+            // and may either re-tap (extra DELETE on empty history = no
+            // harm, but confusing) or believe their location data
+            // wasn't purged. Reload to surface the actual state.
+            errorMessage = nil
+            await loadHistory()
         } catch {
             AppLog.ui.error("Location history delete failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
