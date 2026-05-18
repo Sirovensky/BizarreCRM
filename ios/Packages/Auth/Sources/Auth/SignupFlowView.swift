@@ -247,6 +247,14 @@ public struct SignupFlowView: View {
                 text: $vm.storeName,
                 hint: "Main Street Repair"
             )
+            // BUGHUNT-2026-05-18: BrandTextField defaults to `.sentences`
+            // so the brand title typed lowercase ("main street repair")
+            // landed as "Main street repair". Bump to `.words` for proper
+            // title casing and offer Contacts org-name Autofill.
+            #if canImport(UIKit)
+            .textContentType(.organizationName)
+            .textInputAutocapitalization(.words)
+            #endif
 
             BrandTextField(
                 "Phone (optional)",
