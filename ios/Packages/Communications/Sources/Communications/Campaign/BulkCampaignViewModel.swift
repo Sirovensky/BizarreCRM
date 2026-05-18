@@ -93,6 +93,13 @@ public final class BulkCampaignViewModel {
         do {
             let ack = try await api.sendBulkCampaign(request)
             step = .done(ack)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: bulk campaigns send to potentially hundreds
+            // of customers and carry no idempotency key. Painting "failed"
+            // tempted a re-tap that double-blasted the segment (TCPA risk +
+            // duplicate cost). Surface a verification hint so the operator
+            // checks the campaign log before retrying.
+            step = .failed("Campaign send was interrupted. Open the campaign log to confirm delivery status before retrying — recipients may already have received the message.")
         } catch {
             AppLog.ui.error("BulkCampaign send failed: \(error.localizedDescription, privacy: .public)")
             step = .failed(error.localizedDescription)
