@@ -34,6 +34,16 @@ public final class InvoiceBulkActionViewModel {
             let body = InvoiceBulkActionRequest(ids: ids, action: action)
             let response = try await api.invoiceBulkAction(body)
             state = .success(processed: response.processed, failed: response.failed)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: bulk-action `send_reminder` is a customer-
+            // facing fan-out — every selected invoice's customer gets an SMS
+            // or email. A `.failed("cancelled")` toast tempted a re-tap that —
+            // if the server had already accepted the first POST — would
+            // double-text/email every recipient (TCPA + cost hazard). Reset
+            // to `.idle` so the caller must deliberately re-press Send; the
+            // invoice list refresh shows which reminders landed.
+            state = .idle
+            return
         } catch {
             AppLog.ui.error("Bulk action '\(action)' failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)
