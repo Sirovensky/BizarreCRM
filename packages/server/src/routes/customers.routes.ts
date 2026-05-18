@@ -111,11 +111,15 @@ function normaliseAndValidatePhone(
   const trimmed = raw.trim();
   if (!trimmed) return null;
   const digits = normalizePhone(trimmed) || '';
-  // `normalizePhone` strips everything that is not a digit. If the client
-  // sent something non-empty that collapsed to an empty string (e.g.
-  // "test test") or to a too-short sequence, reject instead of silently
-  // storing NULL.
-  return validatePhoneDigits(digits, fieldName, true);
+  // BUGHUNT-2026-05-18: previously called `validatePhoneDigits(..., true)`
+  // which surfaced "phone is required" for garbage input like "test test"
+  // (digits collapses to empty). The user knows they typed *something*;
+  // "is required" misdirects them. Emit a clearer "is not a valid phone"
+  // by checking emptiness ourselves before the length check.
+  if (!digits) {
+    throw new AppError(`${fieldName} is not a valid phone number`, 400);
+  }
+  return validatePhoneDigits(digits, fieldName, false);
 }
 
 const blankToNull = (value: unknown): string | null => {
