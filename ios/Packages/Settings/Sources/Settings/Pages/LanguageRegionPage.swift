@@ -58,6 +58,8 @@ public final class LanguageRegionViewModel: Sendable {
             currency = resp.currency ?? "USD"
             dateFormat = resp.dateFormat ?? "MM/dd/yyyy"
             numberFormat = resp.numberFormat ?? "1,234.56"
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -75,6 +77,8 @@ public final class LanguageRegionViewModel: Sendable {
             _ = try await api.saveLanguageRegionSettings(body)
             successMessage = "Language & Region saved."
             errorMessage = nil
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }

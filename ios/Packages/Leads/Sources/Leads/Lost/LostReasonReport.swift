@@ -48,6 +48,8 @@ public final class LostReasonReportViewModel {
                 LostReasonTally(reason: reason, count: idx == 0 ? total : 0)
             }
             state = .loaded(tallies)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             AppLog.ui.error("LostReasonReport load failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)

@@ -64,6 +64,8 @@ public final class TenantNotificationDefaultsViewModel: Sendable {
         defer { isLoading = false }
         do {
             overrides = try await repo.fetchTenantDefaults()
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
             AppLog.ui.error("TenantNotificationDefaultsVM: load failed: \(error.localizedDescription, privacy: .public)")
@@ -83,6 +85,8 @@ public final class TenantNotificationDefaultsViewModel: Sendable {
         do {
             try await repo.saveTenantDefaults(overrides)
             isDirty = false
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: optimistic — server may have committed
         } catch {
             errorMessage = error.localizedDescription
             AppLog.ui.error("TenantNotificationDefaultsVM: save failed: \(error.localizedDescription, privacy: .public)")

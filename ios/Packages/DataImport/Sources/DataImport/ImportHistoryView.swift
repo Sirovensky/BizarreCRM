@@ -32,6 +32,8 @@ public final class ImportHistoryViewModel {
         errorMessage = nil
         do {
             jobs = try await repository.listJobs()
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
             AppLog.ui.error("Import history load failed: \(error.localizedDescription, privacy: .public)")
@@ -51,6 +53,8 @@ public final class ImportHistoryViewModel {
             let msg = resp.message ?? "Import rolled back successfully."
             rollbackResult = .success(msg)
             await load()
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: optimistic — server may have committed rollback; do NOT show failure. Reload to verify state.
         } catch {
             AppLog.ui.error("Import rollback failed: \(error.localizedDescription, privacy: .public)")
             rollbackResult = .failure(error.localizedDescription)

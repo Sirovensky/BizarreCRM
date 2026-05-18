@@ -62,6 +62,8 @@ public final class BusinessProfileViewModel: Sendable {
             currency       = cfg.currency       ?? "USD"
             receiptHeader  = cfg.receiptHeader  ?? ""
             receiptFooter  = cfg.receiptFooter  ?? ""
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -89,6 +91,8 @@ public final class BusinessProfileViewModel: Sendable {
             )
             _ = try await api.updateStoreConfig(body)
             successMessage = "Business profile saved."
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }

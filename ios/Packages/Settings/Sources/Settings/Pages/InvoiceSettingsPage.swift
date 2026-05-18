@@ -110,6 +110,8 @@ public final class InvoiceSettingsViewModel {
         defer { isLoading = false }
         do {
             settings = try await api.getInvoiceSettings()
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -122,6 +124,8 @@ public final class InvoiceSettingsViewModel {
         do {
             settings = try await api.putInvoiceSettings(settings)
             successMessage = "Invoice settings saved."
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }

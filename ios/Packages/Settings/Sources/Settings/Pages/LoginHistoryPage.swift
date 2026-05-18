@@ -68,6 +68,8 @@ public final class LoginHistoryViewModel {
                     location: w.location
                 )
             }
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }

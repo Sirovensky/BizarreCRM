@@ -224,6 +224,8 @@ public final class LoginFlow {
             // 404 = reachable but unnamed — still a valid server
             ServerURLStore.save(url)
             await runSetupProbe()
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             let isOffline: Bool = {
                 let ns = error as NSError
@@ -323,6 +325,8 @@ public final class LoginFlow {
             ServerURLStore.save(shopURL)
             username = registerEmail
             step = .credentials
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -411,6 +415,8 @@ public final class LoginFlow {
             rateLimitRetryAfter = retryInterval
             let retrySeconds = Int(retryInterval.rounded())
             errorMessage = "Too many attempts. Wait \(humanDuration(retrySeconds)) before trying again."
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = localizedNetworkError(error)
         }
@@ -476,6 +482,8 @@ public final class LoginFlow {
                                           body: SetPwReq(challengeToken: challenge, password: newPassword),
                                           as: SetPwResp.self)
             await runTwoFactorSetup(challenge: resp.challengeToken)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -519,6 +527,8 @@ public final class LoginFlow {
             // Strip the "data:image/png;base64," prefix for rendering.
             let raw = resp.qr.flatMap { $0.components(separatedBy: ",").last }
             step = .twoFactorSetup(challenge: resp.challengeToken, qrPNGBase64: raw)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -585,6 +595,8 @@ public final class LoginFlow {
                 backupCodes = codes
             }
             await finishAuth(access: resp.accessToken, refresh: resp.refreshToken)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             totpCode = ""
             errorMessage = localizedNetworkError(error)
@@ -624,6 +636,11 @@ public final class LoginFlow {
                                           as: BackupResp.self)
             remainingBackupCodes = resp.remainingBackupCodes
             await finishAuth(access: resp.accessToken, refresh: resp.refreshToken)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancel — backup codes are single-use;
+            // optimistic — server may have committed (double-action risk: do NOT
+            // retry the same code — server will 401 if already consumed).
+            return
         } catch {
             backupCodeInput = ""
             errorMessage = error.localizedDescription
@@ -649,6 +666,8 @@ public final class LoginFlow {
                                           as: ForgotResp.self)
             forgotMessage = resp.message
                 ?? "If an account with that email exists, a reset link has been sent."
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }

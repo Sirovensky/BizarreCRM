@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 
 /// A bottom sheet that lets the user pick a date range and export
 /// visible audit log entries as CSV or PDF (court-evidence format).
@@ -256,6 +257,8 @@ public struct AuditLogExportSheet: View {
                 }
             }()
             exportURL = url
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }

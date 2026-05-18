@@ -69,6 +69,8 @@ public final class LeadActivityViewModel {
         errorMessage = nil
         do {
             entries = try await api.leadActivity(id: leadId)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }

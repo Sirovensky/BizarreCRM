@@ -203,6 +203,8 @@ public final class PrinterSettingsViewModel {
                 // MFi path deferred — TODO §17 MFi SDK integration
                 errorMessage = "Bluetooth MFi printing not yet available. Use AirPrint or ESC/POS network."
             }
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
             AppLog.hardware.error("PrinterSettingsViewModel test print failed: \(error.localizedDescription, privacy: .public)")

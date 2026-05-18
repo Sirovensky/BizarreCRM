@@ -100,6 +100,8 @@ public final class PreferencesViewModel: Sendable {
         do {
             let prefs = try await api.fetchPreferences()
             apply(prefs)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -115,6 +117,8 @@ public final class PreferencesViewModel: Sendable {
             let prefs = try await api.updatePreferences(body)
             apply(prefs)
             successMessage = "Preferences saved."
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }

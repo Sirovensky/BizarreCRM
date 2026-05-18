@@ -24,6 +24,8 @@ public final class ReviewMeetingHelperViewModel {
         errorMessage = nil
         do {
             exportedPDFURL = try await ReviewPDFExporter.export(review: review)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             AppLog.ui.error("ReviewMeeting PDF export failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription

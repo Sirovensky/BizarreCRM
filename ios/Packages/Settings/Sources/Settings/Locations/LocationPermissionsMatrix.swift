@@ -290,6 +290,9 @@ public final class LocationPermissionsMatrixViewModel {
             }
             assignments = result
             loadState = .loaded
+        } catch let e where AppError.isCancellation(e) {
+            loadState = .idle  // BUGHUNT-2026-05-17: nav cancel
+            return
         } catch {
             loadState = .error(error.localizedDescription)
         }
@@ -318,6 +321,9 @@ public final class LocationPermissionsMatrixViewModel {
                 // Optimistic: remove from local state
                 assignments[userId] = assignments[userId]?.filter { $0.location.id != locationId }
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: optimistic — server may have committed
+            return
         } catch {
             errorMessage = error.localizedDescription
             // Reload to restore truth

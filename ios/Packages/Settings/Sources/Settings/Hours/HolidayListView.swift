@@ -158,6 +158,8 @@ public final class HolidayListViewModel {
     public func load() async {
         do {
             holidays = try await repository.fetchHolidays()
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -167,6 +169,9 @@ public final class HolidayListViewModel {
         do {
             try await repository.deleteHoliday(id: id)
             holidays.removeAll { $0.id == id }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: optimistic — server may have committed
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

@@ -114,6 +114,8 @@ public struct XReportView: View {
             // TODO: Render ZReportDTO tiles when endpoint ships
         } catch let APITransportError.httpStatus(code, _) where code == 501 {
             comingSoon = true
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }

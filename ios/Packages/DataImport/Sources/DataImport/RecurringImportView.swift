@@ -204,6 +204,8 @@ public final class RecurringImportViewModel {
             }
             showEditor = false
             editingSchedule = nil
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: optimistic — server may have committed
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -215,6 +217,8 @@ public final class RecurringImportViewModel {
         do {
             try await repository.deleteSchedule(id: id)
             schedules.removeAll { $0.id == id }
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: optimistic — server may have committed delete
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -237,6 +241,8 @@ public final class RecurringImportViewModel {
         do {
             _ = try await repository.runNow(id: id)
             await load()
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: optimistic — server may have triggered the run
         } catch {
             errorMessage = "Run failed: \(error.localizedDescription)"
         }

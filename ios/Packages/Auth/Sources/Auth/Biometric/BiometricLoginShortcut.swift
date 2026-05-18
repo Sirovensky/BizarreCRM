@@ -173,6 +173,8 @@ public struct BiometricLoginShortcutModifier: ViewModifier {
             withAnimation(BrandMotion.snappy) {
                 errorMessage = "Biometric access denied. Enable it in Settings."
             }
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             withAnimation(BrandMotion.snappy) {
                 errorMessage = error.localizedDescription

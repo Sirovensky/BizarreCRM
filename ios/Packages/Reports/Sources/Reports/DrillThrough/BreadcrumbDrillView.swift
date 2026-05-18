@@ -78,6 +78,9 @@ public final class DrillThroughState {
         errorMessage = nil
         do {
             records = try await repository.getDrillThrough(metric: metric, date: date)
+        } catch let e where AppError.isCancellation(e) {
+            isLoading = false
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
             records = []

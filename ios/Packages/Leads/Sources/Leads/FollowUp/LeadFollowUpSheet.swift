@@ -31,6 +31,13 @@ final class LeadFollowUpSheetViewModel {
             let body = LeadFollowUpBody(dueAt: iso, note: note)
             _ = try await api.createFollowUp(leadId: leadId, body: body)
             state = .success
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancels POST, but server
+            // may have committed (follow-up scheduled + reminder cron set).
+            // Retap creates a DUPLICATE follow-up that pings the rep
+            // twice. Stay silent.
+            state = .idle
+            return
         } catch {
             AppLog.ui.error("Follow-up create failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)

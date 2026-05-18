@@ -280,6 +280,12 @@ public struct ShiftHandoffView: View {
             BrandHaptics.success()
             onComplete()
             dismiss()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: optimistic — server may have committed
+            // DOUBLE-ACTION RISK: openSession is a cash-register write; if the session
+            // was committed before cancellation, showing a "Failed" toast risks a retry
+            // that opens a duplicate session. Keep isOpening=false but don't surface an error.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

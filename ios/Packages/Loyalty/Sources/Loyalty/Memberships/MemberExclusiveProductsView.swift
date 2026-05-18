@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import DesignSystem
 import Networking
 
@@ -155,6 +156,8 @@ public struct MemberExclusiveProductsView: View {
         defer { isLoading = false }
         do {
             products = try await api.listExclusiveProducts()
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }

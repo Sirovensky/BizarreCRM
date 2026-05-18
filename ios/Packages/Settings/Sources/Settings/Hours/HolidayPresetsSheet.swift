@@ -83,6 +83,10 @@ public struct HolidayPresetsSheet: View {
             }
             await onDone()
             dismiss()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: optimistic — server may have committed
+            // (some holidays in the loop may have been created before cancel).
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

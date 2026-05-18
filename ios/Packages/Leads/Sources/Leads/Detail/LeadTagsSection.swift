@@ -241,6 +241,8 @@ public final class LeadTagEditorViewModel {
         do {
             _ = try await api.setLeadTags(leadId: leadId, tags: tags)
             savedSuccessfully = true
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel — optimistic: server may have committed
         } catch {
             errorMessage = error.localizedDescription
         }

@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import SwiftUI
+import Core
 import DesignSystem
 import Networking
 
@@ -79,6 +80,9 @@ public final class PunchCardExpirySettingsViewModel {
                 sharedAcrossLocations: savedDTO.sharedAcrossLocations
             )
             didSave = true
+        } catch let e where AppError.isCancellation(e) {
+            isSaving = false
+            return  // BUGHUNT-2026-05-17: optimistic — server may have committed
         } catch {
             errorMessage = error.localizedDescription
         }

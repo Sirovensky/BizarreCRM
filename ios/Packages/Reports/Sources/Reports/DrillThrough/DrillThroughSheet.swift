@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import DesignSystem
 import Networking
 
@@ -181,6 +182,9 @@ public struct DrillThroughSheet: View {
         errorMessage = nil
         do {
             records = try await repository.getDrillThrough(metric: context.metric, date: context.date)
+        } catch let e where AppError.isCancellation(e) {
+            isLoading = false
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }

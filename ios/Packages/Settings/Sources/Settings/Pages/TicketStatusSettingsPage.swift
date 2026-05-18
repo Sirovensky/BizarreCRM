@@ -67,6 +67,8 @@ public final class TicketStatusSettingsViewModel {
         defer { isLoading = false }
         do {
             statuses = try await api.listTicketStatuses()
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -88,6 +90,9 @@ public final class TicketStatusSettingsViewModel {
             newStatusName = ""
             newStatusColor = "#FF6200"
             showAddSheet = false
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: optimistic — server may have committed
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -103,6 +108,9 @@ public final class TicketStatusSettingsViewModel {
             }
             showEditSheet = false
             editingStatus = nil
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: optimistic — server may have committed
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

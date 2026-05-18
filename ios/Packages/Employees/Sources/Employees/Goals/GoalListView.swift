@@ -28,6 +28,8 @@ public final class GoalListViewModel {
         errorMessage = nil
         do {
             goals = try await repo.listGoals(userId: userId, teamId: nil)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             AppLog.ui.error("GoalList load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -39,6 +41,8 @@ public final class GoalListViewModel {
         goals.removeAll { $0.id == id }
         do {
             try await repo.deleteGoal(id: id)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: optimistic — server may have committed
         } catch {
             AppLog.ui.error("GoalList delete failed: \(error.localizedDescription, privacy: .public)")
             await load()

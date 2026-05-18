@@ -40,6 +40,8 @@ public final class BluetoothSettingsViewModel {
         do {
             try await manager.connect(to: device.id)
             await refresh()
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }

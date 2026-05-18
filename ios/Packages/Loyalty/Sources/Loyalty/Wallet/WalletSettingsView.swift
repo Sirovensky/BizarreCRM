@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import DesignSystem
 import Networking
 
@@ -197,6 +198,9 @@ public final class WalletSettingsViewModel {
                 as: EmptyAPIResponse.self
             )
             showSuccess = true
+        } catch let e where AppError.isCancellation(e) {
+            isSaving = false
+            return  // BUGHUNT-2026-05-17: optimistic — server may have committed
         } catch {
             errorMessage = error.localizedDescription
             showError = true

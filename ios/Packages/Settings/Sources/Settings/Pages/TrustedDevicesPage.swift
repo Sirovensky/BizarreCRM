@@ -53,6 +53,8 @@ public final class TrustedDevicesViewModel {
                     isCurrentDevice: w.isCurrentDevice
                 )
             }
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -64,6 +66,10 @@ public final class TrustedDevicesViewModel {
         do {
             try await api?.securityTrustCurrentDevice()
             await load()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: optimistic — server may have committed
+            // (device trust grants 2FA bypass; do NOT re-submit on retry).
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -73,6 +79,9 @@ public final class TrustedDevicesViewModel {
         do {
             try await api?.securityRevokeTrustedDevice(id: device.id)
             devices.removeAll { $0.id == device.id }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: optimistic — server may have committed
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import Core
 
 // MARK: - §19 BusinessHoursEditorViewModel
 
@@ -31,6 +32,8 @@ public final class BusinessHoursEditorViewModel {
     public func load() async {
         do {
             week = try await repository.fetchHoursWeek()
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -181,6 +184,9 @@ public final class BusinessHoursEditorViewModel {
         do {
             week = try await repository.saveHoursWeek(week)
             saveSucceeded = true
+        } catch let e where AppError.isCancellation(e) {
+            isSaving = false
+            return  // BUGHUNT-2026-05-17: optimistic — server may have committed
         } catch {
             errorMessage = error.localizedDescription
         }

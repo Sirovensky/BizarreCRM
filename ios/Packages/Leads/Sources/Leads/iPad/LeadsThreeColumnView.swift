@@ -76,6 +76,8 @@ public final class LeadsThreeColumnViewModel {
             }
             leads = fresh
             sidebar.updateCounts(from: fresh)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             AppLog.ui.error("LeadsThreeColumn load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -97,6 +99,8 @@ public final class LeadsThreeColumnViewModel {
             }
             leads = fresh
             sidebar.updateCounts(from: fresh)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             AppLog.ui.error("LeadsThreeColumn refresh failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -146,6 +150,8 @@ public final class LeadsThreeColumnViewModel {
                 let body = LeadConvertBody(createTicket: false)
                 _ = try await api.convertLead(id: lead.id, body: body)
                 await load()
+            } catch let e where AppError.isCancellation(e) {
+                return  // BUGHUNT-2026-05-17: optimistic — server may have committed
             } catch {
                 AppLog.ui.error("Convert failed: \(error.localizedDescription, privacy: .public)")
                 errorMessage = error.localizedDescription
@@ -155,6 +161,8 @@ public final class LeadsThreeColumnViewModel {
                 let body = LeadStatusUpdateBody(status: newStatus)
                 _ = try await api.updateLeadStatus(id: lead.id, body: body)
                 await load()
+            } catch let e where AppError.isCancellation(e) {
+                return  // BUGHUNT-2026-05-17: optimistic — server may have committed
             } catch {
                 AppLog.ui.error("Status change failed: \(error.localizedDescription, privacy: .public)")
                 errorMessage = error.localizedDescription
@@ -165,6 +173,8 @@ public final class LeadsThreeColumnViewModel {
                 _ = try await api.loseLead(id: lead.id, body: body)
                 if selectedLeadId == lead.id { selectedLeadId = nil }
                 await load()
+            } catch let e where AppError.isCancellation(e) {
+                return  // BUGHUNT-2026-05-17: optimistic — server may have committed
             } catch {
                 AppLog.ui.error("Archive failed: \(error.localizedDescription, privacy: .public)")
                 errorMessage = error.localizedDescription

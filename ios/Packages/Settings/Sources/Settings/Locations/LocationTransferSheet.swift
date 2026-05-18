@@ -115,6 +115,9 @@ public struct LocationTransferSheet: View {
             let transfer = try await repo.createTransfer(req)
             onCreated(transfer)
             dismiss()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: optimistic — server may have committed
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

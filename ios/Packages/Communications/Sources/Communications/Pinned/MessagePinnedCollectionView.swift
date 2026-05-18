@@ -100,6 +100,8 @@ public final class PinnedMessagesViewModel: Sendable {
         defer { isLoading = false }
         do {
             messages = try await api.listStarredMessages()
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             AppLog.ui.error("Starred messages load: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -110,6 +112,8 @@ public final class PinnedMessagesViewModel: Sendable {
         messages.removeAll { $0.id == msg.id }
         do {
             try await api.unstarMessage(messageId: msg.messageId)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: optimistic — server may have committed
         } catch {
             AppLog.ui.error("Unstar failed: \(error.localizedDescription, privacy: .public)")
             await load() // revert

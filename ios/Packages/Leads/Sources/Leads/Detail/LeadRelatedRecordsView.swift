@@ -222,6 +222,8 @@ public struct LeadConvertToEstimateSheet: View {
         do {
             try await api.convertLeadToEstimate(leadId: leadId, notes: notes)
             dismiss()
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel — optimistic: server may have committed
         } catch {
             errorMessage = error.localizedDescription
         }

@@ -165,6 +165,8 @@ public final class WeighCaptureViewModel {
             let tared = try await scale.tare()
             updateDisplay(weight: tared)
             AppLog.hardware.info("WeighCaptureViewModel: tare set")
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }

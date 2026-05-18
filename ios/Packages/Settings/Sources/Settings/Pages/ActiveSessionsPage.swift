@@ -64,6 +64,8 @@ public final class ActiveSessionsViewModel {
                     isCurrentDevice: w.isCurrentDevice
                 )
             }
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -80,6 +82,10 @@ public final class ActiveSessionsViewModel {
         do {
             try await api?.securityRevokeSession(id: session.id)
             sessions.removeAll { $0.id == session.id }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: optimistic — server may have committed
+            sessionToRevoke = nil
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -92,6 +98,9 @@ public final class ActiveSessionsViewModel {
         do {
             try await api?.securityRevokeAllSessions()
             sessions = sessions.filter(\.isCurrentDevice)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: optimistic — server may have committed
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

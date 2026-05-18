@@ -54,6 +54,8 @@ final class WhatsNewViewModel {
             let version = Platform.appVersion
             let list = try await api.fetchChangelog(version: version)
             entries = list
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }

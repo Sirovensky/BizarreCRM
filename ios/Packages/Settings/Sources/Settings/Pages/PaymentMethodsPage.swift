@@ -73,6 +73,8 @@ public final class PaymentMethodsViewModel: Sendable {
                 tipPresets: resp.tipPresets ?? [10, 15, 20],
                 manualKeyedCardAllowed: resp.manualKeyedCardAllowed ?? false
             )
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -99,6 +101,8 @@ public final class PaymentMethodsViewModel: Sendable {
             _ = try await api.savePaymentSettings(body)
             successMessage = "Payment settings saved."
             errorMessage = nil
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }

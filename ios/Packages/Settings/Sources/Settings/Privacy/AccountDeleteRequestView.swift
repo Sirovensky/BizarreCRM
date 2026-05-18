@@ -59,6 +59,10 @@ public final class AccountDeleteRequestViewModel {
         do {
             try await api?.requestAccountDeletion()
             isSubmitted = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: optimistic — server may have committed
+            // (30-day deletion timer may have started; do NOT re-submit blindly).
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

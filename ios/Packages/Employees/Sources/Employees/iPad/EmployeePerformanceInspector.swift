@@ -68,6 +68,8 @@ public final class EmployeePerformanceInspectorViewModel {
             state = .loaded(perf)
             clockedIn = detail.isClockedIn ?? false
             clockInTime = detail.currentClockEntry?.clockIn
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             state = .failed(error.localizedDescription)
         }

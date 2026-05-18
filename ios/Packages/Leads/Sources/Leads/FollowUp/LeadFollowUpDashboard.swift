@@ -34,6 +34,8 @@ public final class LeadFollowUpDashboardViewModel {
                 )
             }
             state = .loaded(reminders)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             AppLog.ui.error("Follow-up dashboard load failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)

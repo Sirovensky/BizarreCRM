@@ -84,6 +84,8 @@ public final class TicketRequiredFieldsViewModel {
         do {
             let dto = try await api.get("/api/v1/settings/tickets/required-fields", as: TicketRequiredFieldsDTO.self)
             requiredFields = Set(dto.requiredFields)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -98,6 +100,8 @@ public final class TicketRequiredFieldsViewModel {
             let saved = try await api.put("/api/v1/settings/tickets/required-fields", body: body, as: TicketRequiredFieldsDTO.self)
             requiredFields = Set(saved.requiredFields)
             successMessage = "Required fields saved."
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }

@@ -72,6 +72,9 @@ public final class DataExportRequestViewModel {
             lastRequestedAt = now
             defaults.set(now, forKey: Self.lastRequestedKey)
             successMessage = "Export requested. You'll receive an email when your archive is ready."
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: optimistic — server may have committed
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

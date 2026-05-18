@@ -46,6 +46,8 @@ public final class CompanyInfoViewModel: Sendable {
             phone = info.phone ?? ""
             website = info.website ?? ""
             ein = info.ein ?? ""
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -64,6 +66,8 @@ public final class CompanyInfoViewModel: Sendable {
             _ = try await api.saveCompanyInfo(body)
             successMessage = "Company info saved."
             errorMessage = nil
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }

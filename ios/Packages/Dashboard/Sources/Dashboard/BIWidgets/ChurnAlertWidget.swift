@@ -1,5 +1,6 @@
 import SwiftUI
 import Observation
+import Core
 import DesignSystem
 
 // MARK: - ChurnAlertWidget
@@ -27,6 +28,9 @@ public final class ChurnAlertViewModel {
         do {
             let payload = try await repo.fetchChurn()
             state = .loaded(payload)
+        } catch let e where AppError.isCancellation(e) {
+            state = .idle  // BUGHUNT-2026-05-17: nav cancel — reset to idle so next appearance reloads cleanly
+            return
         } catch {
             state = .failed(error.localizedDescription)
         }
