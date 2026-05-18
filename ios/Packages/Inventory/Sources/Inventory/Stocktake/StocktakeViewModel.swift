@@ -124,6 +124,10 @@ public final class StocktakeScanViewModel {
                     actualCounts[row.sku] = String(existing)
                 }
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancel during session load; keep
+            // prior session visible.
+            return
         } catch {
             if InventoryOfflineQueue.isNetworkError(error) {
                 isOffline = true
@@ -155,6 +159,11 @@ public final class StocktakeScanViewModel {
         )
         do {
             _ = try await api.upsertStocktakeCount(sessionId: sessionId, request: req)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: scan-screen dismiss cancels in-flight
+            // count UPSERT. UPSERT is idempotent server-side; let next
+            // session load reflect truth.
+            return
         } catch {
             if InventoryOfflineQueue.isNetworkError(error) {
                 isOffline = true
@@ -259,6 +268,10 @@ public final class StocktakeListViewModel {
         defer { isLoading = false }
         do {
             sessions = try await api.listStocktakes(status: statusFilter)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: status-filter swap cancels prior list
+            // fetch; leave sessions alone so newer fetch sets them.
+            return
         } catch {
             AppLog.ui.error("StocktakeList load: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription

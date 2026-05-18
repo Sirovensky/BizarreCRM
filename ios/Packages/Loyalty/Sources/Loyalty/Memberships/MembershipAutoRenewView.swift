@@ -151,6 +151,11 @@ public final class MembershipAutoRenewViewModel {
                 autoRenew: newValue,
                 nextBillingAt: membership.nextBillingAt
             )
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: view dismiss mid-PATCH cancels response;
+            // server may have committed. Stay silent so retap doesn't
+            // re-toggle (audit noise + potential UI flicker).
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -171,6 +176,12 @@ public final class MembershipAutoRenewViewModel {
             chargeTriggeredToast = true
             // Reload to get updated charge result
             await load()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav-away cancels response, but the
+            // /renew POST charges the customer's card via Stripe. Surfacing
+            // .failed tempts a retap that DOUBLE-CHARGES the membership
+            // renewal. Stay silent; manager can verify via reload.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

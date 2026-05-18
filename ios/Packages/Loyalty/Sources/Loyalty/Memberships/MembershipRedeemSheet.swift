@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import DesignSystem
 import Networking
 
@@ -61,6 +62,13 @@ public final class MembershipRedeemViewModel {
                 points: pointsToRedeem
             )
             state = .redeemed(pointsToRedeem, remainingPoints: result.remainingPoints)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss mid-POST cancels the response,
+            // but the server may have committed the redemption (points
+            // deducted). Surfacing .failed tempts a retap that redeems the
+            // SAME points AGAIN, double-deducting the customer's balance.
+            // Stay silent; balance refresh will reflect server truth.
+            return
         } catch let t as APITransportError {
             if case .httpStatus(let code, _) = t, code == 501 || code == 404 {
                 state = .notYetAvailable

@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import DesignSystem
 import Networking
 
@@ -86,6 +87,10 @@ public final class MembershipEnrollViewModel {
             } else {
                 state = .failed(t.localizedDescription)
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancels tier fetch;
+            // leave state alone so newer fetch sets .plansLoaded.
+            return
         } catch {
             state = .failed(error.localizedDescription)
         }
