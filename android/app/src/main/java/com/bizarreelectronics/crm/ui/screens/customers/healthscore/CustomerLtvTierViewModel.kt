@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.CustomerApi
 import com.bizarreelectronics.crm.data.remote.dto.CustomerLtvTier
+import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,6 +52,8 @@ class CustomerLtvTierViewModel @Inject constructor(
                     // 404 = server endpoint not yet live; display graceful empty state.
                     error = if (e.code() == 404) null else "Failed to load LTV tier (${e.code()})",
                 )
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,

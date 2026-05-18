@@ -10,6 +10,7 @@ import com.bizarreelectronics.crm.service.WebSocketService
 import com.bizarreelectronics.crm.ui.screens.activity.components.ActivityFilter
 import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -113,6 +114,8 @@ class ActivityFeedViewModel @Inject constructor(
                 } else {
                     Log.w(TAG, "loadMore error ${e.code()}: ${e.message()}")
                 }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 Log.w(TAG, "loadMore error: ${e.message}")
             } finally {
@@ -144,6 +147,9 @@ class ActivityFeedViewModel @Inject constructor(
                 // Roll back optimistic update on other errors
                 rollBackReaction(eventId, emoji)
                 Log.w(TAG, "react error ${e.code()}")
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: optimistic — server may have committed
+                throw e
             } catch (_: Exception) {
                 rollBackReaction(eventId, emoji)
             }
@@ -187,6 +193,8 @@ class ActivityFeedViewModel @Inject constructor(
                 } else {
                     _error.value = "Failed to load activity (${e.code()})"
                 }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 _error.value = "Failed to load activity: ${e.message}"
             } finally {

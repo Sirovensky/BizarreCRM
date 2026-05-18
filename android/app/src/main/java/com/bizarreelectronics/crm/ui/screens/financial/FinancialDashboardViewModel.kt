@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
 import javax.inject.Inject
 
@@ -182,6 +183,8 @@ class FinancialDashboardViewModel @Inject constructor(
                 _uiState.update { it.copy(snackbarMessage = "Access denied: owner role required") }
             }
             // 404 or other → leave plSummary null (stub shown)
+        } catch (e: CancellationException) {
+            throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
         } catch (_: Exception) {
             // Network unreachable or serialisation error → leave stub shown
         }
@@ -216,6 +219,8 @@ class FinancialDashboardViewModel @Inject constructor(
             if (e.code() == 403) {
                 _uiState.update { it.copy(snackbarMessage = "Access denied: owner role required") }
             }
+        } catch (e: CancellationException) {
+            throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
         } catch (_: Exception) {
             // Offline / not deployed → stub shown
         }
@@ -246,6 +251,8 @@ class FinancialDashboardViewModel @Inject constructor(
             if (e.code() == 403) {
                 _uiState.update { it.copy(snackbarMessage = "Access denied: owner role required") }
             }
+        } catch (e: CancellationException) {
+            throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
         } catch (_: Exception) {
             // Offline / not deployed → stub shown
         }

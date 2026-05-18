@@ -10,6 +10,7 @@ import com.bizarreelectronics.crm.data.remote.api.AuditEntry
 import com.bizarreelectronics.crm.ui.screens.audit.components.AuditFilter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -141,6 +142,8 @@ class AuditLogsViewModel @Inject constructor(
                     _error.value = "Failed to load audit log (HTTP ${e.code()})"
                     Log.w(TAG, "loadFirstPage HTTP ${e.code()}", e)
                 }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 _error.value = "Failed to load audit log"
                 Log.e(TAG, "loadFirstPage error", e)
@@ -187,6 +190,8 @@ class AuditLogsViewModel @Inject constructor(
                     snapshot.size
                 }
                 _exportState.value = ExportState.Success(rowCount)
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 Log.e(TAG, "exportCsvTo failed", e)
                 _exportState.value = ExportState.Error("Export failed: ${e.message}")
@@ -223,6 +228,8 @@ class AuditLogsViewModel @Inject constructor(
                 if (e.code() != 404) {
                     Log.w(TAG, "loadNextPage HTTP ${e.code()}", e)
                 }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 Log.e(TAG, "loadNextPage error", e)
             } finally {

@@ -25,6 +25,7 @@ import com.bizarreelectronics.crm.util.ScrollPosition
 import com.bizarreelectronics.crm.util.restoreScrollPosition
 import com.bizarreelectronics.crm.util.saveScrollPosition
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -505,6 +506,9 @@ class TicketListViewModel @Inject constructor(
                         toastMessage = "Could not apply label — ${e.message()}",
                     )
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: optimistic — server may have committed
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "bulkApplyLabel: ${e.message}")
                 _state.value = _state.value.copy(

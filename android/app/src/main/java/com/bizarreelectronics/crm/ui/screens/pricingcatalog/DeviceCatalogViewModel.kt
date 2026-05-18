@@ -8,6 +8,7 @@ import com.bizarreelectronics.crm.data.remote.dto.DeviceModelItem
 import com.bizarreelectronics.crm.data.remote.dto.ManufacturerItem
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -60,6 +61,8 @@ class DeviceCatalogViewModel @Inject constructor(
                     isLoading = false,
                     error = "Failed to load manufacturers (${e.code()})",
                 )
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
@@ -115,6 +118,8 @@ class DeviceCatalogViewModel @Inject constructor(
                     isLoadingDevices = false,
                     deviceError = "Search failed (${e.code()})",
                 )
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoadingDevices = false,
@@ -156,6 +161,9 @@ class DeviceCatalogViewModel @Inject constructor(
                     isSaving = false,
                     saveError = "Save failed (${e.code()})",
                 )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: optimistic — server may have committed
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSaving = false,

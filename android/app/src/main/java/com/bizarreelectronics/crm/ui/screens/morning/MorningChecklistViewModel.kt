@@ -15,6 +15,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 import java.time.LocalDate
@@ -156,6 +157,8 @@ class MorningChecklistViewModel @Inject constructor(
                     Log.w(TAG, "GET /tenants/me/morning-checklist HTTP ${e.code()}")
                 }
                 MorningChecklistDefaults.steps
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 Log.w(TAG, "GET /tenants/me/morning-checklist failed: ${e.message}")
                 MorningChecklistDefaults.steps
@@ -263,6 +266,9 @@ class MorningChecklistViewModel @Inject constructor(
                 if (e.code() != 404) {
                     Log.w(TAG, "POST /morning-checklist/complete HTTP ${e.code()}")
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: optimistic — server may have committed
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "POST /morning-checklist/complete failed: ${e.message}")
             } finally {
@@ -304,6 +310,9 @@ class MorningChecklistViewModel @Inject constructor(
                 if (e.code() != 404) {
                     Log.w(TAG, "POST /morning-checklist/skip HTTP ${e.code()}")
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: optimistic — server may have committed
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "POST /morning-checklist/skip failed: ${e.message}")
             }

@@ -10,6 +10,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 import javax.inject.Inject
@@ -70,6 +71,8 @@ class FieldServiceViewModel @Inject constructor(
                         it.copy(isLoading = false, error = "Failed to load jobs (${e.code()})")
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 _state.update {
                     it.copy(isLoading = false, error = e.message ?: "Failed to load jobs")
@@ -121,6 +124,8 @@ class FieldServiceViewModel @Inject constructor(
                     "Optimization failed (${e.code()})"
                 }
                 _state.update { it.copy(isOptimizing = false, snackMessage = msg) }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 _state.update {
                     it.copy(
@@ -188,6 +193,9 @@ class FieldServiceViewModel @Inject constructor(
                         it.copy(snackMessage = "Status update failed (${e.code()})")
                     }
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: optimistic — server may have committed
+                throw e
             } catch (e: Exception) {
                 loadJobs()
                 _state.update {

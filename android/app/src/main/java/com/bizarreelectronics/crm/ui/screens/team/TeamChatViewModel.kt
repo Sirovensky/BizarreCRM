@@ -12,6 +12,7 @@ import com.bizarreelectronics.crm.data.remote.dto.EmployeeListItem
 import com.bizarreelectronics.crm.util.MentionUtil
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -97,6 +98,8 @@ class TeamChatListViewModel @Inject constructor(
                         error = "Could not load team chat",
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (_: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
@@ -189,6 +192,8 @@ class TeamChatThreadViewModel @Inject constructor(
                         error = "Could not load messages",
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (_: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
@@ -227,6 +232,12 @@ class TeamChatThreadViewModel @Inject constructor(
                     )
                     loadMessages()
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: optimistic — server may have committed
+                // TCPA double-send: cancellation here does NOT guarantee the send was not delivered;
+                // the message may have been queued server-side. Do NOT retry automatically.
+                _state.value = _state.value.copy(isSending = false)
+                throw e
             } catch (_: Exception) {
                 _state.value = _state.value.copy(
                     isSending = false,

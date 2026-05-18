@@ -10,6 +10,7 @@ import com.bizarreelectronics.crm.util.AppError
 import com.bizarreelectronics.crm.util.Breadcrumbs
 import com.bizarreelectronics.crm.util.DbExporter
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -114,6 +115,8 @@ class DiagnosticsViewModel @Inject constructor(
             try {
                 syncManager.syncAll()
                 _syncMessage.value = "Sync completed"
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 _syncMessage.value = "Sync failed: ${e.message}"
             } finally {

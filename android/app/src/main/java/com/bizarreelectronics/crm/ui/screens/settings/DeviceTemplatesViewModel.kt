@@ -9,6 +9,7 @@ import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 import javax.inject.Inject
@@ -74,6 +75,8 @@ class DeviceTemplatesViewModel @Inject constructor(
                         error = "Failed to load templates (${e.code()})",
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
@@ -141,6 +144,9 @@ class DeviceTemplatesViewModel @Inject constructor(
                     isSaving = false,
                     saveError = "Save failed (${e.code()})",
                 )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: optimistic — server may have committed
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSaving = false,
@@ -176,6 +182,9 @@ class DeviceTemplatesViewModel @Inject constructor(
                     deleteError = msg,
                 )
                 if (e.code() == 404) loadTemplates() // already gone
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: optimistic — server may have committed
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isDeleting = false,

@@ -13,6 +13,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 import javax.inject.Inject
@@ -72,6 +73,8 @@ class BenchTabViewModel @Inject constructor(
                         )
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 _state.update {
                     it.copy(isLoading = false, error = e.message ?: "Failed to load bench tickets")
@@ -100,6 +103,9 @@ class BenchTabViewModel @Inject constructor(
                 if (e.code() != 404) {
                     _state.update { it.copy(timerError = "Timer start failed (${e.code()})") }
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: optimistic — server may have committed
+                throw e
             } catch (_: Exception) { /* network glitch — local timer already running */ }
         }
     }
@@ -119,6 +125,9 @@ class BenchTabViewModel @Inject constructor(
                 if (e.code() != 404) {
                     _state.update { it.copy(timerError = "Timer stop failed (${e.code()})") }
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: optimistic — server may have committed
+                throw e
             } catch (_: Exception) { /* network glitch — local timer already stopped */ }
         }
     }
@@ -152,6 +161,9 @@ class BenchTabViewModel @Inject constructor(
                 }
             } catch (e: HttpException) {
                 _state.update { it.copy(partsMessage = "Could not mark part missing (${e.code()})") }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: optimistic — server may have committed
+                throw e
             } catch (e: Exception) {
                 _state.update { it.copy(partsMessage = e.message ?: "Could not mark part missing") }
             }
@@ -199,6 +211,9 @@ class BenchTabViewModel @Inject constructor(
                 }
             } catch (e: HttpException) {
                 _state.update { it.copy(handoffMessage = "Transfer failed (${e.code()})") }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: optimistic — server may have committed
+                throw e
             } catch (e: Exception) {
                 _state.update { it.copy(handoffMessage = e.message ?: "Transfer failed") }
             }
