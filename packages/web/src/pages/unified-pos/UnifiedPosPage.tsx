@@ -4066,22 +4066,22 @@ function InlineCreateCustomerPanel({
   // bg shift + 1px primary inset edge instead. Resting state gets a 1px
   // surface ring so each field reads as a clear cell, not a flat block.
   const tileInput =
-    'h-10 w-full border-0 bg-transparent p-0 text-[15px] font-semibold text-surface-900 placeholder:text-surface-400 outline-none [&:focus-visible]:!shadow-none [&:focus-visible]:!ring-0 dark:text-surface-50 dark:placeholder:text-surface-600';
+    'h-9 w-full border-0 bg-transparent p-0 text-[15px] font-semibold text-surface-900 placeholder:text-surface-400 outline-none [&:focus-visible]:!shadow-none [&:focus-visible]:!ring-0 dark:text-surface-50 dark:placeholder:text-surface-500';
   const fieldTile =
-    'block bg-white px-4 py-3 ring-1 ring-inset ring-surface-200 transition-shadow focus-within:ring-primary-500 dark:bg-surface-800 dark:ring-surface-600 dark:focus-within:ring-primary-500';
+    'block rounded-lg bg-surface-50/80 px-4 py-2.5 transition-all focus-within:bg-primary-50/50 focus-within:ring-1 focus-within:ring-primary-400 dark:bg-white/[0.04] dark:focus-within:bg-white/[0.07] dark:focus-within:ring-primary-500/50';
 
   return (
     <section className="flex w-full flex-1 items-center px-6 py-6">
       <form
-        className="mx-auto w-full max-w-4xl overflow-hidden rounded-xl border border-surface-200 bg-surface-200 shadow-lg shadow-black/10 dark:border-surface-700 dark:bg-surface-700 dark:shadow-black/30"
+        className="mx-auto w-full max-w-4xl overflow-hidden rounded-xl border border-surface-200 bg-white shadow-lg shadow-black/10 dark:border-surface-700/50 dark:bg-surface-900 dark:shadow-black/30"
         onSubmit={(event) => {
           event.preventDefault();
           onSubmit();
         }}
       >
-        <div className="flex flex-wrap items-center justify-between gap-3 bg-white px-4 py-3 dark:bg-surface-800">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-3">
-            <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary-500 text-on-primary dark:bg-primary-500">
+            <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary-500 text-on-primary">
               <UserPlus className="h-5 w-5" />
             </div>
             <div className="font-display text-3xl leading-none text-surface-900 dark:text-surface-50">Create customer</div>
@@ -4109,7 +4109,7 @@ function InlineCreateCustomerPanel({
             RepairDesk customer-create UX so a counter clerk can capture the
             full identity profile (loyalty group, tax class, ID, address) in
             one go without context-switching to a separate page. */}
-        <div className="flex gap-px bg-surface-200 dark:bg-surface-700">
+        <div className="flex border-b border-surface-200 dark:border-surface-700/50">
           {([
             { id: 'contact', label: 'Contact' },
             { id: 'address', label: 'Address' },
@@ -4120,10 +4120,10 @@ function InlineCreateCustomerPanel({
               type="button"
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                'flex-1 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors',
+                'flex-1 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors border-b-2 -mb-px',
                 activeTab === tab.id
-                  ? 'bg-white text-primary-700 dark:bg-surface-800 dark:text-primary-500'
-                  : 'bg-surface-50 text-surface-600 hover:bg-white dark:bg-surface-700 dark:text-surface-400 dark:hover:bg-surface-800',
+                  ? 'border-primary-500 text-primary-700 dark:text-primary-400'
+                  : 'border-transparent text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200',
               )}
             >
               {tab.label}
@@ -4133,10 +4133,10 @@ function InlineCreateCustomerPanel({
 
         {activeTab === 'contact' && (
           <>
-            <div className="grid gap-px sm:grid-cols-2">
+            <div className="grid gap-3 px-4 pt-4 sm:grid-cols-2">
               <label className={fieldTile}>
-                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">
-                  First name <span className="text-red-500">*</span>
+                <span className="block text-[11px] font-medium tracking-wide text-primary-700 dark:text-primary-400">
+                  First name <span className="text-primary-500">*</span>
                 </span>
                 <input
                   autoFocus
@@ -4148,7 +4148,7 @@ function InlineCreateCustomerPanel({
                 />
               </label>
               <label className={fieldTile}>
-                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Last name</span>
+                <span className="block text-[11px] font-medium tracking-wide text-primary-700 dark:text-primary-400">Last name</span>
                 <input
                   value={draft.lastName}
                   onChange={(event) => updateDraft({ lastName: event.target.value })}
@@ -4157,7 +4157,7 @@ function InlineCreateCustomerPanel({
                 />
               </label>
               <label className={fieldTile}>
-                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Mobile</span>
+                <span className="block text-[11px] font-medium tracking-wide text-primary-700 dark:text-primary-400">Mobile</span>
                 <input
                   value={draft.phone}
                   onChange={(event) => updateDraft({ phone: formatPhoneAsYouType(event.target.value) })}
@@ -4167,7 +4167,7 @@ function InlineCreateCustomerPanel({
                 />
               </label>
               <label className={fieldTile}>
-                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Email</span>
+                <span className="block text-[11px] font-medium tracking-wide text-primary-700 dark:text-primary-400">Email</span>
                 <input
                   value={draft.email}
                   onChange={(event) => updateDraft({ email: event.target.value })}
@@ -4178,28 +4178,28 @@ function InlineCreateCustomerPanel({
               </label>
             </div>
 
-            <div className="grid gap-px sm:grid-cols-2">
+            <div className="grid gap-3 px-4 pt-4 sm:grid-cols-2">
               <label className={fieldTile}>
-                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Customer group</span>
+                <span className="block text-[11px] font-medium tracking-wide text-primary-700 dark:text-primary-400">Customer group</span>
                 <select
                   value={draft.customerGroupId ?? ''}
                   onChange={(event) => updateDraft({ customerGroupId: event.target.value ? Number(event.target.value) : null })}
                   className={tileInput}
                 >
-                  <option value="">— Select —</option>
+                  <option value="">Select…</option>
                   {customerGroups.map((g) => (
                     <option key={g.id} value={g.id}>{g.name}</option>
                   ))}
                 </select>
               </label>
               <label className={fieldTile}>
-                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Tax class</span>
+                <span className="block text-[11px] font-medium tracking-wide text-primary-700 dark:text-primary-400">Tax class</span>
                 <select
                   value={draft.taxClassId ?? ''}
                   onChange={(event) => updateDraft({ taxClassId: event.target.value ? Number(event.target.value) : null })}
                   className={tileInput}
                 >
-                  <option value="">— Default —</option>
+                  <option value="">Default</option>
                   {taxClasses.map((tc) => (
                     <option key={tc.id} value={tc.id}>{tc.name} ({tc.rate}%)</option>
                   ))}
@@ -4207,9 +4207,9 @@ function InlineCreateCustomerPanel({
               </label>
             </div>
 
-            <div className="grid gap-px sm:grid-cols-2">
+            <div className="grid gap-3 px-4 py-4 sm:grid-cols-2">
               <label className={fieldTile}>
-                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">How did you hear about us?</span>
+                <span className="block text-[11px] font-medium tracking-wide text-primary-700 dark:text-primary-400">How did you hear about us?</span>
                 <input
                   value={draft.referredBy}
                   onChange={(event) => updateDraft({ referredBy: event.target.value })}
@@ -4218,7 +4218,7 @@ function InlineCreateCustomerPanel({
                 />
               </label>
               <label className={fieldTile}>
-                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">
+                <span className="block text-[11px] font-medium tracking-wide text-primary-700 dark:text-primary-400">
                   {draft.customerType === 'business' ? 'Organization *' : 'Organization'}
                 </span>
                 <input
@@ -4235,9 +4235,9 @@ function InlineCreateCustomerPanel({
 
         {activeTab === 'address' && (
           <>
-            <div className="grid gap-px sm:grid-cols-2">
+            <div className="grid gap-3 px-4 pt-4 sm:grid-cols-2">
               <label className={fieldTile}>
-                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Street address</span>
+                <span className="block text-[11px] font-medium tracking-wide text-primary-700 dark:text-primary-400">Street address</span>
                 <input
                   value={draft.address1}
                   onChange={(event) => updateDraft({ address1: event.target.value })}
@@ -4246,7 +4246,7 @@ function InlineCreateCustomerPanel({
                 />
               </label>
               <label className={fieldTile}>
-                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">House / apt / floor</span>
+                <span className="block text-[11px] font-medium tracking-wide text-primary-700 dark:text-primary-400">House / apt / floor</span>
                 <input
                   value={draft.address2}
                   onChange={(event) => updateDraft({ address2: event.target.value })}
@@ -4255,7 +4255,7 @@ function InlineCreateCustomerPanel({
                 />
               </label>
               <label className={fieldTile}>
-                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Postcode</span>
+                <span className="block text-[11px] font-medium tracking-wide text-primary-700 dark:text-primary-400">Postcode</span>
                 <input
                   value={draft.postcode}
                   onChange={(event) => updateDraft({ postcode: event.target.value })}
@@ -4264,7 +4264,7 @@ function InlineCreateCustomerPanel({
                 />
               </label>
               <label className={fieldTile}>
-                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">City</span>
+                <span className="block text-[11px] font-medium tracking-wide text-primary-700 dark:text-primary-400">City</span>
                 <input
                   value={draft.city}
                   onChange={(event) => updateDraft({ city: event.target.value })}
@@ -4273,7 +4273,7 @@ function InlineCreateCustomerPanel({
                 />
               </label>
               <label className={fieldTile}>
-                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">State / region</span>
+                <span className="block text-[11px] font-medium tracking-wide text-primary-700 dark:text-primary-400">State / region</span>
                 <input
                   value={draft.state}
                   onChange={(event) => updateDraft({ state: event.target.value })}
@@ -4282,7 +4282,7 @@ function InlineCreateCustomerPanel({
                 />
               </label>
               <label className={fieldTile}>
-                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Country</span>
+                <span className="block text-[11px] font-medium tracking-wide text-primary-700 dark:text-primary-400">Country</span>
                 <input
                   value={draft.country}
                   onChange={(event) => updateDraft({ country: event.target.value })}
@@ -4291,9 +4291,9 @@ function InlineCreateCustomerPanel({
                 />
               </label>
             </div>
-            <div className="grid gap-px">
+            <div className="grid gap-3 px-4 py-4">
               <label className={fieldTile}>
-                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Contact person</span>
+                <span className="block text-[11px] font-medium tracking-wide text-primary-700 dark:text-primary-400">Contact person</span>
                 <input
                   value={draft.contactPerson}
                   onChange={(event) => updateDraft({ contactPerson: event.target.value })}
@@ -4307,9 +4307,9 @@ function InlineCreateCustomerPanel({
 
         {activeTab === 'additional' && (
           <>
-            <div className="grid gap-px sm:grid-cols-2">
+            <div className="grid gap-3 px-4 pt-4 sm:grid-cols-2">
               <label className={fieldTile}>
-                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Tax / VAT number</span>
+                <span className="block text-[11px] font-medium tracking-wide text-primary-700 dark:text-primary-400">Tax / VAT number</span>
                 <input
                   value={draft.taxNumber}
                   onChange={(event) => updateDraft({ taxNumber: event.target.value })}
@@ -4318,13 +4318,13 @@ function InlineCreateCustomerPanel({
                 />
               </label>
               <label className={fieldTile}>
-                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">ID type</span>
+                <span className="block text-[11px] font-medium tracking-wide text-primary-700 dark:text-primary-400">ID type</span>
                 <select
                   value={draft.idType}
                   onChange={(event) => updateDraft({ idType: event.target.value })}
                   className={tileInput}
                 >
-                  <option value="">— None —</option>
+                  <option value="">None</option>
                   <option value="drivers_license">Driver's license</option>
                   <option value="passport">Passport</option>
                   <option value="state_id">State ID</option>
@@ -4332,7 +4332,7 @@ function InlineCreateCustomerPanel({
                 </select>
               </label>
               <label className={fieldTile}>
-                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">ID number</span>
+                <span className="block text-[11px] font-medium tracking-wide text-primary-700 dark:text-primary-400">ID number</span>
                 <input
                   value={draft.idNumber}
                   onChange={(event) => updateDraft({ idNumber: event.target.value })}
@@ -4341,7 +4341,7 @@ function InlineCreateCustomerPanel({
                 />
               </label>
               <label className={fieldTile}>
-                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Title</span>
+                <span className="block text-[11px] font-medium tracking-wide text-primary-700 dark:text-primary-400">Title</span>
                 <input
                   value={draft.title}
                   onChange={(event) => updateDraft({ title: event.target.value })}
@@ -4350,8 +4350,9 @@ function InlineCreateCustomerPanel({
                 />
               </label>
             </div>
+            <div className="px-4 pb-4">
             <label className={cn(fieldTile, 'block')}>
-              <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Private note</span>
+              <span className="block text-[11px] font-medium tracking-wide text-primary-700 dark:text-primary-400">Private note</span>
               <textarea
                 value={draft.comments}
                 onChange={(event) => updateDraft({ comments: event.target.value })}
@@ -4360,26 +4361,27 @@ function InlineCreateCustomerPanel({
                 placeholder="staff-only · prints nowhere customer-facing"
               />
             </label>
+            </div>
           </>
         )}
 
-        <div className="flex flex-wrap items-center justify-between gap-3 bg-white px-4 py-3 dark:bg-surface-800">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-surface-200 px-4 py-3 dark:border-surface-700/50">
           <div className="flex flex-wrap gap-2">
-            <label className="inline-flex h-10 items-center gap-2 rounded-lg border border-surface-200 px-3 text-sm font-semibold text-surface-800 dark:border-surface-700 dark:text-surface-100">
+            <label className="inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-surface-600 transition-colors hover:text-surface-800 dark:text-surface-400 dark:hover:text-surface-200">
               <input
                 type="checkbox"
                 checked={draft.smsOptIn}
                 onChange={(event) => updateDraft({ smsOptIn: event.target.checked })}
-                className="h-4 w-4 accent-primary-500"
+                className="h-4 w-4 rounded accent-primary-500"
               />
               SMS updates
             </label>
-            <label className="inline-flex h-10 items-center gap-2 rounded-lg border border-surface-200 px-3 text-sm font-semibold text-surface-800 dark:border-surface-700 dark:text-surface-100">
+            <label className="inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-surface-600 transition-colors hover:text-surface-800 dark:text-surface-400 dark:hover:text-surface-200">
               <input
                 type="checkbox"
                 checked={draft.emailOptIn}
                 onChange={(event) => updateDraft({ emailOptIn: event.target.checked })}
-                className="h-4 w-4 accent-primary-500"
+                className="h-4 w-4 rounded accent-primary-500"
               />
               Email receipts
             </label>
@@ -5325,7 +5327,7 @@ function AddDeviceModal({
             value={mfgId ?? ''}
             onChange={(e) => setMfgId(e.target.value ? Number(e.target.value) : null)}
           >
-            <option value="">— Select —</option>
+            <option value="">Select…</option>
             {manufacturers.map((m) => (
               <option key={m.id} value={m.id}>{m.name}</option>
             ))}
