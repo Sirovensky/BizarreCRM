@@ -148,8 +148,10 @@ export function ProfitHeroCard() {
               Green &ge;
               <input
                 type="number"
+                inputMode="decimal"
                 min={0}
                 max={100}
+                step="0.1"
                 value={greenInput}
                 onChange={e => setGreenInput(e.target.value)}
                 className="mt-1 rounded-md border border-white/30 bg-white/10 px-2 py-1 text-white"
@@ -159,8 +161,10 @@ export function ProfitHeroCard() {
               Amber &ge;
               <input
                 type="number"
+                inputMode="decimal"
                 min={0}
                 max={100}
+                step="0.1"
                 value={amberInput}
                 onChange={e => setAmberInput(e.target.value)}
                 className="mt-1 rounded-md border border-white/30 bg-white/10 px-2 py-1 text-white"

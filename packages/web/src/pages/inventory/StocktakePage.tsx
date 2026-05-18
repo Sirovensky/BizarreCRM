@@ -637,6 +637,10 @@ export function StocktakePage() {
                         onChange={(e) => setManualCountedQty(e.target.value)}
                         placeholder="Qty (blank = +1)"
                         type="number"
+                        inputMode="numeric"
+                        min="0"
+                        step="1"
+                        aria-label="Counted quantity (blank counts as +1)"
                         className="w-32 rounded-md border border-surface-300 bg-white px-3 py-2 text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 dark:placeholder:text-surface-500"
                       />
                       <button

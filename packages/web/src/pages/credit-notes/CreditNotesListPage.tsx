@@ -308,6 +308,8 @@ export function CreditNotesListPage() {
                 autoFocus
                 type="number"
                 inputMode="numeric"
+                min="1"
+                step="1"
                 value={applyModal.invoiceIdInput}
                 onChange={(e) => setApplyModal({ ...applyModal, invoiceIdInput: e.target.value })}
                 className="mt-1 w-full rounded-md border border-surface-300 px-3 py-2 text-sm dark:border-surface-600 dark:bg-surface-900"

@@ -431,7 +431,9 @@ export function NotificationTemplatesTab() {
             </div>
             <input
               type="number"
+              inputMode="numeric"
               min={0}
+              step={1}
               value={automationCfg.estimate_followup_days}
               onChange={(e) => updateAutomation('estimate_followup_days', e.target.value, false)}
               onBlur={(e) => updateAutomation('estimate_followup_days', e.target.value || '0')}
@@ -485,8 +487,10 @@ export function NotificationTemplatesTab() {
             <label className="block text-sm font-medium text-surface-600 dark:text-surface-300 mb-1">Daily digest send time</label>
             <input
               type="number"
+              inputMode="numeric"
               min={0}
               max={23}
+              step={1}
               value={automationCfg.notification_digest_hour}
               onChange={(e) => updateAutomation('notification_digest_hour', e.target.value, false)}
               onBlur={(e) => updateAutomation('notification_digest_hour', e.target.value || '9')}
