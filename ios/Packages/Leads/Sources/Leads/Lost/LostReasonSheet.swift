@@ -61,6 +61,14 @@ final class LostReasonViewModel {
             )
             _ = try await api.updateLead(id: leadId, body: body)
             state = .success
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancels PUT, but server
+            // may have committed status=lost. Surfacing .failed tempts a
+            // retap that re-PATCHs (audit noise + downstream pipeline
+            // hooks could double-fire lost-lead notifications). Stay
+            // silent; state stays .submitting until view dismisses.
+            state = .idle
+            return
         } catch {
             AppLog.ui.error("Lead lose failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)

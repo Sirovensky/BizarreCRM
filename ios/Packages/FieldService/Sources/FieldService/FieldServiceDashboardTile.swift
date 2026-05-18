@@ -3,6 +3,7 @@
 // Used on Dashboard for users with fieldService role.
 
 import SwiftUI
+import Core
 import Networking
 import DesignSystem
 
@@ -42,6 +43,10 @@ public final class FieldServiceDashboardTileViewModel {
             // ETA calculation would use route service with user's current location.
             // For tile display, show nil ETA until location is available.
             state = .nextJob(appointment: next, etaMinutes: nil)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: dashboard pull-to-refresh cancels load;
+            // keep prior tile state visible.
+            return
         } catch {
             state = .failed(error.localizedDescription)
         }

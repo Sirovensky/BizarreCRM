@@ -36,6 +36,10 @@ public final class LeadListViewModel {
             } else {
                 items = try await api.listLeads(keyword: keyword)
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: search debounce / filter swap cancels
+            // prior load; leave items alone so newer fetch sets them.
+            return
         } catch {
             AppLog.ui.error("Leads load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -53,6 +57,9 @@ public final class LeadListViewModel {
             } else {
                 items = try await api.listLeads(keyword: keyword)
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: pull-to-refresh cancel.
+            return
         } catch {
             AppLog.ui.error("Leads force-refresh failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription

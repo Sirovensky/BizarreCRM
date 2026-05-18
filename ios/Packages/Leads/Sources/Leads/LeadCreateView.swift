@@ -51,6 +51,12 @@ public final class LeadCreateViewModel {
         do {
             let created = try await api.createLead(req)
             createdId = created.id
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancels create POST, but
+            // server may have committed the lead. Retap creates DUPLICATE
+            // lead row (manager sees two same-name entries to dedupe).
+            // Stay silent; lead-list refresh confirms truth.
+            return
         } catch {
             let appError = AppError.from(error)
             if case .offline = appError {

@@ -36,6 +36,10 @@ public final class LeadDetailViewModel {
         do {
             let detail = try await api.getLead(id: id)
             state = .loaded(detail)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav/pull-refresh cancels load; keep
+            // prior detail visible.
+            return
         } catch {
             AppLog.ui.error("Lead detail load failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)

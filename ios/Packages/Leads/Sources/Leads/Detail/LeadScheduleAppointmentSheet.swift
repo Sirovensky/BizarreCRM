@@ -194,6 +194,12 @@ public final class LeadScheduleAppointmentViewModel {
             )
             let result = try await api.createAppointmentFromLead(req)
             createdId = result.id
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancels POST, but server
+            // may have committed. The idempotency key is regenerated per
+            // submit() call, so retap with a new UUID would NOT dedup —
+            // server creates duplicate appointment. Stay silent.
+            return
         } catch {
             errorMessage = AppError.from(error).localizedDescription
         }
