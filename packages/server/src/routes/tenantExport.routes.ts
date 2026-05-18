@@ -40,6 +40,7 @@ import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
 import { config } from '../config.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
+import { parseSqliteTs } from '../utils/sqlTime.js';
 import {
   startExport,
   getExportJob,
@@ -198,7 +199,11 @@ router.get(
     consumeDownloadToken(db, job.id);
 
     // Derive a safe filename from the job id and date.
-    const dateToken = new Date(job.started_at).toISOString().slice(0, 10);
+    // BUGHUNT-2026-05-18: started_at defaults to datetime('now') →
+    // 'YYYY-MM-DD HH:MM:SS' (no Z). new Date(...) interpreted that as LOCAL
+    // time, so on a non-UTC host the filename date drifted by a day near
+    // midnight UTC. parseSqliteTs treats the bare string as UTC.
+    const dateToken = parseSqliteTs(job.started_at).toISOString().slice(0, 10);
     const slugToken = safeFilenameToken(
       (req.tenantSlug ?? 'tenant') + '-' + String(job.id)
     );
@@ -312,7 +317,8 @@ downloadRouter.get(
 
     consumeDownloadToken(db, job.id);
 
-    const dateToken = new Date(job.started_at).toISOString().slice(0, 10);
+    // See first download handler — same bare-SQL-ts normalization rule.
+    const dateToken = parseSqliteTs(job.started_at).toISOString().slice(0, 10);
     const slugToken = safeFilenameToken(
       (req.tenantSlug ?? 'tenant') + '-' + String(job.id),
     );

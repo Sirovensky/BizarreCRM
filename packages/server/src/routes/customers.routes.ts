@@ -713,12 +713,17 @@ router.post(
     const existingPhones = new Set<string>();
     const existingEmails = new Set<string>();
     if (skip_duplicates) {
+      // BUGHUNT-2026-05-18: previously this scanned ALL customer rows
+      // including soft-deleted ones, so re-importing a CSV that contained
+      // the phone/email of a deleted customer would silently SKIP that row
+      // as "duplicate" even though no live customer held that contact value.
+      // Filter to is_deleted = 0 so the duplicate set matches the live table.
       const [allPhones, allEmails] = await Promise.all([
         adb.all<{ phone: string }>(
-          "SELECT phone FROM customers WHERE phone IS NOT NULL AND phone != '' UNION SELECT mobile FROM customers WHERE mobile IS NOT NULL AND mobile != ''"
+          "SELECT phone FROM customers WHERE is_deleted = 0 AND phone IS NOT NULL AND phone != '' UNION SELECT mobile FROM customers WHERE is_deleted = 0 AND mobile IS NOT NULL AND mobile != ''"
         ),
         adb.all<{ email: string }>(
-          "SELECT LOWER(email) AS email FROM customers WHERE email IS NOT NULL AND email != ''"
+          "SELECT LOWER(email) AS email FROM customers WHERE is_deleted = 0 AND email IS NOT NULL AND email != ''"
         ),
       ]);
       for (const r of allPhones) existingPhones.add(r.phone);

@@ -1,3 +1,4 @@
+import { sqliteTsToMs } from './sqlTime.js';
 
 /**
  * Patterns that indicate an INACTIVE (hold/wait) status.
@@ -64,10 +65,16 @@ export function calculateActiveRepairTime(db: any, ticketId: number): number | n
   // Initial status: ticket starts in whatever status it was created with
   // The first history entry's old_value tells us (or default to 'Open')
   let currentStatus = history[0].old_value || 'Open';
-  let segmentStart = new Date(ticket.created_at).getTime();
+  // BUGHUNT-2026-05-18: tickets.created_at and ticket_history.created_at both
+  // default to datetime('now') → 'YYYY-MM-DD HH:MM:SS' (UTC, no Z). Raw
+  // `new Date(...)` parsed those as LOCAL time, so every active-repair-time
+  // report was wrong by the host UTC offset on a non-UTC server (Pacific:
+  // 7–8h padded per ticket; UAE: ~4h shortened per ticket). Route through
+  // sqliteTsToMs.
+  let segmentStart = sqliteTsToMs(ticket.created_at);
 
   for (const entry of history) {
-    const changeTime = new Date(entry.created_at).getTime();
+    const changeTime = sqliteTsToMs(entry.created_at);
 
     if (!isInactiveStatus(currentStatus)) {
       activeMs += Math.max(0, changeTime - segmentStart);
@@ -88,7 +95,7 @@ export function calculateActiveRepairTime(db: any, ticketId: number): number | n
     });
 
     if (lastCloseEntry) {
-      const closeTime = new Date(lastCloseEntry.created_at).getTime();
+      const closeTime = sqliteTsToMs(lastCloseEntry.created_at);
       // The last segment up to close was already counted in the loop
       // (the loop processes the close entry and moves segmentStart to closeTime)
       // No additional time to add — ticket is done

@@ -17,6 +17,7 @@ import { runAutomations } from '../services/automations.js';
 import { applyTicketStatusChange } from '../services/ticketStatus.js';
 import { idempotent } from '../middleware/idempotency.js';
 import { calculateActiveRepairTime } from '../utils/repair-time.js';
+import { sqliteTsToMs } from '../utils/sqlTime.js';
 import { roundCurrency } from '../utils/currency.js';
 import { audit } from '../utils/audit.js';
 import { fireWebhook } from '../services/webhooks.js';
@@ -3787,12 +3788,8 @@ router.get('/:id/repair-time', asyncHandler(async (req: Request, res: Response) 
   if (!ticket) throw new AppError('Ticket not found', 404);
 
   const activeHours = calculateActiveRepairTime(db, ticketId);
-  // BUGHUNT-2026-05-16: SQLite stores 'YYYY-MM-DD HH:MM:SS' (UTC) but V8
-  // parses bare datetime strings as LOCAL time. Normalize to ISO+Z so the
-  // elapsed-hours computation matches wall-clock truth on non-UTC hosts.
-  const normalizeTs = (v: string): string =>
-    v.includes('T') || v.endsWith('Z') || v.includes('+') ? v : `${v.replace(' ', 'T')}Z`;
-  const ticketCreatedMs = new Date(normalizeTs(ticket.created_at as string)).getTime();
+  // BUGHUNT-2026-05-16/18: SQLite ts parsing centralised in utils/sqlTime.
+  const ticketCreatedMs = sqliteTsToMs(ticket.created_at as string);
   const totalHours = ticket.is_closed
     ? null
     : (Date.now() - ticketCreatedMs) / (1000 * 60 * 60);
@@ -3805,7 +3802,7 @@ router.get('/:id/repair-time', asyncHandler(async (req: Request, res: Response) 
   `, ticketId);
 
   const endTime = closeEvent
-    ? new Date(normalizeTs(closeEvent.created_at as string)).getTime()
+    ? sqliteTsToMs(closeEvent.created_at as string)
     : Date.now();
   const totalElapsedHours = (endTime - ticketCreatedMs) / (1000 * 60 * 60);
 

@@ -438,6 +438,13 @@ async function previewBulkSegment(
   // count (an empty mobile is already excluded by the main filter).
   let excluded: { c: number } | undefined;
   switch (segment) {
+    // BUGHUNT-2026-05-18: every segment below was missing `c.is_deleted = 0`,
+    // so bulk marketing SMS targeted customers who had been soft-deleted (i.e.
+    // explicitly removed from the live address book — often a CCPA/GDPR
+    // erasure request). The send path (POST /bulk-send) reuses this helper, so
+    // the leak was a privacy / regulatory issue, not just a stale-count one.
+    // The exclusion COUNT(*) queries also need the same filter so the displayed
+    // "skipped due to consent" tally matches the live customer base.
     case 'open_tickets':
       rows = await adb.all<BulkPreviewRow>(
         `SELECT c.mobile AS phone, MIN(c.first_name) AS first_name, MIN(c.last_name) AS last_name
@@ -446,6 +453,7 @@ async function previewBulkSegment(
            JOIN ticket_statuses s ON s.id = t.status_id
           WHERE s.is_closed = 0 AND s.is_cancelled = 0
             AND t.is_deleted = 0
+            AND c.is_deleted = 0
             AND c.mobile IS NOT NULL AND c.mobile <> ''
             AND COALESCE(c.sms_opt_in, 0) = 1
             AND COALESCE(c.sms_consent_marketing, 0) = 1
@@ -458,6 +466,7 @@ async function previewBulkSegment(
            JOIN ticket_statuses s ON s.id = t.status_id
           WHERE s.is_closed = 0 AND s.is_cancelled = 0
             AND t.is_deleted = 0
+            AND c.is_deleted = 0
             AND c.mobile IS NOT NULL AND c.mobile <> ''
             AND (COALESCE(c.sms_opt_in, 0) = 0 OR COALESCE(c.sms_consent_marketing, 0) = 0)`,
       );
@@ -465,14 +474,16 @@ async function previewBulkSegment(
     case 'all_customers':
       rows = await adb.all<BulkPreviewRow>(
         `SELECT mobile AS phone, MIN(first_name) AS first_name, MIN(last_name) AS last_name FROM customers
-          WHERE mobile IS NOT NULL AND mobile <> ''
+          WHERE is_deleted = 0
+            AND mobile IS NOT NULL AND mobile <> ''
             AND COALESCE(sms_opt_in, 0) = 1
             AND COALESCE(sms_consent_marketing, 0) = 1
           GROUP BY mobile`,
       );
       excluded = await adb.get<{ c: number }>(
         `SELECT COUNT(*) AS c FROM customers
-          WHERE mobile IS NOT NULL AND mobile <> ''
+          WHERE is_deleted = 0
+            AND mobile IS NOT NULL AND mobile <> ''
             AND (COALESCE(sms_opt_in, 0) = 0 OR COALESCE(sms_consent_marketing, 0) = 0)`,
       );
       break;
@@ -482,6 +493,7 @@ async function previewBulkSegment(
            FROM customers c
            JOIN invoices i ON i.customer_id = c.id
           WHERE i.created_at >= datetime('now','-30 days')
+            AND c.is_deleted = 0
             AND c.mobile IS NOT NULL AND c.mobile <> ''
             AND COALESCE(c.sms_opt_in, 0) = 1
             AND COALESCE(c.sms_consent_marketing, 0) = 1
@@ -492,6 +504,7 @@ async function previewBulkSegment(
            FROM customers c
            JOIN invoices i ON i.customer_id = c.id
           WHERE i.created_at >= datetime('now','-30 days')
+            AND c.is_deleted = 0
             AND c.mobile IS NOT NULL AND c.mobile <> ''
             AND (COALESCE(c.sms_opt_in, 0) = 0 OR COALESCE(c.sms_consent_marketing, 0) = 0)`,
       );
@@ -631,6 +644,10 @@ router.get(
   asyncHandler(async (req, res) => {
     requireAdmin(req);
     const adb = req.asyncDb;
+    // BUGHUNT-2026-05-18: counts must match previewBulkSegment's filter set,
+    // which now excludes soft-deleted customers (privacy/GDPR). Without this,
+    // the count badge over-reports relative to what the send loop actually
+    // contacts, confusing admins.
     const [openTickets, allCustomers, recentPurchases] = await Promise.all([
       adb.get<{ count: number }>(
         `SELECT COUNT(DISTINCT c.mobile) AS count
@@ -639,13 +656,15 @@ router.get(
            JOIN ticket_statuses s ON s.id = t.status_id
           WHERE s.is_closed = 0 AND s.is_cancelled = 0
             AND t.is_deleted = 0
+            AND c.is_deleted = 0
             AND c.mobile IS NOT NULL AND c.mobile <> ''
             AND COALESCE(c.sms_opt_in, 0) = 1
             AND COALESCE(c.sms_consent_marketing, 0) = 1`,
       ),
       adb.get<{ count: number }>(
         `SELECT COUNT(DISTINCT mobile) AS count FROM customers
-          WHERE mobile IS NOT NULL AND mobile <> ''
+          WHERE is_deleted = 0
+            AND mobile IS NOT NULL AND mobile <> ''
             AND COALESCE(sms_opt_in, 0) = 1
             AND COALESCE(sms_consent_marketing, 0) = 1`,
       ),
@@ -654,6 +673,7 @@ router.get(
            FROM customers c
            JOIN invoices i ON i.customer_id = c.id
           WHERE i.created_at >= datetime('now','-30 days')
+            AND c.is_deleted = 0
             AND c.mobile IS NOT NULL AND c.mobile <> ''
             AND COALESCE(c.sms_opt_in, 0) = 1
             AND COALESCE(c.sms_consent_marketing, 0) = 1`,

@@ -15,6 +15,7 @@ import {
 } from '../utils/csrf.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
+import { sqliteTsToMs } from '../utils/sqlTime.js';
 import { config } from '../config.js';
 import {
   getPortalCaptchaPublicConfig,
@@ -355,9 +356,12 @@ async function getTicketDetail(adb: AsyncDb, ticketId: number, portalScope: 'tic
     });
   }
 
-  // Sort timeline chronologically
-  const toUtc = (s: string) => (s && !s.endsWith('Z') ? s + 'Z' : s);
-  timeline.sort((a, b) => new Date(toUtc(a.created_at)).getTime() - new Date(toUtc(b.created_at)).getTime());
+  // Sort timeline chronologically.
+  // BUGHUNT-2026-05-18: the previous `toUtc` only appended 'Z' — it did not
+  // swap the space separator for 'T', so a bare 'YYYY-MM-DD HH:MM:SSZ' string
+  // (which V8 rejects on some platforms) leaked through and timeline rows
+  // sorted as NaN. sqliteTsToMs handles all four supported shapes.
+  timeline.sort((a, b) => sqliteTsToMs(a.created_at) - sqliteTsToMs(b.created_at));
 
   // Find invoice
   let invoice: AnyRow | undefined;

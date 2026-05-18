@@ -10,6 +10,7 @@ import type { AsyncDb, TxQuery } from '../db/async-db.js';
 import { trackInterval } from '../utils/trackInterval.js';
 import { validateId } from '../utils/validate.js';
 import { getTenantTz, tzModifier } from '../utils/timezone.js';
+import { parseSqliteTs } from '../utils/sqlTime.js';
 
 const router = Router();
 const logger = createLogger('employees');
@@ -17,15 +18,10 @@ const logger = createLogger('employees');
 // BUGHUNT-2026-05-16: SQLite stores timestamps as 'YYYY-MM-DD HH:MM:SS' (UTC,
 // no 'Z' suffix). V8's `new Date(...)` / `Date.parse(...)` treat a bare
 // datetime string without a TZ as LOCAL time, so on a non-UTC server every
-// computed duration is wrong by the UTC offset (hours overstated/understated
-// on every auto-close, hours-summary, and bulk-close path). Normalize first.
-function parseSqliteTs(value: string): Date {
-  if (!value) return new Date(NaN);
-  const normalized = value.includes('T') || value.endsWith('Z') || value.includes('+')
-    ? value
-    : `${value.replace(' ', 'T')}Z`;
-  return new Date(normalized);
-}
+// computed duration is wrong by the UTC offset.
+// BUGHUNT-2026-05-18: helper extracted to ../utils/sqlTime.js so other routes
+// (tickets, tenantExport, repair-time, payroll guard) share the same parser
+// and we stop forking the regex per-call site.
 
 // ---------------------------------------------------------------------------
 // EM5 — Auto-lunch-break deduction helper
@@ -96,7 +92,11 @@ export function applyLunchDeduction(totalHours: number, cfg: LunchConfig): numbe
 // Any timestamp from a prior week is considered closed.
 // ---------------------------------------------------------------------------
 export function isWithinCurrentPayPeriod(timestamp: string | Date, now: Date = new Date()): boolean {
-  const ts = typeof timestamp === 'string' ? new Date(timestamp) : timestamp;
+  // BUGHUNT-2026-05-18: must route SQL-format timestamps through parseSqliteTs.
+  // Previously a bare 'YYYY-MM-DD HH:MM:SS' commission row was parsed as LOCAL
+  // time here, so the week-boundary check rejected current-period edits and
+  // accepted prior-period edits whenever the host was west of UTC.
+  const ts = typeof timestamp === 'string' ? parseSqliteTs(timestamp) : timestamp;
   if (!Number.isFinite(ts.getTime())) return false;
 
   // Start of current week (Monday 00:00 UTC)

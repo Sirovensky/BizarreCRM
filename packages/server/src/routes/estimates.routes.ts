@@ -19,6 +19,7 @@ import { createLogger } from '../utils/logger.js';
 import { escapeLike } from '../utils/query.js';
 import { hashEstimateApprovalToken } from '../services/estimateApprovalTokenHashBackfill.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
+import { sqliteTsToMs } from '../utils/sqlTime.js';
 import { lastInsertRowidFrom } from '../db/async-db.js';
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
 
@@ -1592,7 +1593,13 @@ router.post(
           410,
         );
       }
-      const exp = new Date(estimate.approval_token_expires_at.replace(' ', 'T') + 'Z').getTime();
+      // BUGHUNT-2026-05-18: previously this unconditionally appended 'Z' to
+      // approval_token_expires_at after stripping the space separator. That
+      // produced '...12:00:00ZZ' for ISO rows that already had Z and
+      // '...+05:00Z' for offset-suffixed rows, both of which V8 parses to NaN
+      // — silently bypassing the expiry check via the !isNaN guard below.
+      // sqliteTsToMs preserves any existing zone designator.
+      const exp = sqliteTsToMs(estimate.approval_token_expires_at);
       if (!isNaN(exp) && Date.now() > exp) {
         throw new AppError('Approval token has expired', 403);
       }
