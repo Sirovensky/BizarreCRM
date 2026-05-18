@@ -235,6 +235,8 @@ public struct ZReportView: View {
                 aggregates: aggregates
             )
             pdfPreviewItem = ZReportPDFItem(url: url)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel during PDF render
         } catch {
             pdfError = error.localizedDescription
         }

@@ -166,6 +166,8 @@ public struct PosAuditLogView: View {
         loadError = nil
         do {
             entries = try await PosAuditLogStore.shared.recent(limit: 50)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             loadError = error.localizedDescription
         }

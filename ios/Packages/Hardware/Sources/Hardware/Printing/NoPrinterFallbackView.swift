@@ -168,6 +168,8 @@ public struct NoPrinterFallbackView: View {
             let view = ReceiptView(model: payload).environment(\.printMedium, medium)
             let url = try await ReceiptRenderer.renderPDF(view, medium: medium)
             shareURL = url
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel during PDF render
         } catch {
             pdfError = "Could not generate PDF: \(error.localizedDescription)"
             AppLog.hardware.error("NoPrinterFallbackView: PDF generation failed — \(error.localizedDescription, privacy: .public)")

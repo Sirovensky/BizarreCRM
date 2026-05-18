@@ -44,6 +44,8 @@ public final class PricingRulesListViewModel {
         do {
             rules = try await repository.listRules()
             loadState = .loaded
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             loadState = .error(error.localizedDescription)
         }
@@ -61,6 +63,12 @@ public final class PricingRulesListViewModel {
         rules.removeAll { $0.id == rule.id }
         do {
             try await repository.deleteRule(id: rule.id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: optimistic — server may have committed the
+            // DELETE before the task was cancelled. Don't reload (and possibly
+            // restore the row) because that would let the user re-tap delete
+            // on a row that no longer exists.
+            return
         } catch {
             // Reload to re-sync if delete failed.
             await load()
@@ -74,6 +82,10 @@ public final class PricingRulesListViewModel {
         rules[idx] = updated
         do {
             try await repository.updateRule(updated)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: optimistic — keep the local change because
+            // the PATCH may have committed server-side before cancel.
+            return
         } catch {
             // Revert on failure.
             rules[idx] = rule
