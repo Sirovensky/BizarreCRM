@@ -363,6 +363,16 @@ class SmsThreadViewModel @Inject constructor(
                 request = mapOf("to" to phone, "message" to text),
             )
             true
+        } catch (e: CancellationException) {
+            // BUGHUNT-2026-05-17: re-throw cancellation. The POST may
+            // have already reached the server and queued the SMS. The UI
+            // call site treats `false` as a 404 fallback and immediately
+            // enqueues a SECOND local WorkManager-based send, so the
+            // recipient would get the same SMS twice (and the tenant
+            // would be billed twice on the gateway). Re-throwing keeps
+            // the caller's coroutine cancelled so the fallback does not
+            // run.
+            throw e
         } catch (_: Exception) {
             false
         }
