@@ -154,6 +154,9 @@ public final class SupplierComparisonViewModel {
                 for try await item in group { result.append(item) }
                 return result.sorted { $0.supplierName < $1.supplierName }
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: comparison sheet dismiss cancels the analytics fan-out; keep last-loaded rows visible.
+            return
         } catch {
             AppLog.ui.error("Supplier comparison load: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
