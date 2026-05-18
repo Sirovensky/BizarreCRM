@@ -180,6 +180,13 @@ public struct SmsComposerView: View {
             try await onSend(vm.phoneNumber, vm.draft.trimmingCharacters(in: .whitespacesAndNewlines))
             vm.draft = ""
             dismiss()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: onSend wraps a POST that delivers an SMS to
+            // the customer. If the server accepted before the Task was cancelled
+            // the message already went out; painting "Failed" tempts a re-tap
+            // that double-sends — TCPA + carrier billing risk. Keep the draft
+            // populated so the operator can verify the thread before retrying.
+            return
         } catch {
             sendError = error.localizedDescription
         }
