@@ -8,6 +8,7 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 
 /**
  * Plan §20.5 L2115-L2118 — 3-way conflict resolver.
@@ -160,6 +161,11 @@ class ConflictResolver @Inject constructor(
                 }
                 MergeResult.NeedsUserInput(record)
             }
+        } catch (e: CancellationException) {
+            // BUGHUNT-2026-05-17: sync cancel mid-merge must not silently
+            // resolve to server. Rethrow so the parent sync orchestrator
+            // can decide whether to retry next pass.
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "3-way merge failed [${e.javaClass.simpleName}]: ${e.message} — deferring to server")
             MergeResult.AutoResolved(serverPayload)
