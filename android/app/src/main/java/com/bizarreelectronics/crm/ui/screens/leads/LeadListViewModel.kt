@@ -7,6 +7,7 @@ import com.bizarreelectronics.crm.data.remote.dto.UpdateLeadRequest
 import com.bizarreelectronics.crm.data.repository.LeadRepository
 import com.bizarreelectronics.crm.ui.screens.leads.components.LeadSort
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -125,6 +126,8 @@ class LeadListViewModel @Inject constructor(
             ids.forEach { id ->
                 try {
                     leadRepository.updateLead(id, UpdateLeadRequest(status = "lost", lostReason = "Bulk deleted"))
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Timber.tag("LeadList").e(e, "bulkDelete failed for id=$id")
                 }
@@ -144,6 +147,8 @@ class LeadListViewModel @Inject constructor(
             ids.forEach { id ->
                 try {
                     leadRepository.updateLead(id, UpdateLeadRequest(status = "new"))
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Timber.tag("LeadList").e(e, "undoBulkDelete failed for id=$id")
                 }
@@ -159,6 +164,8 @@ class LeadListViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 leadRepository.updateLead(leadId, UpdateLeadRequest(status = newStage))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Timber.tag("LeadList").e(e, "advanceStage failed: leadId=$leadId newStage=$newStage")
             }
@@ -170,6 +177,8 @@ class LeadListViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 leadRepository.updateLead(leadId, UpdateLeadRequest(status = newStage))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Timber.tag("LeadList").e(e, "dropStage failed: leadId=$leadId newStage=$newStage")
             }
