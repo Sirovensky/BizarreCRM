@@ -30,6 +30,8 @@ public final class PTOTeamCalendarViewModel {
         errorMessage = nil
         do {
             approvedRequests = try await api.listPTORequests(status: .approved)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: month nav cancel
         } catch {
             AppLog.ui.error("PTOTeamCalendar load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription

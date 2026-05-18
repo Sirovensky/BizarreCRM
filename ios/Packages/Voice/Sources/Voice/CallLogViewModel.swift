@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import Core
 import Networking
 
 /// §42.1 — Backing view-model for `CallLogView`.
@@ -61,6 +62,10 @@ public final class CallLogViewModel {
         do {
             let calls = try await api.listCalls(pageSize: pageSize)
             state = .loaded(calls)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels fetch; leave state alone so
+            // newer fetch sets .loaded.
+            return
         } catch let error as APITransportError {
             if case .httpStatus(404, _) = error {
                 state = .comingSoon

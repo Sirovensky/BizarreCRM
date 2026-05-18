@@ -315,6 +315,9 @@ final class VoicemailViewModel {
         do {
             let items = try await api.listVoicemails()
             state = .loaded(items)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels fetch; leave state alone.
+            return
         } catch let error as APITransportError {
             if case .httpStatus(404, _) = error {
                 state = .comingSoon

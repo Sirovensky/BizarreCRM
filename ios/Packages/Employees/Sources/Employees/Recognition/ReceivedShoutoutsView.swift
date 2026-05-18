@@ -37,6 +37,8 @@ public final class ReceivedShoutoutsViewModel {
         do {
             shoutouts = try await api.listReceivedShoutouts(employeeId: employeeId)
             loadState = .loaded
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             AppLog.ui.error("ReceivedShoutouts load: \(error.localizedDescription, privacy: .public)")
             loadState = .failed(error.localizedDescription)

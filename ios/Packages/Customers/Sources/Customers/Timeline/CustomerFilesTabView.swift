@@ -106,6 +106,8 @@ final class CustomerFilesViewModel {
         defer { isLoading = false }
         do {
             files = try await api.customerFiles(customerId: customerId)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -115,6 +117,11 @@ final class CustomerFilesViewModel {
         do {
             try await api.deleteCustomerFile(customerId: customerId, fileId: file.id)
             files.removeAll { $0.id == file.id }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels DELETE; server may have
+            // committed. Match optimistic-remove pattern.
+            files.removeAll { $0.id == file.id }
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

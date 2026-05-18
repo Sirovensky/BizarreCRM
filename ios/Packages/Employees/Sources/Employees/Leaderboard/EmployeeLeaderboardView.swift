@@ -103,6 +103,10 @@ public final class EmployeeLeaderboardViewModel {
                     rank: idx + 1
                 )
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: period/metric swap cancels load; keep
+            // prior leaderboard visible.
+            return
         } catch {
             AppLog.ui.error("Leaderboard load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
