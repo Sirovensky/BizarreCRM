@@ -121,6 +121,12 @@ public actor BulkRelabelService {
                     }
                     await MainActor.run { progress.completed += 1 }
                     AppLog.hardware.info("BulkRelabelService: queued label for SKU '\(item.sku)'")
+                } catch let e where AppError.isCancellation(e) {
+                    // BUGHUNT-2026-05-17: cancellation isn't a per-item failure;
+                    // the outer Task.isCancelled check will exit the loop next
+                    // iteration. Don't poison progress.failed.
+                    await MainActor.run { progress.isCancelled = true }
+                    break
                 } catch {
                     await MainActor.run { progress.failed += 1 }
                     AppLog.hardware.error("BulkRelabelService: failed for SKU '\(item.sku)' — \(error.localizedDescription)")
