@@ -72,6 +72,13 @@ public actor SetupRepositoryLive: SetupRepository {
         do {
             let response = try await api.submitSetupStep(step, payload: stepPayload)
             return response.nextStep
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: cancellation must NOT advance the wizard
+            // AND queue an offline op. The original POST may have already
+            // committed server-side; queuing duplicates the step on next
+            // drain. Re-throw so the caller stays on the same step and the
+            // user decides whether to re-submit deliberately.
+            throw e
         } catch {
             AppLog.sync.warning("Setup step \(step) submit failed, queuing offline: \(error.localizedDescription, privacy: .public)")
             offlineQueue.append(PendingStepOp(step: step, payload: payload, enqueuedAt: Date()))
