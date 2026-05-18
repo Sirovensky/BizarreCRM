@@ -78,11 +78,18 @@ public struct AssetManagerView: View {
                 ProgressView("Loading assets…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if vm.assets.isEmpty && vm.errorMessage == nil {
-                ContentUnavailableView(
-                    "No loaner assets",
-                    systemImage: "shippingbox",
-                    description: Text("Add a loaner device to start issuing it to customers.")
-                )
+                ContentUnavailableView {
+                    Label("No loaner assets", systemImage: "shippingbox")
+                } description: {
+                    Text("Add a loaner device to start issuing it to customers while they wait for repairs.")
+                } actions: {
+                    Button {
+                        vm.showCreate = true
+                    } label: {
+                        Label("Add asset", systemImage: "plus")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
             } else {
                 list
             }

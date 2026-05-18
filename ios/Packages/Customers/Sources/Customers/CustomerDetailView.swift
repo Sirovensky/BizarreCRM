@@ -31,6 +31,7 @@ public struct CustomerDetailView: View {
                     Button { showingEdit = true } label: {
                         Label("Edit", systemImage: "pencil")
                     }
+                    .keyboardShortcut("e", modifiers: .command)
                     .accessibilityLabel("Edit customer")
                 }
                 ToolbarItem(placement: .secondaryAction) {
