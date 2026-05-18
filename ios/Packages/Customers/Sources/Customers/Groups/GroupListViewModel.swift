@@ -74,6 +74,14 @@ public final class GroupListViewModel {
             showingCreate = false
             newGroupName = ""
             newGroupDescription = ""
+        } catch let e where AppError.isCancellation(e) {
+            // User dismissed the create sheet mid-POST. Don't paint
+            // "cancelled" as an error AND don't clear the form — the
+            // user may want to reopen and try again. Server-side
+            // idempotency on /customer-groups isn't guaranteed, so a
+            // duplicate group is possible if the user retries; warn
+            // via a debug log so we can investigate if it shows up.
+            AppLog.ui.debug("Group create cancelled mid-POST — may have created a duplicate row")
         } catch {
             AppLog.ui.error("Group create failed: \(error.localizedDescription, privacy: .public)")
             createError = error.localizedDescription
