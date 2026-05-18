@@ -11,7 +11,7 @@
  * It's rendered as a standalone route in App.tsx outside the protected
  * tree so a logged-out customer can reach it.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { formatCents } from '@/utils/format';
@@ -47,6 +47,15 @@ export function CustomerPayPage() {
   const { token } = useParams<{ token: string }>();
   const [view, setView] = useState<ViewState>({ kind: 'loading' });
   const [paying, setPaying] = useState(false);
+  // BUGHUNT-2026-05-17: synchronous in-flight guard. setPaying(true) is
+  // async; if a customer double-taps "Pay now" fast (touch + sticky mouse,
+  // or accidental DOM reparent), both onClick handlers run before the
+  // `disabled={paying}` attribute lands, firing two POSTs to /pay. The
+  // server provisions two hosted-checkout URLs, the first redirect is
+  // overwritten by the second, and the abandoned first one stays in the
+  // provider's session table until expiry. A ref flipped synchronously
+  // closes that window cleanly.
+  const payInFlightRef = useRef(false);
 
   const loadLink = useCallback(async () => {
     if (!token) {
@@ -111,6 +120,11 @@ export function CustomerPayPage() {
   // Post to server to get the tenant-hosted checkout URL, then redirect.
   const handlePay = useCallback(async () => {
     if (!token || view.kind !== 'ready') return;
+    // BUGHUNT-2026-05-17: synchronous guard against fast double-tap before
+    // setPaying(true) lands. ref flips immediately so the second invocation
+    // returns without issuing a second POST.
+    if (payInFlightRef.current) return;
+    payInFlightRef.current = true;
     setPaying(true);
     try {
       const res = await axios.post(`${PUBLIC_BASE}/${encodeURIComponent(token)}/pay`);
@@ -128,6 +142,7 @@ export function CustomerPayPage() {
         : 'Could not start checkout';
       setView({ kind: 'checkout_unavailable', link: (view as any).link, reason: msg });
     } finally {
+      payInFlightRef.current = false;
       setPaying(false);
     }
   }, [token, view]);
