@@ -45,6 +45,10 @@ public final class PosSearchViewModel {
         do {
             let keyword = query.trimmingCharacters(in: .whitespacesAndNewlines)
             results = try await repo.list(filter: .all, keyword: keyword.isEmpty ? nil : keyword)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: keystroke debounce cancels prior fetch;
+            // keep last-loaded results visible until newer fetch returns.
+            return
         } catch {
             AppLog.ui.error("POS search failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
