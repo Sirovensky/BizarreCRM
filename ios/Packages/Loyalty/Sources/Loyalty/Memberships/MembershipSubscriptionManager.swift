@@ -95,6 +95,12 @@ public actor MembershipSubscriptionManager {
                 store.removeValue(forKey: id)
                 store[serverMembership.id] = serverMembership
                 return serverMembership
+            } catch let e where AppError.isCancellation(e) {
+                // Task was cancelled — return the local entry silently.
+                // enroll() is non-throwing so we cannot rethrow; the parent
+                // task is already cancelled and will tear down cooperatively.
+                _ = e
+                return membership
             } catch {
                 // Keep local membership on network failure (offline-first).
             }

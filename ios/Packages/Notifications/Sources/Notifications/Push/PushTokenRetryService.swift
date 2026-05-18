@@ -103,6 +103,10 @@ public actor PushTokenRetryService {
             _ = try await registrationService.registerIfAuthorized()
             AppLog.ui.info("PushTokenRetry: registration succeeded")
             reset()
+        } catch let e where AppError.isCancellation(e) {
+            // Task cancelled — bail without recording a lastError so the
+            // Settings UI doesn't paint a spurious "registration failed" badge.
+            isRetrying = false
         } catch {
             lastError = error.localizedDescription
             AppLog.ui.error("PushTokenRetry: attempt failed — \(error.localizedDescription, privacy: .public)")

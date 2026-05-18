@@ -66,6 +66,9 @@ public final class VoiceMemoViewModel {
         recordingState = .requesting
         do {
             _ = try await recorder.authorize()
+        } catch let e where AppError.isCancellation(e) {
+            recordingState = .idle
+            return
         } catch {
             recordingState = .failed(message: error.localizedDescription)
             return
@@ -76,6 +79,8 @@ public final class VoiceMemoViewModel {
             elapsedSeconds = 0
             recordingState = .recording(startedAt: Date())
             startElapsedTimer()
+        } catch let e where AppError.isCancellation(e) {
+            recordingState = .idle
         } catch {
             recordingState = .failed(message: error.localizedDescription)
         }
@@ -92,6 +97,8 @@ public final class VoiceMemoViewModel {
             let url = try await recorder.stopRecording()
             recordingState = .saved(url: url)
             AppLog.ui.info("VoiceMemoViewModel: saved to \(url.lastPathComponent, privacy: .public)")
+        } catch let e where AppError.isCancellation(e) {
+            recordingState = .idle
         } catch {
             recordingState = .failed(message: error.localizedDescription)
         }

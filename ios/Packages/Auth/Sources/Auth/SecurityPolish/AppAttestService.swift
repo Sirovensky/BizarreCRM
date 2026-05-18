@@ -126,6 +126,7 @@ public actor AppAttestService {
                 AppLog.auth.info("AppAttest: attestation produced (\(attestation.count, privacy: .public) bytes)")
                 return .attested(data: attestation)
             } catch {
+                if AppError.isCancellation(error) { return .unsupported }
                 AppLog.auth.error("AppAttest: attestation failed — \(error.localizedDescription, privacy: .public)")
                 return .failed(error)
             }
@@ -160,6 +161,7 @@ public actor AppAttestService {
                 AppLog.auth.info("AppAttest: assertion generated (\(assertion.count, privacy: .public) bytes)")
                 return .attested(data: assertion)
             } catch {
+                if AppError.isCancellation(error) { return .unsupported }
                 AppLog.auth.error("AppAttest: assertion failed — \(error.localizedDescription, privacy: .public)")
                 return .failed(error)
             }

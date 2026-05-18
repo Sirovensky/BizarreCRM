@@ -29,6 +29,8 @@ extension CustomerCreateViewModel {
                     bytes: 0
                 )
             }
+        } catch let e where AppError.isCancellation(e) {
+            // Task cancelled during draft load — nothing to surface.
         } catch {
             AppLog.ui.error(
                 "CustomerCreateVM draft load error: \(error.localizedDescription, privacy: .public)"

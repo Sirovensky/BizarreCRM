@@ -220,6 +220,8 @@ public final class BiometricAuthService: @unchecked Sendable {
                 lastAuthenticatedAt = now()
             }
             return result
+        } catch let e where AppError.isCancellation(e) {
+            throw BiometricAuthError.userCancelled
         } catch {
             throw mapLAError(error)
         }
@@ -252,7 +254,7 @@ public final class BiometricAuthService: @unchecked Sendable {
         case .biometryLockout:                 return .lockedOut
         case .userCancel, .appCancel,
              .systemCancel, .userFallback:     return .userCancelled
-        case .authenticationFailed:            return .userCancelled
+        case .authenticationFailed:            return .underlyingError(laError.errorCode)
         default:
             return .underlyingError(laError.errorCode)
         }

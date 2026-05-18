@@ -106,6 +106,11 @@ public actor PinSwitchService {
 
             return .success(accessToken: data.accessToken, user: data.user)
 
+        } catch let e where AppError.isCancellation(e) {
+            // Task cancelled mid-switch — do NOT bump the lockout counter or
+            // surface a fake "wrong PIN" state. Return networkError so the
+            // caller can inspect it via AppError.isCancellation if needed.
+            return .networkError(e)
         } catch {
             // 4. Failure path.
             let statusCode = (error as? APITransportError).flatMap {

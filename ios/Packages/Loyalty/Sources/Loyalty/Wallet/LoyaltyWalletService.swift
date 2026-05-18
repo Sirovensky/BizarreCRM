@@ -70,6 +70,8 @@ public actor LoyaltyWalletService {
             // URLSession.shared sent the request anonymously and the server
             // returned 401.
             (data, response) = try await api.authedDataRequest(request)
+        } catch let e where AppError.isCancellation(e) {
+            throw e
         } catch {
             throw LoyaltyWalletError.network(error)
         }
