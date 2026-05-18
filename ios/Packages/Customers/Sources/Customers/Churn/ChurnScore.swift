@@ -92,7 +92,11 @@ public struct ChurnScoreDTO: Decodable, Sendable {
 
     public func toChurnScore() -> ChurnScore {
         let risk = ChurnRiskLevel(rawValue: riskLevel) ?? ChurnRiskLevel(probability: probability)
-        let date = ISO8601DateFormatter().date(from: computedAt) ?? Date()
+        // BUGHUNT-2026-05-18: ISO8601DateFormatter() default options reject
+        // millisecond-precision strings from Node Date.toISOString(); previous
+        // fallback to Date() (current time) made every churn score appear
+        // freshly computed, masking stale rows. Try fractional first.
+        let date = Self.parseIso(computedAt) ?? Date()
         return ChurnScore(
             customerId:        customerId,
             probability0to100: probability,
@@ -100,6 +104,22 @@ public struct ChurnScoreDTO: Decodable, Sendable {
             factors:           factors,
             riskLevel:         risk
         )
+    }
+
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private static func parseIso(_ raw: String) -> Date? {
+        isoFractional.date(from: raw) ?? isoPlain.date(from: raw)
     }
 }
 

@@ -88,7 +88,28 @@ public struct CustomerTimelineEvent: Decodable, Identifiable, Sendable {
         subtitle   = try c.decodeIfPresent(String.self, forKey: .subtitle)
         amountCents = try c.decodeIfPresent(Int.self, forKey: .amountCents)
         let iso    = try c.decode(String.self, forKey: .occurredAt)
-        occurredAt = ISO8601DateFormatter().date(from: iso) ?? Date.distantPast
+        // BUGHUNT-2026-05-18: ISO8601DateFormatter() with default options
+        // (.withInternetDateTime) silently fails on Node Date.toISOString()
+        // strings ("2026-05-18T07:00:00.123Z" — millisecond precision) and
+        // the previous fallback to .distantPast rendered every timeline
+        // event as Jan 1 0001. Try fractional first, then plain.
+        occurredAt = Self.parseIso(iso) ?? Date.distantPast
+    }
+
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private static func parseIso(_ raw: String) -> Date? {
+        isoFractional.date(from: raw) ?? isoPlain.date(from: raw)
     }
 }
 
