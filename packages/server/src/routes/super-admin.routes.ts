@@ -2957,6 +2957,7 @@ function clearRateLimitsOnDb(
 // limit entries across master + every tenant DB. Operator can decide whether
 // to nuke them with the reset tool or wait for the cool-down to expire.
 router.get('/admin-tools/rate-limits', async (req: Request, res: Response) => {
+  try {
   const lockedOnly = req.query.lockedOnly === 'true';
   const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit ?? '200'), 10) || 200));
   const masterDb = getMasterDb()!;
@@ -3018,12 +3019,17 @@ router.get('/admin-tools/rate-limits', async (req: Request, res: Response) => {
     dbsTouched: new Set(all.map((r) => r.db)).size,
   };
   res.json({ success: true, data: { rows: trimmed, summary, now } });
+  } catch (e: unknown) {
+    logger.error('super_admin_rate_limits_list_error', { error: (e as Error).message });
+    if (!res.headersSent) res.status(500).json({ success: false, message: 'Unexpected error' });
+  }
 });
 
 router.post(
   '/admin-tools/reset-rate-limits',
   requireStepUpTotpSuperAdmin('super_admin_reset_rate_limits'),
   async (req: Request, res: Response) => {
+    try {
     const tenantSlug = typeof req.body?.tenantSlug === 'string' ? req.body.tenantSlug.trim() : '';
     const all = req.body?.all === true;
     if (tenantSlug && !/^[a-z0-9-]{1,64}$/.test(tenantSlug)) {
@@ -3083,6 +3089,10 @@ router.post(
       dbsTouched: results.length,
     });
     res.json({ success: true, data: { totalDeleted, results, scope: tenantSlug ? 'single-tenant' : 'all' } });
+    } catch (e: unknown) {
+      logger.error('super_admin_reset_rate_limits_error', { error: (e as Error).message });
+      if (!res.headersSent) res.status(500).json({ success: false, message: 'Unexpected error' });
+    }
   }
 );
 
@@ -3097,6 +3107,7 @@ router.post(
   '/admin-tools/backfill-cloudflare-dns',
   requireStepUpTotpSuperAdmin('super_admin_backfill_dns'),
   async (req: Request, res: Response) => {
+    try {
     if (process.env.MULTI_TENANT !== 'true') {
       return res.status(400).json({ success: false, message: 'MULTI_TENANT must be true' });
     }
@@ -3147,6 +3158,10 @@ router.post(
     };
     auditLog('backfill_cloudflare_dns', req.superAdmin!.superAdminId, req.ip || 'unknown', summary);
     res.json({ success: true, data: { summary, rows } });
+    } catch (e: unknown) {
+      logger.error('super_admin_backfill_cloudflare_dns_error', { error: (e as Error).message });
+      if (!res.headersSent) res.status(500).json({ success: false, message: 'Unexpected error' });
+    }
   }
 );
 
