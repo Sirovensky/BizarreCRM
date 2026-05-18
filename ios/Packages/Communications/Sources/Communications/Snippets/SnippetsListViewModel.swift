@@ -73,6 +73,8 @@ public final class SnippetsListViewModel {
         errorMessage = nil
         do {
             snippets = try await api.listSnippets()
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-18: nav cancel — .task re-fires on reopen
         } catch {
             AppLog.ui.error("Snippets load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
