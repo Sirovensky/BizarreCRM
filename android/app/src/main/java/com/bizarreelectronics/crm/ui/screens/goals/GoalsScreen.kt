@@ -26,6 +26,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -135,8 +136,21 @@ fun GoalsScreen(
                 state.goals.isEmpty() -> EmptyState(
                     icon = Icons.Default.Star,
                     title = "No goals yet",
-                    subtitle = if (state.isManager) "Tap + to create the first goal."
+                    subtitle = if (state.isManager) "Set the first team or individual goal to track progress."
                     else "Your manager hasn't set goals for you yet.",
+                    action = if (state.isManager) {
+                        {
+                            FilledTonalButton(onClick = { viewModel.showCreateDialog() }) {
+                                Icon(
+                                    Icons.Default.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text("Create goal")
+                            }
+                        }
+                    } else null,
                 )
 
                 else -> LazyColumn(

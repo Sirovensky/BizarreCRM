@@ -251,7 +251,18 @@ fun CustomRolesScreen(
                 EmptyState(
                     icon = Icons.Default.ManageAccounts,
                     title = "No custom roles",
-                    subtitle = "Tap + to create a custom role.",
+                    subtitle = "Create a custom role to define a new permission set.",
+                    action = {
+                        FilledTonalButton(onClick = { viewModel.showCreate() }) {
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("Create role")
+                        }
+                    },
                 )
             }
 

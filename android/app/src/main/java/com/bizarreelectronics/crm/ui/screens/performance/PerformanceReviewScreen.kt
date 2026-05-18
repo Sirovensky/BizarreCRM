@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
@@ -23,6 +25,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -145,8 +148,21 @@ fun PerformanceReviewScreen(
                 state.reviews.isEmpty() -> EmptyState(
                     icon = Icons.Default.Assessment,
                     title = "No reviews yet",
-                    subtitle = if (state.isManager) "Tap + to write the first review."
+                    subtitle = if (state.isManager) "Write the first performance review for an employee."
                     else "No performance reviews on file.",
+                    action = if (state.isManager) {
+                        {
+                            FilledTonalButton(onClick = { viewModel.showCreateDialog() }) {
+                                Icon(
+                                    Icons.Default.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text("Write review")
+                            }
+                        }
+                    } else null,
                 )
 
                 else -> LazyColumn(
