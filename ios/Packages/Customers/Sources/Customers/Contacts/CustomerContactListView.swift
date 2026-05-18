@@ -29,6 +29,7 @@ public struct CustomerContactListView: View {
                     Image(systemName: "plus")
                         .foregroundStyle(.bizarreOrange)
                 }
+                .keyboardShortcut("n", modifiers: .command)
                 .accessibilityLabel("Add contact")
             }
 

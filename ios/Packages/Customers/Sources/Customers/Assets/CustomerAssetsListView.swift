@@ -68,6 +68,7 @@ public struct CustomerAssetsListView: View {
                 Image(systemName: "plus")
                     .foregroundStyle(.bizarreOrange)
             }
+            .keyboardShortcut("n", modifiers: .command)
             .accessibilityLabel("Add asset")
         }
     }

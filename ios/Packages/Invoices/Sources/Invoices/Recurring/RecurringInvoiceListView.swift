@@ -179,6 +179,7 @@ public struct RecurringInvoiceListView: View {
             } label: {
                 Image(systemName: "plus")
             }
+            .keyboardShortcut("n", modifiers: .command)
             .accessibilityLabel("Add recurring rule")
         }
     }
