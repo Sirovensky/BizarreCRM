@@ -84,6 +84,19 @@ public final class WebSocketConnection: @unchecked Sendable {
         }
     }
 
+    /// Send a text frame. URLSessionWebSocketTask queues the message until the
+    /// handshake completes, so callers may invoke this immediately after
+    /// `connect()` (e.g. to send the §21.5 `{type:"auth",token:"..."}` frame
+    /// the server requires before the 5-second auth timeout fires).
+    public func send(text: String, onComplete: (@Sendable (Error?) -> Void)? = nil) {
+        wsTask?.send(.string(text)) { error in
+            if let error {
+                AppLog.sync.error("WebSocketConnection: send failed: \(error.localizedDescription, privacy: .public)")
+            }
+            onComplete?(error)
+        }
+    }
+
     private func receive() {
         wsTask?.receive { [weak self] result in
             guard let self else { return }

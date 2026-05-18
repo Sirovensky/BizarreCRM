@@ -323,6 +323,7 @@ public actor WebSocketManager {
 
 final class WSConnection: @unchecked Sendable {
     private let connection: WebSocketConnection
+    private let token: String
 
     init(
         url: URL,
@@ -330,6 +331,7 @@ final class WSConnection: @unchecked Sendable {
         onEvent: @escaping (WebSocketEvent) -> Void,
         onDisconnect: (() -> Void)? = nil
     ) {
+        self.token = token
         self.connection = WebSocketConnection(
             url: url,
             authToken: token,
@@ -342,7 +344,21 @@ final class WSConnection: @unchecked Sendable {
         )
     }
 
-    func connect() { connection.connect() }
+    func connect() {
+        connection.connect()
+        // BUGHUNT-2026-05-18: the server's WS handshake only checks the
+        // `accessToken` cookie (path=/api so NOT sent on `/sms`, `/dashboard`
+        // etc.) or an explicit `{type:"auth",token}` message — it deliberately
+        // ignores `Sec-WebSocket-Protocol` (which we were setting in
+        // WebSocketConnection). Without this send the server fires its 5s
+        // auth-timeout, calls ws.terminate(), and we cycle through reconnect
+        // forever. iOS real-time notifications, dashboard updates, and
+        // tickets stream were all dead in production. URLSessionWebSocketTask
+        // queues the send until the upgrade completes, so this lands before
+        // the timeout deadline.
+        let payload = #"{"type":"auth","token":"\#(token)"}"#
+        connection.send(text: payload)
+    }
     func disconnect() { connection.disconnect() }
     func ping() { connection.ping() }
 }
