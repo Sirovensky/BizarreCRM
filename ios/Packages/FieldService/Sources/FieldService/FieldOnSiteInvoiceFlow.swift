@@ -6,6 +6,7 @@
 import SwiftUI
 import Networking
 import DesignSystem
+import Core
 
 // MARK: - FieldInvoiceContext
 
@@ -76,10 +77,26 @@ public final class FieldOnSiteInvoiceViewModel {
     }
 
     public func chargeCard() async {
+        // BUGHUNT-2026-05-17: re-entry guard. The Charge button has no
+        // .disabled state — a quick double-tap before the state transitions
+        // to .charging fires two charge calls. Refuse if we're already in
+        // a non-reviewing state.
+        if case .charging = state { return }
+        if case .charged = state { return }
         state = .charging
         do {
             let txnId = try await chargeHandler(context.totalCents)
             state = .charged(transactionId: txnId)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: card-charge handler may already have
+            // captured the payment when the task was cancelled (the
+            // BlockChyp/Stripe SDK doesn't necessarily roll back on host-
+            // side cancellation). Painting .failed on the screen lures the
+            // tech to retap Retry, which then charges the customer's card
+            // a SECOND time. Roll back to .reviewing silently — the tech
+            // can verify via the appointment's payment history before
+            // attempting again.
+            state = .reviewing
         } catch {
             state = .failed(error.localizedDescription)
         }
