@@ -93,6 +93,9 @@ public struct AppointmentCreateView: View {
                 }
                 Section("Notes") {
                     TextField("Notes", text: $vm.notes, axis: .vertical)
+                        #if !os(macOS)
+                        .textInputAutocapitalization(.sentences)
+                        #endif
                         .lineLimit(3...6)
                 }
                 if let err = vm.errorMessage {
