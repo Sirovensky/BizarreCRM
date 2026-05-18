@@ -175,6 +175,9 @@ public struct PrinterSettingsView: View {
             Form {
                 Section("Printer Details") {
                     TextField("Nickname (optional)", text: $vm.newPrinterNickname)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.words)
+                        #endif
                         .accessibilityLabel("Printer nickname, optional")
                     TextField("IP Address or Hostname", text: $vm.newPrinterHost)
                         .keyboardType(.URL)

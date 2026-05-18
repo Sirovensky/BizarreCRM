@@ -133,6 +133,9 @@ public struct BlockChypPairingView: View {
             TextField("e.g. Counter 1", text: $viewModel.terminalName)
                 .textFieldStyle(.roundedBorder)
                 .autocorrectionDisabled()
+                #if os(iOS)
+                .textInputAutocapitalization(.words)
+                #endif
                 .accessibilityLabel("Terminal name")
                 .accessibilityHint("A label to identify this terminal in the app")
         }

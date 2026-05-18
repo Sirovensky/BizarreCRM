@@ -439,6 +439,9 @@ struct PlanEditorSheet: View {
                     LabeledContent("Name") {
                         TextField("e.g. Gold Monthly", text: $name)
                             .multilineTextAlignment(.trailing)
+                            #if canImport(UIKit)
+                            .textInputAutocapitalization(.words)
+                            #endif
                             .accessibilityLabel("Plan name")
                     }
                     LabeledContent("Price (cents)") {

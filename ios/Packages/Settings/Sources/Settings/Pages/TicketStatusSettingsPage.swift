@@ -299,6 +299,9 @@ public struct TicketStatusSettingsPage: View {
                     Section("New Status") {
                         TextField("Status name", text: $vm.newStatusName)
                             .autocorrectionDisabled()
+                            #if canImport(UIKit)
+                            .textInputAutocapitalization(.words)
+                            #endif
                             .listRowBackground(Color.bizarreSurface1)
                             .accessibilityIdentifier("newStatus.name")
                         ColorPickerRow(hex: $vm.newStatusColor)
@@ -397,6 +400,9 @@ private struct EditStatusSheet: View {
                     Section("Edit Status") {
                         TextField("Status name", text: $status.name)
                             .autocorrectionDisabled()
+                            #if canImport(UIKit)
+                            .textInputAutocapitalization(.words)
+                            #endif
                             .listRowBackground(Color.bizarreSurface1)
                         ColorPickerRow(hex: $status.color)
                             .listRowBackground(Color.bizarreSurface1)

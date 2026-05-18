@@ -189,9 +189,15 @@ public struct ReceiptTemplateEditorView: View {
                 TextEditor(text: $template.footerReturnPolicy)
                     .frame(minHeight: 72)
                     .font(.brandBodySmall())
+                    #if canImport(UIKit)
+                    .textInputAutocapitalization(.sentences)
+                    #endif
                     .accessibilityLabel("Return policy text on receipt footer")
             }
             TextField("Thank-you Message", text: $template.footerThankYouMessage)
+                #if canImport(UIKit)
+                .textInputAutocapitalization(.sentences)
+                #endif
                 .accessibilityLabel("Thank-you message on receipt footer")
             Toggle("Show QR Code", isOn: $template.showQRCode)
             if template.showQRCode {

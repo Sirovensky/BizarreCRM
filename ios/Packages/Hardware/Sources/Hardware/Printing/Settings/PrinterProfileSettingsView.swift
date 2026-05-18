@@ -29,6 +29,9 @@ public struct PrinterProfileSettingsView: View {
             // Station name
             Section("This Station") {
                 TextField("Station name (e.g. Front Counter)", text: $profile.stationName)
+                    #if canImport(UIKit)
+                    .textInputAutocapitalization(.words)
+                    #endif
                     .accessibilityLabel("Station name")
                     .accessibilityHint("A human-readable name for this iPad in the system.")
 
