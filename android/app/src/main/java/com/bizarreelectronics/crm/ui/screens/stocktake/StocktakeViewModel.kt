@@ -14,6 +14,8 @@ import com.bizarreelectronics.crm.data.repository.StocktakeRepository
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
@@ -70,6 +72,10 @@ class StocktakeViewModel @Inject constructor(
     private val _state = MutableStateFlow(StocktakeUiState())
     val state = _state.asStateFlow()
 
+    // BUGHUNT-2026-05-17: track latest type-ahead search launch so a slower
+    // result for "a" can't stomp a faster result for "ab".
+    private var searchJob: Job? = null
+
     // ── Session start ─────────────────────────────────────────────────────────
 
     /**
@@ -77,6 +83,10 @@ class StocktakeViewModel @Inject constructor(
      * scanner sync). Falls back silently on 404 (server route not yet deployed).
      */
     fun startSession() {
+        // BUGHUNT-2026-05-17: idempotency — double-tap on Start would open two
+        // server sessions; the second overwrites sessionId so the first is
+        // orphaned but still consuming server resources.
+        if (_state.value.isLoading || _state.value.phase != StocktakePhase.DRAFT) return
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
             val sessionId = tryStartOnServer()
@@ -104,6 +114,12 @@ class StocktakeViewModel @Inject constructor(
                 Log.w(TAG, "stocktake/start HTTP ${e.code()}: ${e.message()}")
             }
             null
+        } catch (e: CancellationException) {
+            // BUGHUNT-2026-05-17: bare catch (e: Exception) below would have
+            // swallowed cancellation and returned null; the outer launch
+            // would then proceed to set phase=ACTIVE even though the scope
+            // was already cancelled. Re-throw to abort cleanly.
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "stocktake/start failed: ${e.message}")
             null
@@ -187,8 +203,12 @@ class StocktakeViewModel @Inject constructor(
 
     fun onSearchQueryChanged(query: String) {
         _state.value = _state.value.copy(searchQuery = query)
+        // BUGHUNT-2026-05-17: cancel the previous type-ahead launch before
+        // spawning a new one. Otherwise a slow result for "a" would continue
+        // to emit and stomp a fast result for "ab" via the long-lived collect.
+        searchJob?.cancel()
         if (query.length >= 2) {
-            viewModelScope.launch {
+            searchJob = viewModelScope.launch {
                 inventoryRepository.searchItems(query).collect { results ->
                     _state.value = _state.value.copy(searchResults = results.take(20))
                 }
@@ -214,6 +234,10 @@ class StocktakeViewModel @Inject constructor(
      * 3. Mark phase COMMITTED regardless.
      */
     fun commitSession(note: String? = null) {
+        // BUGHUNT-2026-05-17: idempotency — double-tap on Commit would apply
+        // variance twice. The first commit transitions phase to COMMITTED via
+        // the launch, but until it does, this guard rejects re-entry.
+        if (_state.value.isLoading || _state.value.phase != StocktakePhase.ACTIVE) return
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
             val lines = _state.value.lines.filter { it.variance != 0 }
@@ -255,6 +279,14 @@ class StocktakeViewModel @Inject constructor(
                 Log.w(TAG, "stocktake/commit HTTP ${e.code()}: ${e.message()}")
             }
             false
+        } catch (e: CancellationException) {
+            // BUGHUNT-2026-05-17: previously caught as Exception → false →
+            // applyAdjustmentsLocally(lines) ran with cancelled scope. Each
+            // adjustStock() inside would also be cancelled, but any that
+            // already hit the network would have applied — and the outer
+            // launch then flipped phase=COMMITTED anyway. Re-throw so the
+            // entire commit attempt dies cleanly.
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "stocktake/commit failed: ${e.message}")
             false
@@ -280,6 +312,13 @@ class StocktakeViewModel @Inject constructor(
                         reference = _state.value.sessionId,
                     ),
                 )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: bulk-loop catch was swallowing cancellation
+                // and continuing to enqueue SyncQueue rows for every remaining
+                // line after the scope was already dead. On next sync flush
+                // those orphan rows would re-apply variance the user thought
+                // had been cancelled. Re-throw to abort the loop cleanly.
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Fallback adjust failed for item ${line.itemId}: ${e.message}")
                 // Last-resort: push directly to SyncQueue
