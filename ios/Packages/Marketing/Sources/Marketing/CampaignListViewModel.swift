@@ -72,6 +72,14 @@ public final class CampaignListViewModel {
         do {
             try await api.deleteCampaignServer(id: id)
             allCampaigns.removeAll { $0.serverRowId == id }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: delete cancelled mid-flight. The DELETE
+            // may have committed server-side (campaign + audit row gone),
+            // but we never removed the local row. A red banner tempts a
+            // retap that 404s on a missing campaign and writes a confusing
+            // "delete attempt on missing row" audit entry. Stay silent;
+            // a list reload reconciles.
+            return
         } catch {
             AppLog.ui.error("Campaign delete failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
