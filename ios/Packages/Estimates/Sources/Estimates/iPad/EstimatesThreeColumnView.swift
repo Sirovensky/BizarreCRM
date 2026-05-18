@@ -97,6 +97,10 @@ public final class EstimatesThreeColumnViewModel {
             } else {
                 items = try await repo.list(keyword: searchQuery.isEmpty ? nil : searchQuery)
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: search-keyword change or nav cancels prior
+            // fetch; keep last-loaded items visible.
+            return
         } catch {
             AppLog.ui.error("EstimatesThreeColumn load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
