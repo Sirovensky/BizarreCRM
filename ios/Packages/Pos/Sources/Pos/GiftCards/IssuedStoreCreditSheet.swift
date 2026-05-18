@@ -311,6 +311,13 @@ final class IssuedStoreCreditViewModel {
             AppLog.pos.info("Store credit issued: customerId=\(self.customerId) amount=\(self.amountCents)c reason=\(reason, privacy: .public)")
             BrandHaptics.success()
             state = .issued(amountCents)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismissed mid-issue. The credit POST
+            // may have already committed; painting .failed prompts a retry
+            // that would double-credit the customer. Revert to idle so any
+            // retry is intentional.
+            state = .idle
+            return
         } catch let APITransportError.httpStatus(code, message) {
             state = .failed
             errorMessage = "Server error \(code): \(message ?? "please try again")"

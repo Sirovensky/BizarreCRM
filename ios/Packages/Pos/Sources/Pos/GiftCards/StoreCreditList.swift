@@ -251,6 +251,11 @@ struct StoreCreditList: View {
         do {
             let detail = try await api.getStoreCreditDetail(customerId: customerId)
             loadState = .loaded(detail)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: view popped or pull-to-refresh re-fired
+            // mid-load. Don't paint a fake "Failed to load" — the next
+            // .task / refresh retries.
+            return
         } catch let APITransportError.httpStatus(code, message) {
             let msg = message?.isEmpty == false ? message! : "Load failed"
             loadState = .failure("Failed to load store credit (\(code)): \(msg)")

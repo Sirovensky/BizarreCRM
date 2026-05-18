@@ -210,6 +210,12 @@ struct GiftCardLookupView: View {
         do {
             let card = try await api.lookupGiftCard(code: trimmed)
             lookupState = .found(card)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismissed or input changed mid-lookup
+            // cancelled the Task. Don't paint a misleading "Lookup failed:
+            // cancelled" message — revert to idle so a fresh tap re-fires.
+            lookupState = .idle
+            return
         } catch let APITransportError.httpStatus(429, _) {
             lookupState = .failure("Too many lookup attempts. Please wait before trying again.")
         } catch let APITransportError.httpStatus(code, message) {
