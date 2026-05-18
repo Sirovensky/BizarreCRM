@@ -127,6 +127,10 @@ public struct CommandPaletteView: View {
             TextField("Search actions…", text: $vm.query)
                 .font(.brandBodyLarge())
                 .submitLabel(.done)
+                .autocorrectionDisabled()
+                #if canImport(UIKit)
+                .textInputAutocapitalization(.never)
+                #endif
                 .onSubmit { vm.executeSelected() }
                 .accessibilityLabel("Search command palette")
                 .accessibilityHint("Type to filter actions. Use arrow keys to navigate.")

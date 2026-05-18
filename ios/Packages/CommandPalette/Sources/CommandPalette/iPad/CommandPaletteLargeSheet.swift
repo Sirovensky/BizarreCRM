@@ -204,6 +204,10 @@ public struct CommandPaletteLargeSheet: View {
             TextField("Search \(activeSection.searchPlaceholder)…", text: $vm.query)
                 .font(.brandBodyLarge())
                 .submitLabel(.done)
+                .autocorrectionDisabled()
+                #if canImport(UIKit)
+                .textInputAutocapitalization(.never)
+                #endif
                 .onSubmit { vm.executeSelected() }
                 .accessibilityLabel("Search \(activeSection.accessibilityLabel)")
                 .accessibilityHint("Type to filter. Arrow keys navigate. Return executes.")
