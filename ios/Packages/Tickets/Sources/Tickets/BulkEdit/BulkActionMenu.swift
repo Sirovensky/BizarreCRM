@@ -40,6 +40,10 @@ final class BulkActionMenuViewModel {
         defer { isLoadingStatuses = false }
         do {
             statuses = try await api.listTicketStatuses()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancels picker fetch;
+            // surfacing "cancelled" as an Alert blocks bulk action.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -50,6 +54,10 @@ final class BulkActionMenuViewModel {
         defer { isLoadingEmployees = false }
         do {
             employees = try await api.listEmployees()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancels picker fetch;
+            // surfacing "cancelled" as an Alert blocks bulk action.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

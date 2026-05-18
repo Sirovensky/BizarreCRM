@@ -45,6 +45,10 @@ final class TicketRelatedSidebarViewModel {
             )
             // Exclude current ticket to avoid self-reference
             recentTickets = Array(all.filter { $0.id != currentTicketId }.prefix(5))
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: ticket nav in detail view cancels sidebar
+            // fetch; keep prior recent tickets visible.
+            return
         } catch {
             AppLog.ui.warning("Related sidebar load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription

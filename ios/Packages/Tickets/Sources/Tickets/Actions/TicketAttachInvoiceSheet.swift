@@ -47,6 +47,10 @@ public final class TicketAttachInvoiceViewModel {
         do {
             let list = try await api.listInvoices(keyword: searchText.isEmpty ? nil : searchText)
             phase = .loaded(list)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: debounce-cancel of prior search; leave
+            // phase alone so the newer fetch sets .loaded.
+            return
         } catch {
             phase = .error(error.localizedDescription)
             AppLog.ui.error("AttachInvoice load failed: \(error.localizedDescription, privacy: .public)")
@@ -69,6 +73,13 @@ public final class TicketAttachInvoiceViewModel {
         do {
             try await api.attachTicketToInvoice(ticketId: ticketId, invoiceId: invoice.id)
             phase = .done
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss mid-POST cancels the response,
+            // but the server may have committed the attach. Surfacing
+            // "cancelled" as red banner tempts a retap that links the ticket
+            // to a different invoice. Stay silent; parent reload will reflect
+            // server truth.
+            return
         } catch {
             phase = .error(error.localizedDescription)
             AppLog.ui.error("AttachInvoice submit failed: \(error.localizedDescription, privacy: .public)")

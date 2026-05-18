@@ -186,6 +186,13 @@ public final class TicketEditDeepViewModel {
             await clearDraft()
             hasConcurrentEditConflict = false
             didSave = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss mid-PATCH cancels the
+            // response, but the server may already have committed.
+            // Surfacing "cancelled" as errorMessage tempts a re-save that
+            // hits 409 (updated_at advanced) or double-applies. Stay silent;
+            // the next list refresh will reflect server truth.
+            return
         } catch {
             if TicketOfflineQueue.isNetworkError(error) {
                 await enqueueOffline(req)
@@ -226,6 +233,11 @@ public final class TicketEditDeepViewModel {
                 "ticket.reassign: ticket=\(self.ticketId, privacy: .public) to=\(employeeId, privacy: .private)"
             )
             didSave = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss mid-PATCH cancels the
+            // response, but the server may already have committed.
+            // Stay silent so retap doesn't re-assign the same user.
+            return
         } catch {
             if TicketOfflineQueue.isNetworkError(error) {
                 // Enqueue reassign as an update with assignedTo field.
@@ -252,6 +264,11 @@ public final class TicketEditDeepViewModel {
             // §4.4 — Audit: archive event recorded for timeline streaming.
             AppLog.audit.info("ticket.archive: ticket=\(self.ticketId, privacy: .public)")
             didArchive = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss during archive cancels the
+            // response, but the server may have committed. Retap would 404
+            // (already archived) and look like a real failure. Stay silent.
+            return
         } catch {
             AppLog.ui.error("Archive failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = AppError.from(error).errorDescription ?? error.localizedDescription
