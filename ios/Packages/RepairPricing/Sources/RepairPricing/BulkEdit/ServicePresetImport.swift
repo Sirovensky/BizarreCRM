@@ -87,6 +87,14 @@ public final class ServicePresetImportViewModel {
     /// Slug is derived from the name if not provided in the CSV
     /// (lowercased + spaces replaced with hyphens).
     public func importRows() async {
+        // BUGHUNT-2026-05-17: re-entry guard — Import button isn't disabled
+        // during the loop in all code paths (the sheet's `if vm.isBusy`
+        // swap protects most cases, but a fast double-tap before the next
+        // render frame can fire a second importRows() that races the first,
+        // causing every row's POST to be sent twice → duplicate
+        // repair-service rows (slug UNIQUE will reject the second, but
+        // the audit trail still records the attempt).
+        if case .importing = phase { return }
         guard case .parsed(let rows, _) = phase, !rows.isEmpty else { return }
 
         phase = .importing(progress: 0, total: rows.count)
@@ -106,6 +114,16 @@ public final class ServicePresetImportViewModel {
                     sortOrder: index
                 )
                 successCount += 1
+            } catch let e where AppError.isCancellation(e) {
+                // BUGHUNT-2026-05-17: cancellation mid-batch means the sheet
+                // was dismissed or the parent screen torn down. The row's
+                // POST may or may not have committed server-side — counting
+                // it as either success or fail is misleading, and continuing
+                // the loop would POST further rows under the same race. Stop
+                // and report what we definitely succeeded on; silent (no
+                // banner) because the user already navigated away.
+                phase = .done(successCount: successCount, failCount: failCount)
+                return
             } catch {
                 AppLog.ui.error("ServicePresetImport POST '\(row.name)' failed: \(error.localizedDescription, privacy: .public)")
                 failCount += 1
