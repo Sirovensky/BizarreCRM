@@ -264,6 +264,7 @@ export function ExpensesPage() {
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-surface-400" />
             <input
+              type="search"
               aria-label="Search expenses"
               value={searchInput}
               onChange={(e) => {
@@ -271,6 +272,9 @@ export function ExpensesPage() {
                 clearTimeout(searchRef.current);
                 searchRef.current = setTimeout(() => { setKeyword(e.target.value); setPage(1); }, 400);
               }}
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
               placeholder="Search expenses..."
               className="w-full pl-9 pr-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
             />

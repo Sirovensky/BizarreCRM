@@ -190,9 +190,14 @@ function MergeDialog({ ticketId, orderId, onClose, onMerged }: {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
           <input
             autoFocus
+            type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by ticket ID, customer, device..."
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            aria-label="Search tickets by ID, customer, or device"
             className="w-full rounded-lg border border-surface-200 bg-surface-50 py-2 pl-9 pr-4 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus-visible:outline-none focus:ring-2 focus:ring-primary-500"
           />
         </div>

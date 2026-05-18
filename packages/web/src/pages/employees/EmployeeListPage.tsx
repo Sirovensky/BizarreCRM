@@ -843,6 +843,10 @@ export function EmployeeListPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by name or email…"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            aria-label="Search employees by name or email"
             className="w-full rounded-lg border border-surface-300 py-2 pl-9 pr-4 text-sm dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100 dark:placeholder-surface-500"
           />
         </div>

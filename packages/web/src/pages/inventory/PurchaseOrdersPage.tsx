@@ -860,13 +860,17 @@ export function PurchaseOrdersPage() {
         <div className="relative flex-1 sm:max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
           <input
-            type="text"
+            type="search"
             value={searchInput}
             onChange={(e) => {
               setSearchInput(e.target.value);
               setPage(1);
             }}
             placeholder="Search PO # or supplier..."
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            aria-label="Search purchase orders by PO number or supplier"
             className="w-full rounded-lg border border-surface-200 bg-white py-2 pl-10 pr-9 text-sm text-surface-900 placeholder:text-surface-400 transition-colors focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
           />
           {searchInput && (
