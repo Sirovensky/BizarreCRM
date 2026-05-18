@@ -80,6 +80,13 @@ public final class NPSDashboardViewModel {
         errorMessage = nil
         do {
             summary = try await api.npsSummary()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: NPS dashboard is a navigation destination
+            // — leaving cancels the `.task` mid-load. Catch-all painted
+            // "cancelled" as an error pane, replacing previously-loaded
+            // summary state on screen briefly before .task re-fired on
+            // re-navigation. Suppress so the cached summary stays.
+            errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
         }
