@@ -40,6 +40,7 @@ import com.bizarreelectronics.crm.data.remote.api.InventoryApi
 import com.bizarreelectronics.crm.data.remote.dto.AdjustStockRequest
 import com.bizarreelectronics.crm.util.ExifStripper
 import com.bizarreelectronics.crm.util.ImageUploadPolicy
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -410,6 +411,13 @@ class InventoryDetailViewModel @Inject constructor(
                     photoUrls = listOf(fullUrl),
                     actionMessage = "Photo uploaded",
                 )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: photo upload is a real POST. Don't paint
+                // "Upload failed" on back-nav, the user may re-tap and upload
+                // the same image again, which the server stores as a new
+                // primary image (overwriting itself but wasting bandwidth /
+                // creating an audit-log entry for nothing).
+                throw e
             } catch (e: Exception) {
                 Timber.tag("InventoryPhoto").e(e, "Photo upload failed for item $itemId")
                 _state.value = _state.value.copy(
@@ -441,6 +449,11 @@ class InventoryDetailViewModel @Inject constructor(
                     isSavingAutoReorder = false,
                     actionMessage = "Auto-reorder saved",
                 )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: setAutoReorder is idempotent server-side
+                // but the false "Failed to save auto-reorder" message tempts
+                // a re-tap that creates redundant audit trail entries.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSavingAutoReorder = false,
@@ -482,6 +495,10 @@ class InventoryDetailViewModel @Inject constructor(
                     actionMessage = msg,
                     deletedAndShouldPop = true,
                 )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: delete is idempotent server-side so a
+                // re-tap is harmless, but the false error message is misleading.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isDeletingItem = false,
@@ -563,6 +580,15 @@ class InventoryDetailViewModel @Inject constructor(
                     adjustSuccessCounter = _state.value.adjustSuccessCounter + 1,
                 )
                 loadOnlineDetails()
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: bare catch (e: Exception) below painted
+                // "Failed to adjust stock" on back-nav, tempting a re-tap.
+                // Deliberately NOT clearing isActionInProgress here: the
+                // adjustStock POST may have succeeded on the server before
+                // the cancellation arrived, and clearing the flag would let
+                // a re-tap re-apply the same delta. The flag will reset on
+                // VM teardown or next loadOnlineDetails() reconcile.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
