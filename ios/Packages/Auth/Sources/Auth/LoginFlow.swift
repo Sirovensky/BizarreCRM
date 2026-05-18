@@ -120,8 +120,16 @@ public final class LoginFlow {
         // (it calls `storage.getUsername()` which is not async). The actor
         // hop is the only async part; we schedule a Task so init stays sync.
         Task { @MainActor in
+            // BUGHUNT-2026-05-17: only prefill if the field is still empty.
+            // The actor hop to LastUsernameStore can race with the user
+            // starting to type into the username field — without this guard
+            // the Keychain-loaded value clobbers the in-progress typing
+            // mid-keystroke (observable as the username field briefly
+            // showing the user's letters, then snapping to the remembered
+            // value as the Task resumes).
+            guard username.isEmpty else { return }
             if let saved = await LastUsernameStore.shared.lastUsername() {
-                username = saved
+                if username.isEmpty { username = saved }
             }
         }
     }
