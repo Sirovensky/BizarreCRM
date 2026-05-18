@@ -678,11 +678,16 @@ export function TrackingPage() {
             {/* Search form */}
             <div className="bg-white dark:bg-surface-900 rounded-xl shadow-sm border border-slate-200 dark:border-surface-700 p-6 mb-6">
               <form onSubmit={handleSubmit} className="flex gap-3">
+                <label htmlFor="tracking-phone" className="sr-only">Phone number or last 4 digits</label>
                 <input
+                  id="tracking-phone"
                   type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
                   placeholder="Phone number or last 4 digits"
                   value={phoneInput}
                   onChange={(e) => setPhoneInput(e.target.value)}
+                  aria-label="Phone number or last 4 digits"
                   className="flex-1 rounded-lg border border-slate-300 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100 dark:placeholder-surface-400 px-4 py-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:border-transparent"
                   autoFocus
                 />

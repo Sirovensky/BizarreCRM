@@ -671,6 +671,9 @@ export function TenantsListPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search tenants"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
               className="w-full rounded-lg border border-surface-200 bg-white py-2 pl-9 pr-3 text-sm text-surface-900 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
             />
           </div>

@@ -97,7 +97,7 @@ export function SettingsSearch({ onNavigate, initialValue = '', maxResults = 12 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
         <input
-          type="text"
+          type="search"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
@@ -106,6 +106,13 @@ export function SettingsSearch({ onNavigate, initialValue = '', maxResults = 12 
           onFocus={() => setOpen(true)}
           onKeyDown={handleKey}
           placeholder="Search settings..."
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          aria-label="Search settings"
+          aria-autocomplete="list"
+          aria-expanded={open}
+          role="combobox"
           className="w-full rounded-lg border border-surface-200 bg-white py-1.5 pl-9 pr-8 text-sm placeholder:text-surface-400 focus:border-primary-500 focus-visible:outline-none focus:ring-1 focus:ring-primary-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
         />
         {query && (

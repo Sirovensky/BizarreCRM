@@ -6017,10 +6017,14 @@ function RepairIssueStep({ draft, setDraft, onBack, onContinue, onGoToStep }: {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
           <input
-            type="text"
+            type="search"
             value={problemQuery}
             onChange={(e) => setProblemQuery(e.target.value)}
             placeholder="Search problems · cracked screen, battery, charging port..."
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            aria-label="Search problems"
             className={cn(inputClass, 'pl-9')}
           />
         </div>
