@@ -78,10 +78,33 @@ public final class BreakDurationTracker {
     // MARK: - Private
 
     private func updateElapsed(from entry: BreakEntry) {
-        guard let startDate = ISO8601DateFormatter().date(from: entry.startAt) else {
+        // BUGHUNT-2026-05-18: same fix as ClockInOutViewModel and
+        // EmployeeClockViewModel — default ISO8601DateFormatter options reject
+        // millisecond-precision strings from Node Date.toISOString(), so this
+        // returned nil on every real payload and pinned elapsedSeconds at 0.
+        // The break elapsed badge then showed "< 1m" indefinitely no matter
+        // how long the employee had been on break. Try fractional first,
+        // then plain options as a fallback.
+        guard let startDate = Self.parseIso(entry.startAt) else {
             elapsedSeconds = 0
             return
         }
         elapsedSeconds = now().timeIntervalSince(startDate)
+    }
+
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private static func parseIso(_ raw: String) -> Date? {
+        isoFractional.date(from: raw) ?? isoPlain.date(from: raw)
     }
 }

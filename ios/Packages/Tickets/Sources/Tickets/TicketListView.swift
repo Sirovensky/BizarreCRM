@@ -533,6 +533,22 @@ private struct UrgencyChip: View {
 private struct TicketRow: View {
     let ticket: TicketSummary
 
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    fileprivate static func parseTicketDue(_ raw: String) -> Date? {
+        isoFractional.date(from: raw) ?? isoPlain.date(from: raw)
+    }
+
     var body: some View {
         HStack(alignment: .center, spacing: BrandSpacing.md) {
             VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
@@ -594,7 +610,12 @@ private struct TicketRow: View {
                 customer: ticket.customer?.displayName ?? "",
                 device: ticket.firstDevice?.deviceName ?? "",
                 status: ticket.status?.name ?? "",
-                dueAt: ticket.dueOn.flatMap { ISO8601DateFormatter().date(from: $0) }
+                // BUGHUNT-2026-05-18: was a bare `ISO8601DateFormatter().date(from:)`
+                // which rejects Node Date.toISOString() millisecond strings, so
+                // VoiceOver never spoke a ticket's due date even when the
+                // visible DueDateBadge rendered "Due in 3d". Mirror the badge's
+                // fractional → plain fallback so the a11y label matches.
+                dueAt: ticket.dueOn.flatMap(Self.parseTicketDue)
             )
         )
         .accessibilityHint(RowAccessibilityFormatter.ticketRowHint)
