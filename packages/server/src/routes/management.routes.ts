@@ -589,11 +589,25 @@ router.post('/perform-update', async (req: Request, res: Response) => {
       ?? (result as { sha?: string } | null | undefined)?.sha
       ?? (result as { commit?: string } | null | undefined)?.commit
       ?? null;
+    // BUGHUNT-2026-05-17: reflect the resolver's own `success` flag in the
+    // audit row instead of hard-coding `success: true`. The current server-side
+    // `performUpdate()` is a backward-compat stub (see services/githubUpdater.ts)
+    // that ALWAYS resolves `{success: false, output: 'Updates are now handled
+    // by the Management Dashboard...'}`. Previously this route audited every
+    // call as success=true regardless of what the resolver returned, which
+    // contradicts the UP6 promise that operators can "see WHICH update
+    // attempts failed and why" — every no-op stub call recorded a fake win.
+    // HTTP response stays {success: true} since the dashboard's update flow
+    // doesn't gate on this route anymore; only the audit row is corrected.
+    const resolverSucceeded = (result as { success?: boolean } | null | undefined)?.success !== false;
+    const stubMessage = !resolverSucceeded
+      ? ((result as { output?: string } | null | undefined)?.output ?? null)
+      : null;
     managementAudit('server_update', ip, {
       before_sha: beforeSha,
       after_sha: afterSha,
-      success: true,
-      error_message: null,
+      success: resolverSucceeded,
+      error_message: stubMessage,
     });
     res.json({ success: true, data: result });
   } catch (err) {
