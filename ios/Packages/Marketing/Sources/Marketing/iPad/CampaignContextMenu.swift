@@ -132,6 +132,16 @@ public final class CampaignContextMenuViewModel {
         defer { isBusy = false }
         do {
             _ = try await api.runCampaignNow(id: rowId)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: runCampaignNow triggers a real-money
+            // customer-facing fan-out (every recipient gets the SMS/email).
+            // An errorMessage = "cancelled" tempted a re-tap that — if the
+            // server had already accepted the first POST — would run the
+            // campaign a SECOND time, double-charging the tenant and
+            // double-texting every recipient (TCPA hazard). Stay silent;
+            // the user verifies via the campaign analytics view before
+            // retrying.
+            return
         } catch {
             AppLog.ui.error("Context menu sendNow failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
