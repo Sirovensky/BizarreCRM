@@ -137,6 +137,12 @@ public final class NetworkDiagnosticsViewModel {
 
         } catch URLError.notConnectedToInternet {
             captivePortalStatus = .failed(reason: "No internet connection.")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: probe cancellation (diagnostics screen
+            // dismissed) was being misclassified as captivePortalDetected,
+            // painting the wifi-exclamation icon in the next session.
+            // Reset to unknown so the next probe starts clean.
+            captivePortalStatus = .unknown
         } catch {
             // A captive portal often blocks or redirects entirely — treat connection
             // errors on this probe as a possible captive portal.
