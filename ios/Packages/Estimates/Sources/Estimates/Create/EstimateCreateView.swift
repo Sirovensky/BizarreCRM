@@ -152,12 +152,26 @@ public struct EstimateCreateView: View {
             Divider()
 
             sectionHeader("Valid Until")
-            TextField("YYYY-MM-DD", text: $vm.validUntil)
-                .keyboardType(.numbersAndPunctuation)
-                .font(.brandBodyMedium())
-                .foregroundStyle(.bizarreOnSurface)
-                .accessibilityLabel("Valid until date, format YYYY-MM-DD")
-                .onChange(of: vm.validUntil) { _, _ in vm.scheduleAutoSave() }
+            // BUGHUNT-2026-05-18: Valid-until was a free-text TextField
+            // asking the user to hand-type ISO dates. Common typos
+            // (year off by one, transposed digits) produced an estimate
+            // that the customer-facing portal silently rejected. Swap
+            // to a DatePicker bound through a String<->Date adapter so
+            // the underlying VM contract ("YYYY-MM-DD") stays intact.
+            DatePicker(
+                "Valid until",
+                selection: Binding(
+                    get: { Self.parseValidUntil(vm.validUntil) ?? Date().addingTimeInterval(60 * 60 * 24 * 30) },
+                    set: { newDate in
+                        vm.validUntil = Self.formatValidUntil(newDate)
+                        vm.scheduleAutoSave()
+                    }
+                ),
+                in: Date()...,
+                displayedComponents: .date
+            )
+            .accessibilityLabel("Valid until date")
+            .datePickerStyle(.compact)
         }
         .padding(BrandSpacing.lg)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
@@ -349,6 +363,24 @@ public struct EstimateCreateView: View {
         f.numberStyle = .currency
         f.currencyCode = "USD"
         return f.string(from: NSNumber(value: v)) ?? "$\(v)"
+    }
+
+    /// Adapter helpers between the VM's `String` ("YYYY-MM-DD") field and
+    /// the SwiftUI `DatePicker` which expects a `Date`. Locale-pinned to
+    /// en_US_POSIX so the server contract (`YYYY-MM-DD`) is stable
+    /// regardless of the user's regional settings.
+    private static let validUntilFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f
+    }()
+    fileprivate static func parseValidUntil(_ raw: String) -> Date? {
+        validUntilFormatter.date(from: raw)
+    }
+    fileprivate static func formatValidUntil(_ date: Date) -> String {
+        validUntilFormatter.string(from: date)
     }
 }
 
