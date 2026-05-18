@@ -47,6 +47,8 @@ public final class SmsThreadViewModel {
         errorMessage = nil
         do {
             thread = try await repo.thread(phone: phoneNumber)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             AppLog.ui.error("SMS thread load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription

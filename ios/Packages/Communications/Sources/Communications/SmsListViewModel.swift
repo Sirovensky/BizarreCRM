@@ -224,6 +224,8 @@ public final class SmsListViewModel {
                 conversations = try await repo.listConversations(keyword: keyword)
             }
             applyFilter()
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: search debounce / refresh cancel
         } catch {
             handleFetchError(error)
         }
