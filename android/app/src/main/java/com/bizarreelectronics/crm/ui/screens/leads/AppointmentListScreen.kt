@@ -464,7 +464,18 @@ fun AppointmentListScreen(
                         EmptyState(
                             icon = Icons.Default.EventBusy,
                             title = "No appointments",
-                            subtitle = "Nothing scheduled for this day",
+                            subtitle = "Nothing scheduled for this day.",
+                            action = {
+                                FilledTonalButton(onClick = onCreateClick) {
+                                    Icon(
+                                        Icons.Default.Add,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Book appointment")
+                                }
+                            },
                         )
                     }
                 }
