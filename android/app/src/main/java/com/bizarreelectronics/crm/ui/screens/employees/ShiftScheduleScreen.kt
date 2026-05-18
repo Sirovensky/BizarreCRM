@@ -1,8 +1,10 @@
 package com.bizarreelectronics.crm.ui.screens.employees
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.NavigateBefore
@@ -15,6 +17,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -30,7 +34,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
+import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
 import javax.inject.Inject
@@ -438,8 +446,14 @@ private fun AddShiftDialog(
     onConfirm: (employeeId: Long, startIso: String, endIso: String, notes: String) -> Unit,
 ) {
     var employeeIdStr by remember { mutableStateOf("") }
-    var startTime by remember { mutableStateOf("") }
-    var endTime by remember { mutableStateOf("") }
+    // BUGHUNT-2026-05-18: free-text ISO-8601 fields invited typos. Default
+    // to a 9–17 shift today; pick separate date + time per side via the
+    // material3 pickers. Mirrors the iOS AddShiftSheet fix (commit
+    // f9a573f1) — the bound state still emits an ISO local-datetime
+    // string, so the API contract is unchanged.
+    val today = LocalDate.now()
+    var startDateTime by remember { mutableStateOf(today.atTime(9, 0)) }
+    var endDateTime by remember { mutableStateOf(today.atTime(17, 0)) }
     var notes by remember { mutableStateOf("") }
 
     AlertDialog(
@@ -449,24 +463,28 @@ private fun AddShiftDialog(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = employeeIdStr,
-                    onValueChange = { employeeIdStr = it },
+                    onValueChange = { employeeIdStr = it.filter { ch -> ch.isDigit() } },
                     label = { Text("Employee ID") },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                OutlinedTextField(
-                    value = startTime,
-                    onValueChange = { startTime = it },
-                    label = { Text("Start (YYYY-MM-DDTHH:MM)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                DateTimeRow(
+                    label = "Start",
+                    value = startDateTime,
+                    onChange = { new ->
+                        startDateTime = new
+                        // Keep End ≥ Start so the form physically can't produce an invalid range.
+                        if (!endDateTime.isAfter(new)) {
+                            endDateTime = new.plusHours(8)
+                        }
+                    },
                 )
-                OutlinedTextField(
-                    value = endTime,
-                    onValueChange = { endTime = it },
-                    label = { Text("End (YYYY-MM-DDTHH:MM)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                DateTimeRow(
+                    label = "End",
+                    value = endDateTime,
+                    minValue = startDateTime,
+                    onChange = { endDateTime = it },
                 )
                 OutlinedTextField(
                     value = notes,
@@ -474,6 +492,7 @@ private fun AddShiftDialog(
                     label = { Text("Notes (optional)") },
                     modifier = Modifier.fillMaxWidth(),
                     maxLines = 2,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                 )
             }
         },
@@ -481,14 +500,96 @@ private fun AddShiftDialog(
             TextButton(
                 onClick = {
                     val empId = employeeIdStr.trim().toLongOrNull() ?: return@TextButton
-                    onConfirm(empId, startTime.trim(), endTime.trim(), notes.trim())
+                    val iso = DateTimeFormatter.ISO_LOCAL_DATE_TIME
+                    onConfirm(empId, iso.format(startDateTime), iso.format(endDateTime), notes.trim())
                 },
                 enabled = employeeIdStr.trim().toLongOrNull() != null &&
-                    startTime.isNotBlank() && endTime.isNotBlank(),
+                    endDateTime.isAfter(startDateTime),
             ) { Text("Add") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DateTimeRow(
+    label: String,
+    value: LocalDateTime,
+    onChange: (LocalDateTime) -> Unit,
+    minValue: LocalDateTime? = null,
+) {
+    var showDate by remember { mutableStateOf(false) }
+    var showTime by remember { mutableStateOf(false) }
+    val formatter = remember { DateTimeFormatter.ofPattern("MMM d, yyyy · h:mm a") }
+
+    if (showDate) {
+        val initialMillis = value.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val pickerState = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
+        DatePickerDialog(
+            onDismissRequest = { showDate = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { ms ->
+                        val newDate = Instant.ofEpochMilli(ms)
+                            .atZone(ZoneId.systemDefault())
+                            .toLocalDate()
+                        val candidate = LocalDateTime.of(newDate, value.toLocalTime())
+                        val clamped = if (minValue != null && candidate.isBefore(minValue)) minValue else candidate
+                        onChange(clamped)
+                    }
+                    showDate = false
+                }) { Text("OK") }
+            },
+            dismissButton = { TextButton(onClick = { showDate = false }) { Text("Cancel") } },
+        ) { DatePicker(state = pickerState) }
+    }
+
+    if (showTime) {
+        val pickerState = rememberTimePickerState(
+            initialHour = value.hour,
+            initialMinute = value.minute,
+            is24Hour = false,
+        )
+        AlertDialog(
+            onDismissRequest = { showTime = false },
+            title = { Text("Pick time") },
+            text = { TimePicker(state = pickerState) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val candidate = LocalDateTime.of(
+                        value.toLocalDate(),
+                        LocalTime.of(pickerState.hour, pickerState.minute),
+                    )
+                    val clamped = if (minValue != null && candidate.isBefore(minValue)) minValue else candidate
+                    onChange(clamped)
+                    showTime = false
+                }) { Text("OK") }
+            },
+            dismissButton = { TextButton(onClick = { showTime = false }) { Text("Cancel") } },
+        )
+    }
+
+    OutlinedTextField(
+        value = formatter.format(value),
+        onValueChange = {},
+        readOnly = true,
+        label = { Text(label) },
+        singleLine = true,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { showDate = true },
+        trailingIcon = {
+            Row {
+                IconButton(onClick = { showDate = true }) {
+                    Icon(Icons.Default.Schedule, contentDescription = "Pick $label date")
+                }
+                IconButton(onClick = { showTime = true }) {
+                    Icon(Icons.Default.Schedule, contentDescription = "Pick $label time")
+                }
+            }
         },
     )
 }
