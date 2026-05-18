@@ -77,6 +77,8 @@ public final class BenchWorkflowViewModel {
             let (detail, statuses) = try await (detailTask, statusesTask)
             serverStatuses = statuses
             loadState = .loaded(detail)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel; next .task fires reload
         } catch {
             AppLog.ui.error(
                 "BenchWorkflow load failed: \(error.localizedDescription, privacy: .public)"
