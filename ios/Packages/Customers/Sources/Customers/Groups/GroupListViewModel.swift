@@ -40,6 +40,8 @@ public final class GroupListViewModel {
         errorMessage = nil
         do {
             groups = try await repo.listGroups()
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-18: nav cancel — .task re-fires on reopen
         } catch {
             AppLog.ui.error("Group list load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
