@@ -319,6 +319,12 @@ public final class TicketEditDeepViewModel {
             didSave = true
             queuedOffline = true
             errorMessage = nil
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: enqueue may have partially landed when the
+            // task is cancelled mid-write. Don't paint "Could not save offline"
+            // on a sheet the user already left; the draft is preserved so a
+            // retry from the next session can re-enqueue idempotently.
+            return
         } catch {
             // BUGHUNT-2026-05-17: surface the queue failure so the deep-edit
             // sheet doesn't claim "saved offline" when the row was dropped.
