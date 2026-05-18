@@ -74,16 +74,39 @@ public struct SuggestedSlot: Identifiable, Sendable, Decodable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        let fmt = ISO8601DateFormatter()
         let startStr = try c.decode(String.self, forKey: .start)
         let endStr = try c.decode(String.self, forKey: .end)
-        start = fmt.date(from: startStr) ?? Date()
-        end = fmt.date(from: endStr) ?? Date()
+        // BUGHUNT-2026-05-18: ISO8601DateFormatter() with default options
+        // (.withInternetDateTime) returns nil for the millisecond-precision
+        // strings emitted by Node's Date.toISOString() (e.g.,
+        // "2026-05-18T07:00:00.123Z"). The previous parser silently fell
+        // back to Date() — the current time — so every suggested slot
+        // would render with bogus times once the server endpoint lands.
+        // Try fractional first, then plain, matching the APIClient
+        // decoder strategy used everywhere else.
+        start = Self.parseIso(startStr) ?? Date()
+        end = Self.parseIso(endStr) ?? Date()
         staffId = try c.decodeIfPresent(Int64.self, forKey: .staffId)
         staffName = try c.decodeIfPresent(String.self, forKey: .staffName)
         locationId = try c.decodeIfPresent(Int64.self, forKey: .locationId)
         locationName = try c.decodeIfPresent(String.self, forKey: .locationName)
         score = try c.decodeIfPresent(Double.self, forKey: .score) ?? 1.0
+    }
+
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private static func parseIso(_ raw: String) -> Date? {
+        isoFractional.date(from: raw) ?? isoPlain.date(from: raw)
     }
 }
 
