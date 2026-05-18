@@ -44,6 +44,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -83,17 +84,29 @@ class PaymentSettingsViewModel @Inject constructor(
 
     private fun load() {
         viewModelScope.launch {
-            val methodsResult = runCatching { settingsApi.getPaymentMethods() }
-            val configResult = runCatching { settingsApi.getStoreConfig() }
+            var methodsException: Exception? = null
+            val methods = try {
+                val resp = settingsApi.getPaymentMethods()
+                resp.data?.mapNotNull { m ->
+                    val id = (m["id"] as? Number)?.toLong() ?: return@mapNotNull null
+                    val name = m["name"] as? String ?: return@mapNotNull null
+                    val active = (m["is_active"] as? Number)?.toInt() != 0
+                    PaymentMethod(id, name, active)
+                } ?: emptyList()
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (e: Exception) {
+                methodsException = e
+                emptyList()
+            }
 
-            val methods = methodsResult.getOrNull()?.data?.mapNotNull { m ->
-                val id = (m["id"] as? Number)?.toLong() ?: return@mapNotNull null
-                val name = m["name"] as? String ?: return@mapNotNull null
-                val active = (m["is_active"] as? Number)?.toInt() != 0
-                PaymentMethod(id, name, active)
-            } ?: emptyList()
-
-            val cfg = configResult.getOrNull()?.data ?: emptyMap()
+            val cfg = try {
+                settingsApi.getStoreConfig().data ?: emptyMap()
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (_: Exception) {
+                emptyMap()
+            }
 
             _uiState.value = PaymentSettingsState(
                 paymentMethods = methods,
@@ -102,7 +115,7 @@ class PaymentSettingsViewModel @Inject constructor(
                 promptForTip = cfg["blockchyp_prompt_for_tip"] == "1" || cfg["blockchyp_prompt_for_tip"] == "true",
                 cashDrawerEnabled = cfg["cash_drawer_enabled"] == "1" || cfg["cash_drawer_enabled"] == "true",
                 isLoading = false,
-                errorMessage = methodsResult.exceptionOrNull()?.message,
+                errorMessage = methodsException?.message,
             )
         }
     }
@@ -115,7 +128,7 @@ class PaymentSettingsViewModel @Inject constructor(
         val s = _uiState.value
         _uiState.value = s.copy(isSaving = true, errorMessage = null)
         viewModelScope.launch {
-            runCatching {
+            try {
                 settingsApi.putStoreConfig(
                     mapOf(
                         "blockchyp_terminal_name" to s.blockChypTerminalName,
@@ -124,16 +137,15 @@ class PaymentSettingsViewModel @Inject constructor(
                         "cash_drawer_enabled" to if (s.cashDrawerEnabled) "1" else "0",
                     )
                 )
+                _uiState.value = _uiState.value.copy(isSaving = false, savedOk = true)
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isSaving = false,
+                    errorMessage = "Save failed: ${e.message}",
+                )
             }
-                .onSuccess {
-                    _uiState.value = _uiState.value.copy(isSaving = false, savedOk = true)
-                }
-                .onFailure {
-                    _uiState.value = _uiState.value.copy(
-                        isSaving = false,
-                        errorMessage = "Save failed: ${it.message}",
-                    )
-                }
         }
     }
 

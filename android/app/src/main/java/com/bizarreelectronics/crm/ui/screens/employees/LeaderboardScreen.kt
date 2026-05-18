@@ -24,6 +24,7 @@ import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -72,24 +73,25 @@ class LeaderboardViewModel @Inject constructor(
     fun load() {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = _state.value.entries.isEmpty(), error = null)
-            runCatching { reportApi.getTechLeaderboard(period = _state.value.period) }
-                .onSuccess { resp ->
-                    val entries = parseEntries(resp.data)
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        entries = entries,
-                        serverUnsupported = false,
-                        error = null,
-                    )
-                }
-                .onFailure { t ->
-                    val is404 = t is retrofit2.HttpException && t.code() == 404
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        serverUnsupported = is404,
-                        error = if (is404) null else (t.message ?: "Failed to load leaderboard"),
-                    )
-                }
+            try {
+                val resp = reportApi.getTechLeaderboard(period = _state.value.period)
+                val entries = parseEntries(resp.data)
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    entries = entries,
+                    serverUnsupported = false,
+                    error = null,
+                )
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (t: Exception) {
+                val is404 = t is retrofit2.HttpException && t.code() == 404
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    serverUnsupported = is404,
+                    error = if (is404) null else (t.message ?: "Failed to load leaderboard"),
+                )
+            }
         }
     }
 

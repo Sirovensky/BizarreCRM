@@ -19,6 +19,7 @@ import com.bizarreelectronics.crm.util.CurrencyFormatter
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.bizarreelectronics.crm.util.formatPhoneDisplay
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -189,8 +190,13 @@ class GlobalSearchViewModel @Inject constructor(
         _state.value = _state.value.copy(isLoading = true, error = null)
         val online = serverMonitor.isEffectivelyOnline.value
         if (online) {
-            runCatching { performOnlineSearch(query) }
-                .onFailure { performOfflineSearch(query) }
+            try {
+                performOnlineSearch(query)
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (e: Exception) {
+                performOfflineSearch(query)
+            }
         } else {
             performOfflineSearch(query)
         }
@@ -199,13 +205,19 @@ class GlobalSearchViewModel @Inject constructor(
     private suspend fun performOnlineSearch(query: String) = coroutineScope {
         // 1. Unified /search endpoint for the core 4 entity types.
         val unifiedDeferred = async {
-            runCatching { searchApi.globalSearch(query).data }.getOrNull()
+            try {
+                searchApi.globalSearch(query).data
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (e: Exception) {
+                null
+            }
         }
 
         // 2. APIs that don't accept ?q — client-side filter on a capped batch.
         //    TODO: Phase 2 — add ?q server-side for appointments and leads.
         val leadsDeferred = async {
-            runCatching {
+            try {
                 leadApi.getLeads(mapOf("keyword" to query)).data?.leads
                     ?.take(50)
                     ?.filter { item ->
@@ -216,11 +228,15 @@ class GlobalSearchViewModel @Inject constructor(
                         haystack.contains(query, ignoreCase = true)
                     }
                     ?.take(5)
-            }.getOrNull()
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (e: Exception) {
+                null
+            }
         }
 
         val appointmentsDeferred = async {
-            runCatching {
+            try {
                 appointmentApi.getAppointments().data
                     ?.take(50)
                     ?.filter { item ->
@@ -231,15 +247,31 @@ class GlobalSearchViewModel @Inject constructor(
                         haystack.contains(query, ignoreCase = true)
                     }
                     ?.take(5)
-            }.getOrNull()
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (e: Exception) {
+                null
+            }
         }
 
         val employeesDeferred = async {
-            runCatching { settingsApi.searchEmployees(query).data?.take(5) }.getOrNull()
+            try {
+                settingsApi.searchEmployees(query).data?.take(5)
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (e: Exception) {
+                null
+            }
         }
 
         val smsDeferred = async {
-            runCatching { smsApi.getConversations(keyword = query).data?.conversations?.take(5) }.getOrNull()
+            try {
+                smsApi.getConversations(keyword = query).data?.conversations?.take(5)
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (e: Exception) {
+                null
+            }
         }
 
         val unifiedData = unifiedDeferred.await()
@@ -258,22 +290,40 @@ class GlobalSearchViewModel @Inject constructor(
             // Unified failed — fan out for core 4
             coroutineScope {
                 val ticketsD = async {
-                    runCatching {
+                    try {
                         ticketApi.getTickets(mapOf("q" to query, "limit" to "5")).data?.tickets
-                    }.getOrNull()
+                    } catch (e: CancellationException) {
+                        throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+                    } catch (e: Exception) {
+                        null
+                    }
                 }
                 val customersD = async {
-                    runCatching { customerApi.searchCustomers(query).data?.take(5) }.getOrNull()
+                    try {
+                        customerApi.searchCustomers(query).data?.take(5)
+                    } catch (e: CancellationException) {
+                        throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+                    } catch (e: Exception) {
+                        null
+                    }
                 }
                 val invoicesD = async {
-                    runCatching {
+                    try {
                         invoiceApi.getInvoices(mapOf("q" to query, "limit" to "5")).data?.invoices
-                    }.getOrNull()
+                    } catch (e: CancellationException) {
+                        throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+                    } catch (e: Exception) {
+                        null
+                    }
                 }
                 val inventoryD = async {
-                    runCatching {
+                    try {
                         inventoryApi.getItems(mapOf("q" to query, "limit" to "5")).data?.items
-                    }.getOrNull()
+                    } catch (e: CancellationException) {
+                        throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+                    } catch (e: Exception) {
+                        null
+                    }
                 }
 
                 ticketsD.await()?.map { t ->
@@ -417,6 +467,8 @@ class GlobalSearchViewModel @Inject constructor(
                 hasSearched = true,
                 recentSearches = appPreferences.recentSearches,
             )
+        } catch (e: CancellationException) {
+            throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
         } catch (e: Exception) {
             _state.value = _state.value.copy(
                 isLoading = false,

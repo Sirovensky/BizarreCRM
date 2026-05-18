@@ -20,6 +20,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -75,12 +76,12 @@ class SmsSettingsViewModel @Inject constructor(
                 val storeResp = settingsApi.getStoreConfig()
                 val store = storeResp.data ?: emptyMap()
 
-                val providersResp = runCatching { settingsApi.getSmsProviders() }.getOrNull()
+                val providersResp = try { settingsApi.getSmsProviders() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
                 val providers = providersResp?.data ?: emptyList()
                 val configured = providers.any { it["configured"] == true || it["enabled"] == true }
                 val providerName = providers.firstOrNull()?.get("name")?.toString() ?: "Not configured"
 
-                val configResp = runCatching { settingsApi.getConfig() }.getOrNull()
+                val configResp = try { settingsApi.getConfig() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
                 val cfg = configResp?.data ?: emptyMap()
 
                 _uiState.value = SmsSettingsUiState(
@@ -92,6 +93,8 @@ class SmsSettingsViewModel @Inject constructor(
                     offHoursReply = store["sms_off_hours_reply"] ?: "",
                     dailyLimit = cfg["sms_daily_limit"]?.toIntOrNull() ?: 0,
                 )
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: "Failed to load SMS settings")
             }
@@ -101,8 +104,12 @@ class SmsSettingsViewModel @Inject constructor(
     fun saveComplianceFooter(footer: String) {
         _uiState.value = _uiState.value.copy(complianceFooter = footer)
         viewModelScope.launch {
-            runCatching {
+            try {
                 settingsApi.putStoreConfig(mapOf("sms_compliance_footer" to footer))
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (_: Exception) {
+                // best-effort save
             }
         }
     }
@@ -110,8 +117,12 @@ class SmsSettingsViewModel @Inject constructor(
     fun saveOffHoursReply(reply: String) {
         _uiState.value = _uiState.value.copy(offHoursReply = reply)
         viewModelScope.launch {
-            runCatching {
+            try {
                 settingsApi.putStoreConfig(mapOf("sms_off_hours_reply" to reply))
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (_: Exception) {
+                // best-effort save
             }
         }
     }

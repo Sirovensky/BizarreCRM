@@ -37,6 +37,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -211,6 +212,8 @@ class NotificationListViewModel @Inject constructor(
                     )
                 })
                 _state.value = _state.value.copy(isLoading = false, isRefreshing = false)
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 Log.d(TAG, "API fetch failed: ${e.message}")
                 _state.value = _state.value.copy(
@@ -240,6 +243,8 @@ class NotificationListViewModel @Inject constructor(
             if (serverMonitor.isEffectivelyOnline.value) {
                 try {
                     notificationApi.markRead(id)
+                } catch (e: CancellationException) {
+                    throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
                 } catch (e: Exception) {
                     Log.d(TAG, "API markRead failed: ${e.message}")
                 }
@@ -255,6 +260,8 @@ class NotificationListViewModel @Inject constructor(
             if (serverMonitor.isEffectivelyOnline.value) {
                 try {
                     notificationApi.markAllRead()
+                } catch (e: CancellationException) {
+                    throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
                 } catch (e: Exception) {
                     Log.d(TAG, "API markAllRead failed: ${e.message}")
                 }
@@ -276,6 +283,8 @@ class NotificationListViewModel @Inject constructor(
                     // Best-effort: mark read as a proxy until server ships
                     // PATCH /notifications/:id/dismiss.
                     notificationApi.markRead(id)
+                } catch (e: CancellationException) {
+                    throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
                 } catch (e: Exception) {
                     Log.d(TAG, "API dismiss (markRead proxy) failed: ${e.message}")
                 }

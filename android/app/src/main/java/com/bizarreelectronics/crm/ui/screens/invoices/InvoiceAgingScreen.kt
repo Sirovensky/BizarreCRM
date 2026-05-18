@@ -31,6 +31,7 @@ import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Locale
@@ -71,28 +72,29 @@ class InvoiceAgingViewModel @Inject constructor(
     fun load() {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
-            runCatching { invoiceApi.getAgingReport() }
-                .onSuccess { resp ->
-                    val data = resp.data
-                    if (resp.success && data != null) {
-                        _state.value = _state.value.copy(
-                            buckets = data.buckets,
-                            invoices = data.invoices,
-                            isLoading = false,
-                        )
-                    } else {
-                        _state.value = _state.value.copy(
-                            isLoading = false,
-                            error = "Aging report unavailable.",
-                        )
-                    }
-                }
-                .onFailure { e ->
+            try {
+                val resp = invoiceApi.getAgingReport()
+                val data = resp.data
+                if (resp.success && data != null) {
+                    _state.value = _state.value.copy(
+                        buckets = data.buckets,
+                        invoices = data.invoices,
+                        isLoading = false,
+                    )
+                } else {
                     _state.value = _state.value.copy(
                         isLoading = false,
-                        error = e.message ?: "Failed to load aging report.",
+                        error = "Aging report unavailable.",
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Failed to load aging report.",
+                )
+            }
         }
     }
 
@@ -124,8 +126,12 @@ class InvoiceAgingViewModel @Inject constructor(
     fun confirmSendReminder(invoiceId: Long) {
         _state.value = _state.value.copy(isSendReminderInProgress = true)
         viewModelScope.launch {
-            runCatching {
+            try {
                 invoiceApi.bulkAction(BulkActionRequest(action = "send_reminder", ids = listOf(invoiceId)))
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (_: Exception) {
+                // best-effort: mark done regardless
             }
             _state.value = _state.value.copy(
                 isSendReminderInProgress = false,
@@ -140,16 +146,17 @@ class InvoiceAgingViewModel @Inject constructor(
     /** Write-off: void the invoice. */
     fun writeOff(invoiceId: Long) {
         viewModelScope.launch {
-            runCatching { invoiceApi.voidInvoice(invoiceId) }
-                .onSuccess {
-                    _state.value = _state.value.copy(
-                        invoices = _state.value.invoices.filter { it.id != invoiceId },
-                        actionMessage = "Invoice written off.",
-                    )
-                }
-                .onFailure {
-                    _state.value = _state.value.copy(actionMessage = "Write-off failed. Check your connection.")
-                }
+            try {
+                invoiceApi.voidInvoice(invoiceId)
+                _state.value = _state.value.copy(
+                    invoices = _state.value.invoices.filter { it.id != invoiceId },
+                    actionMessage = "Invoice written off.",
+                )
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (_: Exception) {
+                _state.value = _state.value.copy(actionMessage = "Write-off failed. Check your connection.")
+            }
         }
     }
 

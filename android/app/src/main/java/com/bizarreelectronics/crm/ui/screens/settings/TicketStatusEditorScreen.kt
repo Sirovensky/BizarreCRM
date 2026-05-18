@@ -76,6 +76,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -120,20 +121,21 @@ class TicketStatusEditorViewModel @Inject constructor(
     private fun load() {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, errorMessage = null)
-            runCatching { settingsApi.getStatusList() }
-                .onSuccess { resp ->
-                    val items = resp.data ?: emptyList()
-                    _state.value = _state.value.copy(
-                        statuses = items.sortedBy { it.sortOrder },
-                        isLoading = false,
-                    )
-                }
-                .onFailure { err ->
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        errorMessage = "Could not load statuses: ${err.message}",
-                    )
-                }
+            try {
+                val resp = settingsApi.getStatusList()
+                val items = resp.data ?: emptyList()
+                _state.value = _state.value.copy(
+                    statuses = items.sortedBy { it.sortOrder },
+                    isLoading = false,
+                )
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (err: Exception) {
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    errorMessage = "Could not load statuses: ${err.message}",
+                )
+            }
         }
     }
 
@@ -178,7 +180,7 @@ class TicketStatusEditorViewModel @Inject constructor(
         )
 
         viewModelScope.launch {
-            runCatching {
+            try {
                 settingsApi.putStatus(
                     id = id,
                     body = buildMap {
@@ -191,12 +193,13 @@ class TicketStatusEditorViewModel @Inject constructor(
                         put("awaiting_parts", if (awaitingParts) 1 else 0)
                     },
                 )
-            }.onSuccess {
                 _state.value = _state.value.copy(
                     savingId = null,
                     snackMessage = "\"$name\" saved",
                 )
-            }.onFailure { err ->
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (err: Exception) {
                 // Roll back
                 _state.value = _state.value.copy(
                     savingId = null,
@@ -249,13 +252,15 @@ class TicketStatusEditorViewModel @Inject constructor(
         if (changed.isEmpty()) return
 
         viewModelScope.launch {
-            changed.forEach { s ->
-                runCatching {
+            for (s in changed) {
+                try {
                     settingsApi.putStatus(
                         id = s.id,
                         body = mapOf("sort_order" to s.sortOrder),
                     )
-                }.onFailure { err ->
+                } catch (e: CancellationException) {
+                    throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+                } catch (err: Exception) {
                     _state.value = _state.value.copy(
                         snackMessage = "Reorder save failed: ${err.message}",
                     )

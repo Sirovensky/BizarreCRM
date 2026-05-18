@@ -49,6 +49,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -81,23 +82,24 @@ class TicketSettingsViewModel @Inject constructor(
 
     private fun load() {
         viewModelScope.launch {
-            runCatching { settingsApi.getStoreConfig() }
-                .onSuccess { response ->
-                    val cfg = response.data ?: emptyMap()
-                    _uiState.value = TicketSettingsState(
-                        defaultDueDays = cfg["default_due_days"] ?: "",
-                        imeiRequired = cfg["imei_required"] == "1" || cfg["imei_required"] == "true",
-                        photoRequiredOnClose = cfg["photo_required_on_close"] == "1" || cfg["photo_required_on_close"] == "true",
-                        allEmployeesViewAll = cfg["ticket_all_employees_view_all"] == "1" || cfg["ticket_all_employees_view_all"] == "true",
-                        isLoading = false,
-                    )
-                }
-                .onFailure {
-                    _uiState.value = TicketSettingsState(
-                        isLoading = false,
-                        errorMessage = "Failed to load ticket settings: ${it.message}",
-                    )
-                }
+            try {
+                val response = settingsApi.getStoreConfig()
+                val cfg = response.data ?: emptyMap()
+                _uiState.value = TicketSettingsState(
+                    defaultDueDays = cfg["default_due_days"] ?: "",
+                    imeiRequired = cfg["imei_required"] == "1" || cfg["imei_required"] == "true",
+                    photoRequiredOnClose = cfg["photo_required_on_close"] == "1" || cfg["photo_required_on_close"] == "true",
+                    allEmployeesViewAll = cfg["ticket_all_employees_view_all"] == "1" || cfg["ticket_all_employees_view_all"] == "true",
+                    isLoading = false,
+                )
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (e: Exception) {
+                _uiState.value = TicketSettingsState(
+                    isLoading = false,
+                    errorMessage = "Failed to load ticket settings: ${e.message}",
+                )
+            }
         }
     }
 
@@ -109,7 +111,7 @@ class TicketSettingsViewModel @Inject constructor(
         val s = _uiState.value
         _uiState.value = s.copy(isSaving = true, errorMessage = null)
         viewModelScope.launch {
-            runCatching {
+            try {
                 settingsApi.putStoreConfig(
                     mapOf(
                         "default_due_days" to s.defaultDueDays,
@@ -118,16 +120,15 @@ class TicketSettingsViewModel @Inject constructor(
                         "ticket_all_employees_view_all" to if (s.allEmployeesViewAll) "1" else "0",
                     )
                 )
+                _uiState.value = _uiState.value.copy(isSaving = false, savedOk = true)
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isSaving = false,
+                    errorMessage = "Save failed: ${e.message}",
+                )
             }
-                .onSuccess {
-                    _uiState.value = _uiState.value.copy(isSaving = false, savedOk = true)
-                }
-                .onFailure {
-                    _uiState.value = _uiState.value.copy(
-                        isSaving = false,
-                        errorMessage = "Save failed: ${it.message}",
-                    )
-                }
         }
     }
 

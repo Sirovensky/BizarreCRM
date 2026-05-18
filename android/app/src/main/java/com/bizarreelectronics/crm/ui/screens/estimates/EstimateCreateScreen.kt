@@ -36,6 +36,7 @@ import com.bizarreelectronics.crm.data.remote.dto.RepairServiceItem
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.util.formatAsMoney
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -146,9 +147,10 @@ class EstimateCreateViewModel @Inject constructor(
     private fun prefillFromLead(leadId: Long) {
         viewModelScope.launch {
             _state.value = _state.value.copy(prefillLoading = true)
-            runCatching { leadApi.getLead(leadId) }
-                .onSuccess { resp ->
-                    val lead = resp.data ?: return@onSuccess
+            try {
+                val resp = leadApi.getLead(leadId)
+                val lead = resp.data
+                if (lead != null) {
                     // Try to load the lead's customer if customerId is present
                     val customerId = lead.customerId
                     var prefillCustomer: CustomerListItem? = null
@@ -156,11 +158,13 @@ class EstimateCreateViewModel @Inject constructor(
                         // Search by customer id via name — best-effort; 404-tolerant
                         val displayName = listOfNotNull(lead.firstName, lead.lastName).joinToString(" ")
                         if (displayName.isNotBlank()) {
-                            runCatching { customerApi.searchCustomers(displayName) }
-                                .onSuccess { cr ->
-                                    prefillCustomer = cr.data?.firstOrNull { it.id == customerId }
-                                        ?: cr.data?.firstOrNull()
-                                }
+                            try {
+                                val cr = customerApi.searchCustomers(displayName)
+                                prefillCustomer = cr.data?.firstOrNull { it.id == customerId }
+                                    ?: cr.data?.firstOrNull()
+                            } catch (e: CancellationException) {
+                                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+                            } catch (_: Exception) { /* best-effort */ }
                         }
                     }
                     val notesPrefill = lead.notes?.ifBlank { null }
@@ -188,10 +192,14 @@ class EstimateCreateViewModel @Inject constructor(
                         notes = notesPrefill ?: "",
                         lineItems = valueLine,
                     )
-                }
-                .onFailure {
+                } else {
                     _state.value = _state.value.copy(prefillLoading = false)
                 }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (_: Exception) {
+                _state.value = _state.value.copy(prefillLoading = false)
+            }
         }
     }
 
@@ -210,14 +218,17 @@ class EstimateCreateViewModel @Inject constructor(
         }
         customerSearchJob = viewModelScope.launch {
             delay(300)
-            runCatching { customerApi.searchCustomers(query) }
-                .onSuccess { resp ->
-                    _state.value = _state.value.copy(
-                        customerResults = resp.data ?: emptyList(),
-                        showCustomerDropdown = true,
-                    )
-                }
-                .onFailure { _state.value = _state.value.copy(customerResults = emptyList()) }
+            try {
+                val resp = customerApi.searchCustomers(query)
+                _state.value = _state.value.copy(
+                    customerResults = resp.data ?: emptyList(),
+                    showCustomerDropdown = true,
+                )
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (_: Exception) {
+                _state.value = _state.value.copy(customerResults = emptyList())
+            }
         }
     }
 
@@ -318,15 +329,16 @@ class EstimateCreateViewModel @Inject constructor(
         serviceSearchJob?.cancel()
         serviceSearchJob = viewModelScope.launch {
             _state.value = _state.value.copy(servicesLoading = true)
-            runCatching { repairPricingApi.getServices(query = query) }
-                .onSuccess { resp ->
-                    val items = resp.data ?: DEFAULT_SERVICES
-                    _state.value = _state.value.copy(serviceItems = items, servicesLoading = false)
-                }
-                .onFailure {
-                    // 404 or network: fall back to hardcoded defaults
-                    _state.value = _state.value.copy(serviceItems = DEFAULT_SERVICES, servicesLoading = false)
-                }
+            try {
+                val resp = repairPricingApi.getServices(query = query)
+                val items = resp.data ?: DEFAULT_SERVICES
+                _state.value = _state.value.copy(serviceItems = items, servicesLoading = false)
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (_: Exception) {
+                // 404 or network: fall back to hardcoded defaults
+                _state.value = _state.value.copy(serviceItems = DEFAULT_SERVICES, servicesLoading = false)
+            }
         }
     }
 
@@ -353,14 +365,17 @@ class EstimateCreateViewModel @Inject constructor(
             }
             delay(300)
             _state.value = _state.value.copy(partsLoading = true)
-            runCatching { inventoryApi.getItems(mapOf("search" to query, "pagesize" to "20")) }
-                .onSuccess { resp ->
-                    _state.value = _state.value.copy(
-                        partItems = resp.data?.items ?: emptyList(),
-                        partsLoading = false,
-                    )
-                }
-                .onFailure { _state.value = _state.value.copy(partsLoading = false) }
+            try {
+                val resp = inventoryApi.getItems(mapOf("search" to query, "pagesize" to "20"))
+                _state.value = _state.value.copy(
+                    partItems = resp.data?.items ?: emptyList(),
+                    partsLoading = false,
+                )
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (_: Exception) {
+                _state.value = _state.value.copy(partsLoading = false)
+            }
         }
     }
 
@@ -433,8 +448,8 @@ class EstimateCreateViewModel @Inject constructor(
 
         _state.value = _state.value.copy(loading = true, error = null)
         viewModelScope.launch {
-            runCatching {
-                estimateApi.createEstimate(
+            try {
+                val resp = estimateApi.createEstimate(
                     idempotencyKey = idempotencyKey,
                     request = CreateEstimateRequest(
                         customerId = customerId,
@@ -444,23 +459,22 @@ class EstimateCreateViewModel @Inject constructor(
                         idempotencyKey = idempotencyKey,
                     ),
                 )
-            }
-                .onSuccess { resp ->
-                    if (resp.success && resp.data != null) {
-                        _state.value = _state.value.copy(loading = false, createdId = resp.data.id)
-                    } else {
-                        _state.value = _state.value.copy(
-                            loading = false,
-                            error = resp.message ?: "Failed to create estimate",
-                        )
-                    }
-                }
-                .onFailure { ex ->
+                if (resp.success && resp.data != null) {
+                    _state.value = _state.value.copy(loading = false, createdId = resp.data.id)
+                } else {
                     _state.value = _state.value.copy(
                         loading = false,
-                        error = ex.message ?: "Network error - please try again",
+                        error = resp.message ?: "Failed to create estimate",
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (ex: Exception) {
+                _state.value = _state.value.copy(
+                    loading = false,
+                    error = ex.message ?: "Network error - please try again",
+                )
+            }
         }
     }
 

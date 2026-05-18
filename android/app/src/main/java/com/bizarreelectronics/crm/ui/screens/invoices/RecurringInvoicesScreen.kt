@@ -46,6 +46,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 import javax.inject.Inject
@@ -84,15 +85,16 @@ class RecurringInvoicesViewModel @Inject constructor(
                 error = null,
                 notAvailable = false,
             )
-            runCatching {
-                api.listTemplates(status = _state.value.statusFilter)
-            }.onSuccess { response ->
+            try {
+                val response = api.listTemplates(status = _state.value.statusFilter)
                 _state.value = _state.value.copy(
                     templates = response.data?.templates ?: emptyList(),
                     isLoading = false,
                     isRefreshing = false,
                 )
-            }.onFailure { e ->
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (e: Exception) {
                 val is404 = (e as? HttpException)?.code() == 404
                 _state.value = _state.value.copy(
                     isLoading = false,
@@ -119,18 +121,19 @@ class RecurringInvoicesViewModel @Inject constructor(
         call: suspend () -> Any,
     ) {
         viewModelScope.launch {
-            runCatching { call() }
-                .onSuccess {
-                    _state.value = _state.value.copy(actionMessage = "Template ${action}d")
-                    load(isRefresh = true)
-                }
-                .onFailure { e ->
-                    val is404 = (e as? HttpException)?.code() == 404
-                    _state.value = _state.value.copy(
-                        actionMessage = if (is404) "Action not available on this server"
-                        else (e.message ?: "Action failed"),
-                    )
-                }
+            try {
+                call()
+                _state.value = _state.value.copy(actionMessage = "Template ${action}d")
+                load(isRefresh = true)
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (e: Exception) {
+                val is404 = (e as? HttpException)?.code() == 404
+                _state.value = _state.value.copy(
+                    actionMessage = if (is404) "Action not available on this server"
+                    else (e.message ?: "Action failed"),
+                )
+            }
         }
     }
 

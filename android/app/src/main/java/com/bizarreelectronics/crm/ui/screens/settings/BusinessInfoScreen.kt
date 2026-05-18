@@ -49,6 +49,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -81,27 +82,28 @@ class BusinessInfoViewModel @Inject constructor(
 
     private fun load() {
         viewModelScope.launch {
-            runCatching { settingsApi.getStoreConfig() }
-                .onSuccess { response ->
-                    val cfg = response.data ?: emptyMap()
-                    _uiState.value = BusinessInfoState(
-                        storeName = cfg["store_name"] ?: "",
-                        address = cfg["address"] ?: "",
-                        phone = cfg["phone"] ?: "",
-                        email = cfg["email"] ?: "",
-                        taxId = cfg["tax_id"] ?: "",
-                        socialFacebook = cfg["social_facebook"] ?: "",
-                        socialInstagram = cfg["social_instagram"] ?: "",
-                        socialWebsite = cfg["website"] ?: "",
-                        isLoading = false,
-                    )
-                }
-                .onFailure {
-                    _uiState.value = BusinessInfoState(
-                        isLoading = false,
-                        errorMessage = "Failed to load business info: ${it.message}",
-                    )
-                }
+            try {
+                val response = settingsApi.getStoreConfig()
+                val cfg = response.data ?: emptyMap()
+                _uiState.value = BusinessInfoState(
+                    storeName = cfg["store_name"] ?: "",
+                    address = cfg["address"] ?: "",
+                    phone = cfg["phone"] ?: "",
+                    email = cfg["email"] ?: "",
+                    taxId = cfg["tax_id"] ?: "",
+                    socialFacebook = cfg["social_facebook"] ?: "",
+                    socialInstagram = cfg["social_instagram"] ?: "",
+                    socialWebsite = cfg["website"] ?: "",
+                    isLoading = false,
+                )
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (e: Exception) {
+                _uiState.value = BusinessInfoState(
+                    isLoading = false,
+                    errorMessage = "Failed to load business info: ${e.message}",
+                )
+            }
         }
     }
 
@@ -113,7 +115,7 @@ class BusinessInfoViewModel @Inject constructor(
         val s = _uiState.value
         _uiState.value = s.copy(isSaving = true, errorMessage = null)
         viewModelScope.launch {
-            runCatching {
+            try {
                 settingsApi.putStoreConfig(
                     mapOf(
                         "store_name" to s.storeName,
@@ -126,16 +128,15 @@ class BusinessInfoViewModel @Inject constructor(
                         "website" to s.socialWebsite,
                     )
                 )
+                _uiState.value = _uiState.value.copy(isSaving = false, savedOk = true)
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isSaving = false,
+                    errorMessage = "Save failed: ${e.message}",
+                )
             }
-                .onSuccess {
-                    _uiState.value = _uiState.value.copy(isSaving = false, savedOk = true)
-                }
-                .onFailure {
-                    _uiState.value = _uiState.value.copy(
-                        isSaving = false,
-                        errorMessage = "Save failed: ${it.message}",
-                    )
-                }
         }
     }
 

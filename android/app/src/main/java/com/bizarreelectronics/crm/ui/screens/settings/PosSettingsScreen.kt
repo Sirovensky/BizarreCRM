@@ -21,6 +21,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -82,7 +83,7 @@ class PosSettingsViewModel @Inject constructor(
                 val taxResp = settingsApi.getTaxClasses()
                 val taxClasses = taxResp.data?.taxClasses ?: emptyList()
 
-                val pmResp = runCatching { settingsApi.getPaymentMethods() }.getOrNull()
+                val pmResp = try { settingsApi.getPaymentMethods() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
                 val paymentMethods = pmResp?.data?.mapNotNull { it["name"] as? String } ?: emptyList()
 
                 _uiState.value = PosSettingsUiState(
@@ -92,6 +93,8 @@ class PosSettingsViewModel @Inject constructor(
                     tipPresets = cfg["tip_presets"] ?: "10,15,20",
                     cashDrawerEnabled = cfg["cash_drawer_enabled"]?.let { it == "1" || it == "true" } ?: false,
                 )
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: "Failed to load POS settings")
             }
@@ -101,8 +104,12 @@ class PosSettingsViewModel @Inject constructor(
     fun setCashDrawerEnabled(enabled: Boolean) {
         _uiState.value = _uiState.value.copy(cashDrawerEnabled = enabled)
         viewModelScope.launch {
-            runCatching {
+            try {
                 settingsApi.putStoreConfig(mapOf("cash_drawer_enabled" to if (enabled) "1" else "0"))
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (_: Exception) {
+                // best-effort save
             }
             // NOTE: server stores but POS consumer reads not yet wired (65/70 unenforced)
         }
@@ -111,8 +118,12 @@ class PosSettingsViewModel @Inject constructor(
     fun setTipPresets(presets: String) {
         _uiState.value = _uiState.value.copy(tipPresets = presets)
         viewModelScope.launch {
-            runCatching {
+            try {
                 settingsApi.putStoreConfig(mapOf("tip_presets" to presets))
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (_: Exception) {
+                // best-effort save
             }
             // NOTE: PosScreen does not currently read tip_presets from server (consumer gap)
         }

@@ -33,6 +33,7 @@ import com.bizarreelectronics.crm.util.DateFormatter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 import javax.inject.Inject
@@ -65,16 +66,17 @@ class TeamInboxViewModel @Inject constructor(
     fun loadInbox() {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = _state.value.conversations.isEmpty(), error = null)
-            runCatching {
+            try {
                 val unread = if (_state.value.showUnreadOnly) true else null
-                inboxApi.getInbox(unread = unread)
-            }.onSuccess { resp ->
+                val resp = inboxApi.getInbox(unread = unread)
                 _state.value = _state.value.copy(
                     isLoading = false,
                     isRefreshing = false,
                     conversations = resp.data?.conversations ?: emptyList(),
                 )
-            }.onFailure { e ->
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (e: Exception) {
                 val is404 = (e as? HttpException)?.code() == 404
                 _state.value = _state.value.copy(
                     isLoading = false,
@@ -106,10 +108,13 @@ class TeamInboxViewModel @Inject constructor(
             },
         )
         viewModelScope.launch {
-            runCatching { inboxApi.assignConversation(conversationId, InboxAssignRequest(userId)) }
-                .onFailure {
-                    _state.value = _state.value.copy(actionMessage = "Assign failed — please retry")
-                }
+            try {
+                inboxApi.assignConversation(conversationId, InboxAssignRequest(userId))
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (_: Exception) {
+                _state.value = _state.value.copy(actionMessage = "Assign failed — please retry")
+            }
         }
     }
 

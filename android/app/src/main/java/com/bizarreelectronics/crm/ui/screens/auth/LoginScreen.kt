@@ -101,6 +101,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -1471,7 +1472,7 @@ class LoginViewModel @Inject constructor(
      */
     fun stashCredentialsBiometric(activity: FragmentActivity, username: String, password: String) {
         viewModelScope.launch {
-            runCatching {
+            try {
                 val encryptCipher = biometricCredentialStore.createEncryptCipher()
                 val authenticatedCipher = biometricAuth.encryptWithBiometric(activity, encryptCipher)
                     ?: return@launch // user cancelled — no-op
@@ -1481,8 +1482,11 @@ class LoginViewModel @Inject constructor(
                     authPreferences.biometricCredentialsEnabled = true
                     _state.value = _state.value.copy(biometricEnabled = true)
                 }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (_: Exception) {
+                // Swallow any Keystore/crypto errors — biometric stash is best-effort.
             }
-            // Swallow any Keystore/crypto errors — biometric stash is best-effort.
         }
     }
 
@@ -1506,7 +1510,7 @@ class LoginViewModel @Inject constructor(
 
         _state.value = _state.value.copy(isBiometricAutoLoginInFlight = true)
         viewModelScope.launch {
-            runCatching {
+            try {
                 val decryptCipher = biometricCredentialStore.createDecryptCipher(iv)
                 val authenticatedCipher = biometricAuth.decryptWithBiometric(activity, decryptCipher, iv)
                 if (authenticatedCipher == null) {
@@ -1541,7 +1545,9 @@ class LoginViewModel @Inject constructor(
                         _state.value = _state.value.copy(isBiometricAutoLoginInFlight = false)
                     }
                 }
-            }.onFailure {
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (_: Exception) {
                 _state.value = _state.value.copy(isBiometricAutoLoginInFlight = false)
             }
         }
