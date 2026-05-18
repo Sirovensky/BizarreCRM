@@ -94,7 +94,27 @@ public final class AppointmentKanbanViewModel {
 
     private func apptDate(_ appt: Appointment) -> Date {
         guard let s = appt.startTime else { return Date.distantPast }
-        return ISO8601DateFormatter().date(from: s) ?? Date.distantPast
+        // BUGHUNT-2026-05-18: ISO8601DateFormatter() with default options
+        // rejected millisecond-precision strings from Node Date.toISOString
+        // — all appointments fell back to .distantPast, collapsing onto the
+        // 8 AM slot and breaking the kanban day view.
+        return Self.parseApptIso(s) ?? Date.distantPast
+    }
+
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    fileprivate static func parseApptIso(_ raw: String) -> Date? {
+        isoFractional.date(from: raw) ?? isoPlain.date(from: raw)
     }
 
     // MARK: Helpers
@@ -241,7 +261,12 @@ public struct AppointmentKanbanView: View {
             .draggable(AppointmentDragPayload(
                 appointmentId: appt.id,
                 originalStaffId: appt.assignedTo,
-                originalStart: ISO8601DateFormatter().date(from: appt.startTime ?? "") ?? Date()
+                // BUGHUNT-2026-05-18: see apptDate — same fix so the drag
+                // origin reflects the real start time, not Date() (= now),
+                // which would make every reschedule diff appear to start
+                // "from this moment" regardless of where the appointment
+                // actually was.
+                originalStart: AppointmentKanbanView.parseApptIso(appt.startTime ?? "") ?? Date()
             ))
             .accessibilityLabel("\(appt.title ?? "Appointment") — drag to reschedule")
     }
