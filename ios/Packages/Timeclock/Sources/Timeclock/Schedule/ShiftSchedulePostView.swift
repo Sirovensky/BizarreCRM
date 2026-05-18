@@ -343,8 +343,8 @@ private struct AddShiftSheet: View {
     @Environment(\.dismiss) private var dismiss
     let onAdd: (CreateScheduledShiftBody) -> Void
     @State private var employeeId: Int64 = 0
-    @State private var startAt: String = ""
-    @State private var endAt: String = ""
+    @State private var startAt: String = Self.formatISO(Self.defaultStart)
+    @State private var endAt: String = Self.formatISO(Self.defaultEnd)
 
     var body: some View {
         NavigationStack {
@@ -354,12 +354,28 @@ private struct AddShiftSheet: View {
                     .keyboardType(.numberPad)
                     #endif
                     .accessibilityLabel("Employee ID")
-                TextField("Start (ISO-8601)", text: $startAt)
-                    .autocorrectionDisabled()
-                    .accessibilityLabel("Shift start time")
-                TextField("End (ISO-8601)", text: $endAt)
-                    .autocorrectionDisabled()
-                    .accessibilityLabel("Shift end time")
+                // BUGHUNT-2026-05-18: free-text ISO-8601 fields. See the
+                // matching ClockEntryEditSheet fix — managers should never
+                // be typing ISO timestamps by hand.
+                DatePicker(
+                    "Start",
+                    selection: Binding(
+                        get: { Self.parseISO(startAt) ?? Self.defaultStart },
+                        set: { startAt = Self.formatISO($0) }
+                    ),
+                    displayedComponents: [.date, .hourAndMinute]
+                )
+                .accessibilityLabel("Shift start time")
+                DatePicker(
+                    "End",
+                    selection: Binding(
+                        get: { Self.parseISO(endAt) ?? Self.defaultEnd },
+                        set: { endAt = Self.formatISO($0) }
+                    ),
+                    in: (Self.parseISO(startAt) ?? .distantPast)...,
+                    displayedComponents: [.date, .hourAndMinute]
+                )
+                .accessibilityLabel("Shift end time")
             }
             .navigationTitle("Add Shift")
             #if canImport(UIKit)
@@ -385,5 +401,32 @@ private struct AddShiftSheet: View {
             }
         }
         .presentationDetents([.medium])
+    }
+
+    /// Default to a 9–17 shift on the current day so the picker has a sane
+    /// seed rather than `Date()` (typical mid-afternoon today).
+    private static var defaultStart: Date {
+        Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: Date()) ?? Date()
+    }
+    private static var defaultEnd: Date {
+        Calendar.current.date(bySettingHour: 17, minute: 0, second: 0, of: Date()) ?? Date()
+    }
+    /// ISO-8601 adapter shared with ClockEntryEditSheet.
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    fileprivate static func parseISO(_ raw: String) -> Date? {
+        if let d = isoFractional.date(from: raw) { return d }
+        return isoPlain.date(from: raw)
+    }
+    fileprivate static func formatISO(_ date: Date) -> String {
+        isoPlain.string(from: date)
     }
 }
