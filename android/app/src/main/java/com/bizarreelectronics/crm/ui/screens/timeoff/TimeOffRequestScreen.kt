@@ -1,6 +1,7 @@
 package com.bizarreelectronics.crm.ui.screens.timeoff
 
 import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +23,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -36,6 +39,7 @@ import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -250,11 +254,60 @@ private fun SubmitRequestDialog(
     onDismiss: () -> Unit,
     onConfirm: (startDate: String, endDate: String, type: TimeOffType, reason: String) -> Unit,
 ) {
-    var startDate by remember { mutableStateOf("") }
-    var endDate by remember { mutableStateOf("") }
+    // BUGHUNT-2026-05-18: start/end were free-text "YYYY-MM-DD" inputs.
+    // Hand-typed strings invited typos that hit a server 400; replaced
+    // with DatePickerDialogs anchored to two read-only fields. Matches the
+    // iOS DatePicker swap on commits c165032b / dca84360.
+    val today = java.time.LocalDate.now()
+    var startDate by remember { mutableStateOf(today.toString()) }
+    var endDate by remember { mutableStateOf(today.toString()) }
     var selectedType by remember { mutableStateOf(TimeOffType.Vacation) }
     var reason by remember { mutableStateOf("") }
     var typeExpanded by remember { mutableStateOf(false) }
+    var showStartPicker by remember { mutableStateOf(false) }
+    var showEndPicker by remember { mutableStateOf(false) }
+
+    fun millisToIso(millis: Long): String =
+        java.time.Instant.ofEpochMilli(millis)
+            .atZone(java.time.ZoneId.systemDefault())
+            .toLocalDate()
+            .toString()
+
+    if (showStartPicker) {
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = System.currentTimeMillis(),
+        )
+        DatePickerDialog(
+            onDismissRequest = { showStartPicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { startDate = millisToIso(it) }
+                    showStartPicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showStartPicker = false }) { Text("Cancel") }
+            },
+        ) { DatePicker(state = pickerState) }
+    }
+
+    if (showEndPicker) {
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = System.currentTimeMillis(),
+        )
+        DatePickerDialog(
+            onDismissRequest = { showEndPicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { endDate = millisToIso(it) }
+                    showEndPicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEndPicker = false }) { Text("Cancel") }
+            },
+        ) { DatePicker(state = pickerState) }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -263,17 +316,33 @@ private fun SubmitRequestDialog(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = startDate,
-                    onValueChange = { startDate = it },
-                    label = { Text("Start Date (YYYY-MM-DD)") },
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Start Date") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showStartPicker = true },
+                    trailingIcon = {
+                        IconButton(onClick = { showStartPicker = true }) {
+                            Icon(Icons.Default.BeachAccess, contentDescription = "Pick start date")
+                        }
+                    },
                 )
                 OutlinedTextField(
                     value = endDate,
-                    onValueChange = { endDate = it },
-                    label = { Text("End Date (YYYY-MM-DD)") },
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("End Date") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showEndPicker = true },
+                    trailingIcon = {
+                        IconButton(onClick = { showEndPicker = true }) {
+                            Icon(Icons.Default.BeachAccess, contentDescription = "Pick end date")
+                        }
+                    },
                 )
                 ExposedDropdownMenuBox(
                     expanded = typeExpanded,
@@ -307,6 +376,9 @@ private fun SubmitRequestDialog(
                     label = { Text("Reason (optional)") },
                     minLines = 2,
                     maxLines = 3,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences,
+                    ),
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
