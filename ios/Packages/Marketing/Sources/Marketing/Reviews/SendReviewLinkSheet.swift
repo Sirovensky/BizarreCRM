@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import DesignSystem
 
 // MARK: - SendReviewLinkViewModel
@@ -22,6 +23,13 @@ public final class SendReviewLinkViewModel {
     }
 
     public func send() async {
+        // BUGHUNT-2026-05-17: synchronous re-entry guard. The button's
+        // `.disabled(vm.isSending)` modifier is a UI gate evaluated on the
+        // next render — a fast double-tap fires two `Task { await vm.send() }`
+        // before SwiftUI re-renders, so both could pass the in-method
+        // `isSending = true` race window and POST `/reviews/send` twice,
+        // dispatching duplicate review-request SMS to the customer.
+        guard !isSending else { return }
         isSending = true
         errorMessage = nil
         do {
@@ -29,6 +37,15 @@ public final class SendReviewLinkViewModel {
             didSend = true
         } catch ReviewSolicitationError.rateLimited(let days) {
             errorMessage = "Review request already sent. You can send again in \(days) day\(days == 1 ? "" : "s")."
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: cancellation (sheet dismiss, sign-out, task
+            // teardown) was being painted as a generic "cancelled" error toast
+            // and resetting `isSending` so a re-tap was inviting. The actual
+            // POST may already have succeeded server-side — painting a fake
+            // error tempts the operator to re-send and dispatch a duplicate
+            // SMS. Clear the message and leave `didSend` false so any retry
+            // is intentional.
+            errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
         }
