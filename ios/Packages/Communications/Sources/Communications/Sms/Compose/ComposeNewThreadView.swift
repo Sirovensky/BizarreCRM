@@ -152,6 +152,7 @@ public struct ComposeNewThreadView: View {
                 .padding(.horizontal, BrandSpacing.md)
             TextField("+1 (555) 000-0000", text: $vm.rawPhone)
                 .keyboardType(.phonePad)
+                .textContentType(.telephoneNumber)
                 .autocorrectionDisabled()
                 .padding(BrandSpacing.sm)
                 .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
@@ -169,6 +170,9 @@ public struct ComposeNewThreadView: View {
             } else {
                 TextField("Search customer name or phone", text: $vm.searchQuery)
                     .autocorrectionDisabled()
+                    #if canImport(UIKit)
+                    .textInputAutocapitalization(.never)
+                    #endif
                     .padding(BrandSpacing.sm)
                     .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
                     .padding(.horizontal, BrandSpacing.md)
