@@ -61,6 +61,9 @@ public final class PurchaseOrderComposeViewModel {
         do {
             suppliers = try await supplierRepo.list()
             if selectedSupplierId == nil { selectedSupplierId = suppliers.first?.id }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: supplier-picker load cancelled on sheet dismiss; silent return — no banner needed.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
