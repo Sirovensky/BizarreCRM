@@ -90,9 +90,16 @@ final class SyncOrchestrator {
             // state flip. Simpler than bridging to an AsyncSequence.
             var wasOnline = Reachability.shared.isOnline
             while !Task.isCancelled {
+                // BUGHUNT-2026-05-18: break on weak-self deinit so the 2s
+                // poll doesn't spin forever after the orchestrator goes
+                // away. The optional chain `self?.flushIfAllowed` silently
+                // no-ops post-deinit but the loop still burns the wakeup
+                // budget and a sample of the @Observable property every
+                // 2 seconds for the lifetime of the process.
+                guard let strongSelf = self else { break }
                 let current = Reachability.shared.isOnline
                 if current, !wasOnline {
-                    await self?.flushIfAllowed(reason: "network-up", force: true)
+                    await strongSelf.flushIfAllowed(reason: "network-up", force: true)
                 }
                 wasOnline = current
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
