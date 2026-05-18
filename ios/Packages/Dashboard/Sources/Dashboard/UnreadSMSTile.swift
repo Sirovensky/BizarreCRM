@@ -21,6 +21,13 @@ public final class UnreadSMSViewModel {
 
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private var pollTask: Task<Void, Never>?
+    // BUGHUNT-2026-05-17: track the initial `Task { await load() }` spawned
+    // by `startPolling()`. Previously that Task was orphaned — a second
+    // call to startPolling (view re-appears, .task fires again) left the
+    // first load Task running in parallel with the new polling loop, so
+    // two /sms/unread-count fetches could land out-of-order and the badge
+    // would briefly snap back to a stale count.
+    @ObservationIgnored private var initialLoadTask: Task<Void, Never>?
 
     public init(api: APIClient) {
         self.api = api
@@ -28,7 +35,6 @@ public final class UnreadSMSViewModel {
 
     public func load() async {
         isLoading = true
-        defer { isLoading = false }
         // Fetch SMS unread count and team inbox count in parallel.
         async let smsTask: Int = {
             do { return try await api.smsUnreadCount() }
@@ -37,14 +43,22 @@ public final class UnreadSMSViewModel {
         async let inboxTask: Int? = (try? await api.teamInboxCount())
         let sms = await smsTask
         let inbox = await inboxTask
+        // BUGHUNT-2026-05-17: if a newer poll cycle cancelled us mid-flight,
+        // skip painting stale counts onto the newer task's freshly loaded
+        // values. Don't clear isLoading either — newer task owns it.
+        if Task.isCancelled { return }
         unreadCount = sms
         inboxCount = inbox ?? nil
+        isLoading = false
     }
 
     /// Auto-refresh every 60s while the dashboard is foregrounded.
     public func startPolling() {
         pollTask?.cancel()
-        Task { await load() }
+        initialLoadTask?.cancel()
+        initialLoadTask = Task { @MainActor [weak self] in
+            await self?.load()
+        }
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 60_000_000_000)
@@ -60,6 +74,8 @@ public final class UnreadSMSViewModel {
     public func stopPolling() {
         pollTask?.cancel()
         pollTask = nil
+        initialLoadTask?.cancel()
+        initialLoadTask = nil
     }
 }
 
