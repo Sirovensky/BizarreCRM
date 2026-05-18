@@ -67,6 +67,7 @@ import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.theme.SuccessGreen
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -188,7 +189,7 @@ class ShiftsScheduleViewModel @Inject constructor(
             val startAt = "${day}T${startTime}:00"
             val endAt = "${day}T${endTime}:00"
             _state.value = _state.value.copy(showAddShift = false)
-            runCatching {
+            try {
                 shiftsApi.createShift(
                     CreateShiftBody(
                         userId = employeeId,
@@ -197,16 +198,20 @@ class ShiftsScheduleViewModel @Inject constructor(
                         notes = notes.ifBlank { null },
                     ),
                 )
+                _state.value = _state.value.copy(actionMessage = "Shift added")
+                loadShifts()
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: runCatching swallowed CancellationException
+                // and painted "Failed to add shift" on dialog dismiss / back-nav,
+                // tempting a re-tap that would create a duplicate shift row for
+                // the same employee/start/end window. createShift has no
+                // server-side dedup. Re-throw so the launch dies cleanly.
+                throw e
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    actionMessage = e.message ?: "Failed to add shift",
+                )
             }
-                .onSuccess {
-                    _state.value = _state.value.copy(actionMessage = "Shift added")
-                    loadShifts()
-                }
-                .onFailure {
-                    _state.value = _state.value.copy(
-                        actionMessage = it.message ?: "Failed to add shift",
-                    )
-                }
         }
     }
 
@@ -222,14 +227,19 @@ class ShiftsScheduleViewModel @Inject constructor(
         val id = _state.value.pendingDeleteId ?: return
         viewModelScope.launch {
             _state.value = _state.value.copy(pendingDeleteId = null)
-            runCatching { shiftsApi.deleteShift(id) }
-                .onSuccess {
-                    _state.value = _state.value.copy(actionMessage = "Shift deleted")
-                    loadShifts()
-                }
-                .onFailure {
-                    _state.value = _state.value.copy(actionMessage = it.message ?: "Failed to delete shift")
-                }
+            try {
+                shiftsApi.deleteShift(id)
+                _state.value = _state.value.copy(actionMessage = "Shift deleted")
+                loadShifts()
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: runCatching swallowed CancellationException
+                // and painted "Failed to delete shift" on back-nav, tempting a
+                // re-tap. Delete is idempotent server-side, but bad UX and the
+                // toast is misleading. Re-throw so the launch dies cleanly.
+                throw e
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(actionMessage = e.message ?: "Failed to delete shift")
+            }
         }
     }
 
