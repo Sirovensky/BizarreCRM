@@ -111,8 +111,25 @@ public final class PendingApprovalsViewModel {
         let pending = group.entries.filter { $0.status == .pending }
         guard !pending.isEmpty else { return }
 
+        // BUGHUNT-2026-05-17: re-entry guard. Without this a double-tap on
+        // "Approve all" fires two sequential loops over the same pending
+        // entries — the second loop sees them already approved and either
+        // double-stamps the audit log or 409s confusingly.
+        if case .processing = bulkState { return }
         bulkState = .processing
         for item in pending {
+            // BUGHUNT-2026-05-17: bulk operation must re-throw inner
+            // CancellationError. ApprovalActionViewModel.approve was
+            // updated to roll cancellation back to .idle (so single-entry
+            // taps reconcile rather than mislead). That made this loop
+            // silently continue with default:break on a cancelled task,
+            // firing PATCHes for every remaining entry even after the
+            // manager backed out. Check the parent task's cancellation
+            // before each iteration and bail to .idle.
+            if Task.isCancelled {
+                bulkState = .idle
+                return
+            }
             let actionVM = ApprovalActionViewModel(entry: item.entry, api: api)
             await actionVM.approve()
             switch actionVM.actionState {
@@ -120,6 +137,11 @@ public final class PendingApprovalsViewModel {
                 applyStatus(.approved, toEntryId: item.entry.id)
             case let .failed(msg):
                 bulkState = .failed(msg)
+                return
+            case .idle:
+                // The inner approve was cancelled. Stop the bulk loop —
+                // continuing would fire PATCHes the manager doesn't want.
+                bulkState = .idle
                 return
             default:
                 break
