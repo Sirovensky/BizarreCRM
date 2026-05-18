@@ -52,6 +52,7 @@ import com.bizarreelectronics.crm.ui.theme.SuccessGreen
 import com.bizarreelectronics.crm.widget.glance.publishClockState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -124,10 +125,17 @@ class ClockInTileViewModel @Inject constructor(
         val userId = authPreferences.userId ?: run { onFallbackToScreen(); return }
         val isClockedIn = currentState.isClockedIn
 
+        // BUGHUNT-2026-05-17: re-entry guard. A fast double-tap on the tile
+        // could enter toggle() twice before isLoading propagates back to the
+        // composable, dispatching two clockIn (or two clockOut) POSTs in
+        // parallel. Two clock-in rows for the same employee in the same
+        // minute confuses payroll calculations.
+        if (currentState.isLoading) return
+
         _state.value = currentState.copy(isLoading = true)
 
         viewModelScope.launch {
-            runCatching {
+            try {
                 if (isClockedIn == true) {
                     settingsApi.clockOut(userId, emptyMap())
                     _state.value = _state.value.copy(isClockedIn = false, isLoading = false)
@@ -142,9 +150,23 @@ class ClockInTileViewModel @Inject constructor(
                     broadcastClockState(isClockedIn = true)
                     onSuccess("Clocked in at $timeStr")
                 }
-            }.onFailure {
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation. The clockIn /
+                // clockOut POSTs write a row in the timeclock table that
+                // payroll bills against. runCatching previously caught
+                // CancellationException and triggered onFallbackToScreen(),
+                // sending the user to the full ClockInOutScreen while the
+                // local isClockedIn state is unchanged from BEFORE the POST.
+                // The user, seeing "still clocked out" on that screen,
+                // taps Clock In again -> a SECOND timeclock row is written
+                // and payroll double-counts the entry. Clear isLoading so
+                // the next tap from a re-entered screen is not blocked,
+                // then propagate so structured concurrency tears down.
                 _state.value = _state.value.copy(isLoading = false)
-                android.util.Log.w("ClockInTile", "toggle failed: ${it.message}")
+                throw e
+            } catch (e: Throwable) {
+                _state.value = _state.value.copy(isLoading = false)
+                android.util.Log.w("ClockInTile", "toggle failed: ${e.message}")
                 onFallbackToScreen()
             }
         }
