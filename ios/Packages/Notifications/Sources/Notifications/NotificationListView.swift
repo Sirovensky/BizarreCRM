@@ -66,6 +66,13 @@ public final class NotificationListViewModel {
         items[idx] = previous.flippedRead()
         do {
             _ = try await api.markNotificationRead(id: id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: cancellation mid-flight may have landed
+            // server-side already. Reverting the optimistic flip would lie
+            // about server state. Keep the optimistic value; next list
+            // refresh reconciles. Don't paint an error toast (it tempted
+            // re-swipe which double-PUTs and audit-logs the same row twice).
+            return
         } catch {
             // Revert — server couldn't mark; show an error toast.
             items[idx] = previous
@@ -79,6 +86,11 @@ public final class NotificationListViewModel {
         do {
             let resp = try await api.markAllNotificationsRead()
             successBanner = "Marked \(resp.updated ?? previous.filter { !$0.read }.count) as read"
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: same as markRead — server may have processed
+            // the bulk PATCH before cancellation. Reverting would lie about
+            // server state. Stay optimistic; reload reconciles.
+            return
         } catch {
             items = previous
             errorMessage = "Couldn't mark all as read."
