@@ -100,6 +100,9 @@ public struct CampaignCreateView: View {
         Section("Campaign name") {
             TextField("e.g. Summer Re-engagement", text: $vm.name)
                 .font(.brandBodyLarge())
+                #if canImport(UIKit)
+                .textInputAutocapitalization(.words)
+                #endif
                 .accessibilityLabel("Campaign name")
                 .accessibilityIdentifier("marketing.campaign.name")
         }
@@ -226,6 +229,9 @@ public struct CampaignCreateView: View {
         Section("Email Subject") {
             TextField("e.g. We miss you!", text: $vm.templateSubject)
                 .font(.brandBodyMedium())
+                #if canImport(UIKit)
+                .textInputAutocapitalization(.sentences)
+                #endif
                 .accessibilityLabel("Email subject")
                 .accessibilityIdentifier("marketing.campaign.subject")
         }

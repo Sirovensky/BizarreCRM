@@ -85,13 +85,13 @@ struct CustomerFormCoreSection: View {
     var body: some View {
         Group {
             Section("Name") {
-                LabeledTextField("First name", text: $firstName, contentType: .givenName)
+                LabeledTextField("First name", text: $firstName, contentType: .givenName, autocapitalize: .words)
                     .focused($focus, equals: .firstName).submitLabel(.next).onSubmit { focus = .lastName }
                     .accessibilityLabel("First name")
-                LabeledTextField("Last name", text: $lastName, contentType: .familyName)
+                LabeledTextField("Last name", text: $lastName, contentType: .familyName, autocapitalize: .words)
                     .focused($focus, equals: .lastName).submitLabel(.next).onSubmit { focus = .organization }
                     .accessibilityLabel("Last name")
-                LabeledTextField("Organization", text: $organization, contentType: .organizationName)
+                LabeledTextField("Organization", text: $organization, contentType: .organizationName, autocapitalize: .words)
                     .focused($focus, equals: .organization).submitLabel(.next).onSubmit { focus = .phone }
                     .accessibilityLabel("Organization")
             }
@@ -113,13 +113,13 @@ struct CustomerFormCoreSection: View {
             // chain so hardware-keyboard users can traverse the whole form
             // without lifting their hands.
             Section("Address") {
-                LabeledTextField("Street", text: $address1, contentType: .streetAddressLine1)
+                LabeledTextField("Street", text: $address1, contentType: .streetAddressLine1, autocapitalize: .words)
                     .focused($focus, equals: .address1).submitLabel(.next).onSubmit { focus = .city }
                     .accessibilityLabel("Street address")
-                LabeledTextField("City", text: $city, contentType: .addressCity)
+                LabeledTextField("City", text: $city, contentType: .addressCity, autocapitalize: .words)
                     .focused($focus, equals: .city).submitLabel(.next).onSubmit { focus = .state }
                     .accessibilityLabel("City")
-                LabeledTextField("State", text: $state, contentType: .addressState)
+                LabeledTextField("State", text: $state, contentType: .addressState, autocapitalize: .words)
                     .focused($focus, equals: .state).submitLabel(.next).onSubmit { focus = .postcode }
                     .accessibilityLabel("State")
                 LabeledTextField("Postal code", text: $postcode, contentType: .postalCode,

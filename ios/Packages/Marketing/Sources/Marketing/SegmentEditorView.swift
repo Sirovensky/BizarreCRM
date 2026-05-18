@@ -57,6 +57,9 @@ public struct SegmentEditorView: View {
         Section("Segment name") {
             TextField("e.g. VIP Customers", text: $vm.name)
                 .font(.brandBodyLarge())
+                #if canImport(UIKit)
+                .textInputAutocapitalization(.words)
+                #endif
                 .accessibilityLabel("Segment name")
                 .accessibilityIdentifier("marketing.segment.name")
         }
