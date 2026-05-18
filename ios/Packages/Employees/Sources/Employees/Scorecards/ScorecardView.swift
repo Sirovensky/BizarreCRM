@@ -50,6 +50,10 @@ public final class ScorecardViewModel {
         errorMessage = nil
         do {
             scorecard = try await api.fetchScorecard(employeeId: employeeId, windowDays: selectedWindow.rawValue)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: window swap cancels prior fetch; keep
+            // prior scorecard visible.
+            return
         } catch {
             AppLog.ui.error("Scorecard load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
