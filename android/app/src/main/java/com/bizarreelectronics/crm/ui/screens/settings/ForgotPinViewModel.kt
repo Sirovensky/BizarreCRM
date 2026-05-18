@@ -10,6 +10,7 @@ import com.bizarreelectronics.crm.util.Argon2idHasher
 import com.bizarreelectronics.crm.util.DeepLinkBus
 import com.bizarreelectronics.crm.util.PinBlocklist
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -126,14 +127,26 @@ class ForgotPinViewModel @Inject constructor(
         }
         viewModelScope.launch {
             _state.value = UiState.RequestingEmail
-            runCatching { authApi.requestForgotPin(ForgotPinRequest(email.trim())) }
-                .onSuccess { _state.value = UiState.EmailSent }
-                .onFailure { t ->
-                    _state.value = when {
-                        t is HttpException && t.code() == 404 -> UiState.FeatureDisabled
-                        else -> UiState.Error(t.message ?: "Request failed. Try again.")
-                    }
+            try {
+                authApi.requestForgotPin(ForgotPinRequest(email.trim()))
+                _state.value = UiState.EmailSent
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation. The POST
+                // /auth/forgot-pin/request triggers the server to send a
+                // password-reset email. If runCatching had caught the
+                // CancellationException, the user would see "Request
+                // failed" and likely re-tap Submit, dispatching a
+                // SECOND reset email. The email contains a one-time
+                // token, so two emails arrive with different tokens
+                // and the user is confused about which to use (the
+                // older one is still valid until it expires).
+                throw e
+            } catch (t: Throwable) {
+                _state.value = when {
+                    t is HttpException && t.code() == 404 -> UiState.FeatureDisabled
+                    else -> UiState.Error(t.message ?: "Request failed. Try again.")
                 }
+            }
         }
     }
 
@@ -176,19 +189,30 @@ class ForgotPinViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            runCatching {
+            try {
                 authApi.confirmForgotPin(ForgotPinConfirm(token = token, newPin = newPin))
+                commitPin(newPin)
+                _state.value = UiState.Success
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation. The POST
+                // /auth/forgot-pin/confirm may have already rotated the
+                // PIN server-side AND consumed the one-time reset token.
+                // If runCatching swallowed the CancellationException,
+                // the user would see "PIN reset failed" but NEVER hit
+                // commitPin() - so the local PinPreferences hash never
+                // updates. Result: server has new PIN, device has old
+                // PIN, user is locked out of offline-verify until they
+                // log in fresh. Re-tapping won't help either - the
+                // token is already consumed, returning a non-404 error.
+                // Propagate cleanly so the device's PIN entry flow
+                // recovers via the normal login path.
+                throw e
+            } catch (t: Throwable) {
+                _state.value = when {
+                    t is HttpException && t.code() == 404 -> UiState.FeatureDisabled
+                    else -> UiState.Error(t.message ?: "PIN reset failed. Try again.")
+                }
             }
-                .onSuccess {
-                    commitPin(newPin)
-                    _state.value = UiState.Success
-                }
-                .onFailure { t ->
-                    _state.value = when {
-                        t is HttpException && t.code() == 404 -> UiState.FeatureDisabled
-                        else -> UiState.Error(t.message ?: "PIN reset failed. Try again.")
-                    }
-                }
         }
     }
 

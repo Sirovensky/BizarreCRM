@@ -108,7 +108,16 @@ public actor SyncFlusher {
 
             do {
                 try await handler(record)
-                try await SyncQueueStore.shared.markSucceeded(id)
+                // BUGHUNT-2026-05-17: the handler returned — server confirmed
+                // the op. The local-side `markSucceeded` must complete even if
+                // the flush Task is cancelled in the gap between the handler
+                // returning and SQLite committing. Otherwise the catch below
+                // marks the row cancelled → queued, and the next flush replays
+                // the same handler against the same server-confirmed payload.
+                // For non-idempotent ops (or any op whose idempotency_key
+                // dedupe expired) that's a duplicate write. Spawn the SQLite
+                // delete as an unstructured Task that survives cancellation.
+                Task { try? await SyncQueueStore.shared.markSucceeded(id) }
                 AppLog.sync.info("sync replay OK: \(kind, privacy: .public) id=\(id)")
             } catch is CancellationError {
                 // Reset back to `queued` so the next syncNow() can pick the

@@ -200,15 +200,32 @@ public final class SyncManager {
             }
 
             try await executor.execute(op)
-            try await SyncQueueStore.shared.markSucceeded(id)
+            // BUGHUNT-2026-05-17: once `executor.execute` returns the server
+            // has confirmed the op. If the drain Task is cancelled between
+            // this line and `markSucceeded(id)`, the cancellation propagates
+            // into the GRDB call and the row stays at `inFlight`. The catch
+            // below then routes it through `markCancelled` → `queued` — and
+            // the next syncNow() re-issues the *already-applied* server call.
+            // For non-idempotent operations (no idempotency_key dedupe on the
+            // server) that means duplicate writes; for money/auth ops that
+            // means real damage. Spawn the local-side write as an unstructured
+            // Task so the SQLite update completes regardless of upstream
+            // cancellation. Same shape as the markCancelled emergency hook in
+            // SyncFlusher.flush.
+            Task { try? await SyncQueueStore.shared.markSucceeded(id) }
             AppLog.sync.debug("Op \(id, privacy: .public) succeeded")
 
             // If the op was a pull, update SyncStateStore cursor.
+            // BUGHUNT-2026-05-17: same race — cursor advancement must outlive
+            // cancellation, otherwise next sync replays the same delta page
+            // and the user sees duplicate inserts/upserts churn through GRDB.
             if op.op == "pull", let entity = op.entity {
-                try await SyncStateStore.shared.upsert(
-                    entity: entity,
-                    lastUpdatedAt: Date()
-                )
+                Task {
+                    try? await SyncStateStore.shared.upsert(
+                        entity: entity,
+                        lastUpdatedAt: Date()
+                    )
+                }
             }
 
         } catch is CancellationError {
