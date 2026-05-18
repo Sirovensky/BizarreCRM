@@ -56,6 +56,31 @@ public actor Database {
         // TODO: add `grdb-sqlcipher` SPM dep and re-enable `db.usePassphrase(_:)`.
         _ = try DatabasePassphrase.loadOrCreate()
 
+        // BUGHUNT-2026-05-17: consume any pending Settings → Restore from
+        // backup before the pool opens. `BackupManager.restoreBackup` decrypts
+        // the chosen backup into `<support>/bizarrecrm.restore.sqlite` and
+        // stamps the staging path in UserDefaults — the comment in restoreBackup
+        // says "The `Database` actor reads this flag on `open()` and swaps the
+        // file before opening the pool" but Database.open(at:) never actually
+        // performed that swap. Result: the restore UI showed success, the
+        // user restarted the app, and the *original* DB file opened again
+        // with the encrypted staging file sitting dead on disk. Honour the
+        // documented contract: if a staged restore exists, move it into place
+        // (replacing the live DB) before GRDB grabs the file lock.
+        if let stagingURL = BackupManager.consumePendingRestore() {
+            do {
+                if FileManager.default.fileExists(atPath: url.path) {
+                    _ = try? FileManager.default.removeItem(at: url)
+                }
+                try FileManager.default.moveItem(at: stagingURL, to: url)
+                AppLog.persistence.info("Pending restore applied: \(stagingURL.lastPathComponent, privacy: .public) → \(url.lastPathComponent, privacy: .public)")
+            } catch {
+                AppLog.persistence.error("Pending restore swap failed: \(error.localizedDescription, privacy: .public)")
+                // Don't propagate — fall through and open the existing DB so
+                // the user keeps a working app even if the swap fails.
+            }
+        }
+
         var config = Configuration()
         config.label = "bizarrecrm"
         config.prepareDatabase { db in
