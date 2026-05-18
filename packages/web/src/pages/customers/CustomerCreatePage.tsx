@@ -132,6 +132,20 @@ export function CustomerCreatePage() {
     checkDuplicates(digits);
   }, [phoneParam, checkDuplicates]);
 
+  // BUGHUNT-2026-05-17: dupTimerRef setTimeout fires 400ms after the last
+  // keystroke. If the user types in a field and immediately navigates away
+  // (e.g. clicks Cancel), the timer callback fires on an unmounted component
+  // and calls setDuplicates / state setters on a dead tree — React warns and
+  // the pending fetch leaks. Clear the timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (dupTimerRef.current) {
+        clearTimeout(dupTimerRef.current);
+        dupTimerRef.current = null;
+      }
+    };
+  }, []);
+
   // Custom field values keyed by definition_id
   const [customFieldValues, setCustomFieldValues] = useState<Record<number, string>>({});
 
