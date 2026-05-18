@@ -207,6 +207,9 @@ class InventoryEditViewModel @Inject constructor(
 
     fun saveItem() {
         val current = _state.value
+        // BUGHUNT-2026-05-17: re-entry guard — double-tap on Save would PATCH
+        // twice and (worse) push duplicate undo entries.
+        if (current.isSaving) return
         if (current.name.isBlank()) {
             _state.value = current.copy(saveMessage = "Name is required")
             return
@@ -248,6 +251,13 @@ class InventoryEditViewModel @Inject constructor(
                     undoMessage = "Inventory item updated",
                     saved = true,
                 )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: bare catch (e: Exception) below painted
+                // "Failed to update inventory item" on back-nav, tempting a
+                // re-tap that would PATCH again with possibly stale form data
+                // if the user edited in between. Re-throw lets the launch die
+                // cleanly; the next screen-resume reflects the actual state.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSaving = false,
@@ -412,6 +422,11 @@ class InventoryEditViewModel @Inject constructor(
             try {
                 inventoryApi.deleteItem(itemId)
                 _state.value = _state.value.copy(isSaving = false, deleted = true)
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: don't paint "Failed to delete item" on
+                // back-nav. Delete is idempotent server-side so a re-tap is
+                // harmless, but the false error confuses the user.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSaving = false,
@@ -433,6 +448,9 @@ class InventoryEditViewModel @Inject constructor(
             try {
                 inventoryApi.deleteItem(itemId)
                 _state.value = _state.value.copy(isSaving = false, deactivated = true)
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: see confirmDelete — same pattern.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSaving = false,
@@ -472,6 +490,13 @@ class InventoryEditViewModel @Inject constructor(
                     // Optimistically update the form field.
                     inStock = (oldQty + qty).toString(),
                 )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: quickAdjustStock applies a real stock
+                // delta. A bare catch would paint "Stock adjust failed" on
+                // sheet dismiss, tempting a re-tap that would re-apply the
+                // delta. The qty is computed against the cached oldQty so
+                // the re-applied delta could compound.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     saveMessage = e.message ?: "Stock adjust failed",
