@@ -70,10 +70,22 @@ public struct ConnectivityBannerModifier: ViewModifier {
                 }
             }
             .task {
-                // Poll SyncManager.shared.pendingCount via observation.
-                // @Observable propagates MainActor changes through AsyncStream.
-                // We read the value directly since SyncManager is @MainActor + @Observable.
+                // BUGHUNT-2026-05-17: reading SyncManager.pendingCount once in
+                // `.task` then relying on `@Observable` to redraw does NOT work
+                // here — `pendingCount` is captured into local `@State`, so
+                // subsequent SyncManager mutations from the drain loop are
+                // invisible to this view until reachability flips. The banner
+                // would show the queue size from screen-mount time, miss any
+                // user mutations enqueued after, and never update when the
+                // drain succeeded. Subscribe to `pendingCountDidChange` the
+                // same way PendingActionChip / LastSyncFooter / RetryNowButton
+                // do so the chip stays live.
                 pendingCount = SyncManager.shared.pendingCount
+                for await _ in NotificationCenter.default
+                    .notifications(named: SyncManager.pendingCountDidChange)
+                    .map({ _ in () }) {
+                    pendingCount = SyncManager.shared.pendingCount
+                }
             }
             .onChange(of: reachability.isOnline) { _, _ in
                 Task { @MainActor in
