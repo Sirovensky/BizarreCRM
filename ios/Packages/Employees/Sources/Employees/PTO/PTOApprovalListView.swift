@@ -164,6 +164,16 @@ private extension PTOApprovalListViewModel {
         pending.removeAll { $0.id == id }
         do {
             _ = try await api.reviewPTORequest(id: id, ReviewPTORequest(status: newStatus, reviewedBy: managerId))
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: reviewPTORequest PATCH may have landed
+            // before cancellation fired. Calling load() in the generic
+            // catch path is itself cancellation-prone — under a cancelled
+            // parent it returns before re-populating pending, leaving the
+            // local list permanently missing the row. Re-insert the row
+            // so a subsequent pull-to-refresh can reconcile against the
+            // actual server state.
+            pending.append(request)
+            pending.sort { $0.id < $1.id }
         } catch {
             AppLog.ui.error("PTOApproval review failed: \(error.localizedDescription, privacy: .public)")
             await load()
