@@ -106,16 +106,37 @@ public final class ShiftSchedulePostViewModel {
             shifts = shifts + [shift]
             sortedIndices = Array(shifts.indices)
             conflicts = []
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: createScheduledShift POST may have
+            // already inserted the shift row server-side when the task was
+            // cancelled. Painting loadState=.failed (note: wrong state
+            // field — this isn't a load error) shows an error overlay
+            // covering the entire schedule. Suppress and let the user
+            // refresh to see the actual saved state.
+            return
         } catch {
             loadState = .failed(error.localizedDescription)
         }
     }
 
     public func publish() async {
+        // BUGHUNT-2026-05-17: re-entry guard. The Publish button has a
+        // .disabled while .publishing but a quick double-tap before
+        // SwiftUI re-renders fires two publishSchedule POSTs — the second
+        // would notify employees TWICE that the schedule is published.
+        if case .publishing = publishState { return }
         publishState = .publishing
         do {
             try await api.publishSchedule(weekStart: weekStart)
             publishState = .published
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: publishSchedule may have already fired
+            // the publish webhook (employee notifications) when the task
+            // was cancelled. Painting "publish failed" lures the manager
+            // to retap Publish, sending a second wave of notifications to
+            // every scheduled employee. Roll back to .idle silently; the
+            // schedule reload will reveal published=true if it landed.
+            publishState = .idle
         } catch {
             publishState = .failed(error.localizedDescription)
         }
