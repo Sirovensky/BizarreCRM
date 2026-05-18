@@ -55,6 +55,8 @@ public final class ServerConnectionViewModel: Sendable {
             }
             let sha: String? = nil  // Populated by PinnedURLSessionDelegate when SPKI pinning active
             status = .success(latencyMs: latencyMs, authOk: authOk, certSHA: sha)
+        } catch let e where AppError.isCancellation(e) {
+            status = .idle
         } catch {
             status = .failed(error.localizedDescription)
         }

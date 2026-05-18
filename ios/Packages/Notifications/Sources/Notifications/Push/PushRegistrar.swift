@@ -186,6 +186,8 @@ public actor PushRegistrar {
             _ = try await api.registerDeviceToken(request)
             state = .registered(token: hex)
             AppLog.ui.info("APNs token registered: \(hex.prefix(8), privacy: .public)…")
+        } catch let e where AppError.isCancellation(e) {
+            throw e
         } catch {
             AppLog.ui.error("APNs token upload failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)
