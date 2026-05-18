@@ -407,6 +407,12 @@ public struct CustomerCSVImportSheet: View {
                 CustomerImportCSVRequest(csvData: rawCSV)
             )
             importResult = result
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: CSV bulk import is money/audit-sensitive.
+            // If server accepted before cancel, retry would import duplicate
+            // customers. Stay on preview phase so the user explicitly retries
+            // only after confirming whether any rows landed.
+            return
         } catch {
             importError = error.localizedDescription
         }
@@ -681,6 +687,11 @@ public struct CustomerLinkRelationshipSheet: View {
             )
             onLinked?()
             dismiss()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: linkCustomerRelationship is a POST. If the
+            // server accepted before nav-cancel, retrying creates a duplicate
+            // relationship row. Stay silent on cancel.
+            return
         } catch {
             self.error = error.localizedDescription
         }
