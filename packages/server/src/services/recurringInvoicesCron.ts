@@ -258,17 +258,29 @@ function processTemplate(slug: string, db: Database.Database, tpl: InvoiceTempla
         if (!Number.isFinite(unitCents) || unitCents < 0 || unitCents > MAX_SUBTOTAL_CENTS) {
           throw new Error(`recurring invoice template ${tpl.id}: invalid unit_price_cents ${unitCents}`);
         }
-        const lineTotal = qty * unitCents;
-        if (!Number.isFinite(lineTotal) || lineTotal > MAX_SUBTOTAL_CENTS) {
+        // BUGHUNT-2026-05-17 [money math drift]: previous code summed
+        // raw `qty * unitCents` without rounding, so a fractional qty
+        // (validation allows 0.5 etc) accumulated fractional cents into
+        // subtotalCents. The per-line INSERT later DID round the line
+        // total to cents (Math.round(qty*unitCents)/100), so the stored
+        // subtotal and the SUM of stored line totals could diverge by
+        // sub-cent residue — breaking any reconciliation between the
+        // invoices.subtotal column and the invoice_line_items.total
+        // sum, and creating non-integer-cent stored balances downstream
+        // (amount_due, amount_paid). Round per line first, then sum.
+        const lineTotalCents = Math.round(qty * unitCents);
+        if (!Number.isFinite(lineTotalCents) || lineTotalCents > MAX_SUBTOTAL_CENTS) {
           throw new Error(`recurring invoice template ${tpl.id}: line total overflow`);
         }
-        subtotalCents += lineTotal;
+        subtotalCents += lineTotalCents;
         if (subtotalCents > MAX_SUBTOTAL_CENTS) {
           throw new Error(`recurring invoice template ${tpl.id}: subtotal exceeds $1M cap`);
         }
       }
 
-      // invoices table stores money as dollars (REAL), not cents
+      // invoices table stores money as dollars (REAL), not cents.
+      // subtotalCents is now an integer (rounded per line above) so the
+      // division is exact at any sane scale.
       const subtotal = subtotalCents / 100;
 
       const invResult = db.prepare(`
