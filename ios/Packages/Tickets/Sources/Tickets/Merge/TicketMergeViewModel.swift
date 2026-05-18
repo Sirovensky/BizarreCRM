@@ -1,4 +1,5 @@
 import Foundation
+import Core
 import Networking
 
 // MARK: - Supporting types
@@ -131,6 +132,13 @@ public final class TicketMergeViewModel: Sendable {
 
     public func merge() async {
         guard let sec = secondaryTicket else { return }
+        // BUGHUNT-2026-05-17: merge is destructive — the secondary ticket is
+        // folded into primary server-side. Re-entry during `.merging` or
+        // after `.success` could fire a second POST whose outcome depends on
+        // server state (404 on the missing secondary, or worse, a different
+        // row picked up if IDs were reused). Self-guard at the VM layer.
+        if case .merging = state { return }
+        if case .success = state { return }
         state = .merging
         do {
             let prefs = preferences.reduce(into: [String: String]()) { dict, pref in
@@ -147,6 +155,12 @@ public final class TicketMergeViewModel: Sendable {
                 as: MergeResponse.self
             )
             state = .success(mergedId: response.mergedTicketId)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: a `.failed("cancelled")` toast on a merge
+            // tempted a re-tap that — if the server had already accepted the
+            // original POST — would attempt a second merge against a missing
+            // secondary. Reset to `.loaded`; the caller should pop and refresh.
+            state = .loaded
         } catch {
             state = .failed(error.localizedDescription)
         }

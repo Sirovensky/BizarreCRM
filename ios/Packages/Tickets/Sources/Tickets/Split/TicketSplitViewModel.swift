@@ -1,4 +1,5 @@
 import Foundation
+import Core
 import Networking
 
 // MARK: - Request / Response
@@ -84,6 +85,14 @@ public final class TicketSplitViewModel: Sendable {
 
     public func split() async {
         guard canSplit else { return }
+        // BUGHUNT-2026-05-17: defend against re-entry. The view's button used
+        // to allow tapping again during `.splitting` (canSplit doesn't read
+        // state) and after `.success` if the sheet hadn't dismissed yet —
+        // either path can issue a second `/tickets/:id/split` POST. The
+        // server has no idempotency key on this route, so a re-tap would
+        // create another set of duplicate new tickets.
+        if case .splitting = state { return }
+        if case .success = state { return }
         state = .splitting
         do {
             let body = TicketSplitRequest(deviceLineIds: Array(selectedDeviceIds))
@@ -93,6 +102,13 @@ public final class TicketSplitViewModel: Sendable {
                 as: TicketSplitResponse.self
             )
             state = .success(originalId: response.originalTicketId, newIds: response.newTicketIds)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: cancellation here could leave the server's
+            // POST partially landed — new tickets created without the local
+            // success transition. Reset to `.loaded` so the cashier sees the
+            // device list again; reloading the ticket detail will show the
+            // already-split rows if the server completed.
+            state = .loaded
         } catch {
             state = .failed(error.localizedDescription)
         }
