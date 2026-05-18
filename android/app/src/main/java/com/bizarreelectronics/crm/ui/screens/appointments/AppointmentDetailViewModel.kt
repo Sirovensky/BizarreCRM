@@ -73,13 +73,16 @@ class AppointmentDetailViewModel @Inject constructor(
     fun load() {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
-            runCatching { repository.getAppointmentById(appointmentId) }
-                .onSuccess { appt ->
-                    _state.update { it.copy(appointment = appt, isLoading = false) }
-                }
-                .onFailure { e ->
-                    _state.update { it.copy(isLoading = false, error = e.message ?: "Failed to load") }
-                }
+            // BUGHUNT-2026-05-17: runCatching swallows CancellationException;
+            // nav cancel paints fake "Failed to load" banner.
+            try {
+                val appt = repository.getAppointmentById(appointmentId)
+                _state.update { it.copy(appointment = appt, isLoading = false) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(isLoading = false, error = e.message ?: "Failed to load") }
+            }
         }
     }
 
@@ -163,13 +166,18 @@ class AppointmentDetailViewModel @Inject constructor(
     fun confirmCancel(notifyCustomer: Boolean) {
         _state.update { it.copy(showCancelDialog = false, isSaving = true) }
         viewModelScope.launch {
-            runCatching { repository.cancelAppointment(appointmentId, notifyCustomer) }
-                .onSuccess {
-                    _state.update { it.copy(isSaving = false, navigateBack = true) }
-                }
-                .onFailure { e ->
-                    _state.update { it.copy(isSaving = false, toastMessage = "Cancel failed: ${e.message}") }
-                }
+            // BUGHUNT-2026-05-17: runCatching swallowed CancellationException
+            // on the cancel POST. The server-side cancel may have committed
+            // (status flipped + customer SMS dispatched if notifyCustomer),
+            // and retap re-fires the SMS — TCPA double-text liability.
+            try {
+                repository.cancelAppointment(appointmentId, notifyCustomer)
+                _state.update { it.copy(isSaving = false, navigateBack = true) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(isSaving = false, toastMessage = "Cancel failed: ${e.message}") }
+            }
         }
     }
 
@@ -289,15 +297,22 @@ class AppointmentDetailViewModel @Inject constructor(
         val current = _state.value.appointment ?: return
         _state.update { it.copy(appointment = optimisticUpdate(current), isSaving = true) }
         viewModelScope.launch {
-            runCatching { repository.patchAppointment(appointmentId, body) }
-                .onSuccess { updated ->
-                    _state.update { it.copy(appointment = updated, isSaving = false) }
-                    onSuccess?.invoke()
-                }
-                .onFailure { e ->
-                    // Revert optimistic update
-                    _state.update { it.copy(appointment = current, isSaving = false, toastMessage = e.message) }
-                }
+            // BUGHUNT-2026-05-17: runCatching swallowed CancellationException.
+            // On nav cancel the optimistic-update would revert via the
+            // onFailure branch even though the server may have committed —
+            // user sees the old status and re-taps, causing double-PATCH
+            // (status reasserted, audit row noise, optional reminder SMS
+            // re-fired). Re-throw to preserve coroutine cancellation.
+            try {
+                val updated = repository.patchAppointment(appointmentId, body)
+                _state.update { it.copy(appointment = updated, isSaving = false) }
+                onSuccess?.invoke()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Revert optimistic update
+                _state.update { it.copy(appointment = current, isSaving = false, toastMessage = e.message) }
+            }
         }
     }
 
