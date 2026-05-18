@@ -86,6 +86,12 @@ public final class EstimateConvertViewModel {
             )
             createdTicketId = result.ticketId
             onSuccess(result.ticketId)
+        } catch let e where AppError.isCancellation(e) {
+            // Convert-estimate-to-ticket is a server-side row create. A
+            // cancel-as-error toast tempts a retry, which would create a
+            // duplicate ticket. Suppress the message; let createdTicketId
+            // remain nil so the caller can navigate back gracefully.
+            return
         } catch {
             let appError = Self.mapError(error)
             errorMessage = Self.message(for: appError)

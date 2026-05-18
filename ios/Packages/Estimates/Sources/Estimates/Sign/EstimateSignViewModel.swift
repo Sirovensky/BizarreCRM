@@ -52,6 +52,10 @@ public final class EstimateSignViewModel {
             )
             signUrl = response.url
             expiresAt = response.expiresAt
+        } catch let e where AppError.isCancellation(e) {
+            // Sheet dismissed mid-issue; the server may have minted the URL.
+            // Stay silent rather than tempting a retry that mints a second.
+            return
         } catch {
             let appError = Self.mapError(error)
             errorMessage = Self.message(for: appError)
