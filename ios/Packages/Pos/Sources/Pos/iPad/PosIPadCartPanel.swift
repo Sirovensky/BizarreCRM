@@ -40,6 +40,20 @@ public struct PosIPadCartPanel: View {
     /// Optional: call site owns the CouponInputViewModel + API.
     var onShowCoupon: (() -> Void)?
 
+    /// USABILITY-2026-05-18: invoked when the cashier wants to swap the
+    /// attached customer (or attach one when walk-in is on the cart). On
+    /// iPhone this lives on `PosCartStrip` as a small "Change" link; iPad
+    /// previously had no affordance at all — once a customer was attached,
+    /// the Walk-in / Find / Create CTAs were hidden (`!cart.hasCustomer`)
+    /// and the cashier had no way to swap until they cleared the cart.
+    var onChangeCustomer: (() -> Void)?
+
+    /// Invoked when the cashier wants to remove the attached customer
+    /// (revert to walk-in / no-customer). Only shown for non-walk-in
+    /// customers; walk-in is the implicit default so the "x" would be
+    /// redundant.
+    var onRemoveCustomer: (() -> Void)?
+
     @State private var couponCode: String = ""
 
     // MARK: - Body
@@ -249,6 +263,41 @@ public struct PosIPadCartPanel: View {
             }
 
             Spacer(minLength: BrandSpacing.xs)
+
+            // USABILITY-2026-05-18: tap-to-change customer. On iPhone this is
+            // an inline "Change" link in PosCartStrip; mirror it here.
+            if let onChangeCustomer {
+                Button {
+                    BrandHaptics.tap()
+                    onChangeCustomer()
+                } label: {
+                    Text("Change")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.bizarreOrange)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Change customer")
+                .accessibilityIdentifier("pos.ipad.cart.changeCustomer")
+            }
+
+            if let onRemoveCustomer, !customer.isWalkIn {
+                Button {
+                    BrandHaptics.tap()
+                    onRemoveCustomer()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .padding(4)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Remove customer from cart")
+                .accessibilityIdentifier("pos.ipad.cart.removeCustomer")
+            }
 
             // Line count chip (primary / cream)
             if cart.lineCount > 0 {

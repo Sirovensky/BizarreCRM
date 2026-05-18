@@ -660,7 +660,13 @@ public struct PosView: View {
                     cart: cart,
                     onCharge: startChargeV5,
                     onEditItem: { item in editingCartItem = item },
-                    editingItemId: editingCartItem?.id
+                    editingItemId: editingCartItem?.id,
+                    // USABILITY-2026-05-18: iPad cart header was non-interactive
+                    // — once a customer was attached, the cashier had no way to
+                    // swap them without clearing the cart. Wire the same
+                    // change/remove callbacks the iPhone PosCartStrip uses.
+                    onChangeCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true },
+                    onRemoveCustomer: { cart.detachCustomer() }
                 )
             }
         }
@@ -966,7 +972,11 @@ public struct PosView: View {
                     PosIPadCartPanel(
                         cart: cart,
                         onCharge: startChargeV5,
-                        onSelectTender: { showingTenderSelect = true }
+                        onSelectTender: { showingTenderSelect = true },
+                        // USABILITY-2026-05-18: see other PosIPadCartPanel call
+                        // sites — iPad cart header needs Change/Remove.
+                        onChangeCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true },
+                        onRemoveCustomer: { cart.detachCustomer() }
                     )
                 }
 
@@ -1021,7 +1031,12 @@ public struct PosView: View {
         } cart: {
             PosIPadCartPanel(
                 cart: cart,
-                onCharge: startChargeV5
+                onCharge: startChargeV5,
+                // USABILITY-2026-05-18: repair-intake flow also benefits from
+                // the change-customer affordance — the cashier may swap the
+                // customer mid-intake (e.g., dual-owner devices).
+                onChangeCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true },
+                onRemoveCustomer: { cart.detachCustomer() }
             )
         } inspector: {
             iPadRepairInspectorPane(coordinator: coordinator, api: api)
