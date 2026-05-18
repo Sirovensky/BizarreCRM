@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.dto.DispatchJobDetail
 import com.bizarreelectronics.crm.data.repository.DispatchRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -92,18 +93,20 @@ class DispatchViewModel @Inject constructor(
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
-            runCatching { repository.getTodayJobs() }
-                .onSuccess { jobs ->
-                    _state.update { it.copy(jobs = jobs, isLoading = false) }
+            // BUGHUNT-2026-05-17: runCatching swallows CancellationException.
+            try {
+                val jobs = repository.getTodayJobs()
+                _state.update { it.copy(jobs = jobs, isLoading = false) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = e.message ?: "Failed to load jobs",
+                    )
                 }
-                .onFailure { e ->
-                    _state.update {
-                        it.copy(
-                            isLoading = false,
-                            error = e.message ?: "Failed to load jobs",
-                        )
-                    }
-                }
+            }
         }
     }
 
@@ -111,18 +114,20 @@ class DispatchViewModel @Inject constructor(
         if (_state.value.isRefreshing) return
         viewModelScope.launch {
             _state.update { it.copy(isRefreshing = true, error = null) }
-            runCatching { repository.getTodayJobs() }
-                .onSuccess { jobs ->
-                    _state.update { it.copy(jobs = jobs, isRefreshing = false) }
+            // BUGHUNT-2026-05-17: runCatching swallows CancellationException.
+            try {
+                val jobs = repository.getTodayJobs()
+                _state.update { it.copy(jobs = jobs, isRefreshing = false) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(
+                        isRefreshing = false,
+                        error = e.message ?: "Refresh failed",
+                    )
                 }
-                .onFailure { e ->
-                    _state.update {
-                        it.copy(
-                            isRefreshing = false,
-                            error = e.message ?: "Refresh failed",
-                        )
-                    }
-                }
+            }
         }
     }
 
@@ -187,33 +192,37 @@ class DispatchViewModel @Inject constructor(
         if (_state.value.transitioningJobId != null) return
         viewModelScope.launch {
             _state.update { it.copy(transitioningJobId = jobId, error = null) }
-            runCatching {
-                repository.updateJobStatus(
+            // BUGHUNT-2026-05-17: runCatching swallowed CancellationException;
+            // status transitions PATCH the server (en_route/on_site/completed/
+            // canceled trigger SMS/notifications). Cancellation mid-PATCH +
+            // retap could DOUBLE-FIRE the customer notification for that
+            // status change. Re-throw to preserve coroutine cancellation.
+            try {
+                val updated = repository.updateJobStatus(
                     id = jobId,
                     newStatus = newStatus,
                     notes = notes,
                     locationLat = lat,
                     locationLng = lng,
                 )
+                _state.update { s ->
+                    s.copy(
+                        transitioningJobId = null,
+                        jobs = s.jobs.map { if (it.id == updated.id) updated else it },
+                        toastMessage = statusToastMessage(newStatus),
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "transitionJob($jobId → $newStatus) failed: ${e.message}")
+                _state.update {
+                    it.copy(
+                        transitioningJobId = null,
+                        error = e.message ?: "Status update failed",
+                    )
+                }
             }
-                .onSuccess { updated ->
-                    _state.update { s ->
-                        s.copy(
-                            transitioningJobId = null,
-                            jobs = s.jobs.map { if (it.id == updated.id) updated else it },
-                            toastMessage = statusToastMessage(newStatus),
-                        )
-                    }
-                }
-                .onFailure { e ->
-                    Log.w(TAG, "transitionJob($jobId → $newStatus) failed: ${e.message}")
-                    _state.update {
-                        it.copy(
-                            transitioningJobId = null,
-                            error = e.message ?: "Status update failed",
-                        )
-                    }
-                }
         }
     }
 
@@ -256,44 +265,46 @@ class DispatchViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isOptimizing = true, error = null) }
             val today = LocalDate.now().toString()
-            runCatching {
-                repository.optimizeRoute(
+            // BUGHUNT-2026-05-17: runCatching swallowed CancellationException;
+            // optimisation POST is server-billed work, retap on a spurious
+            // failure runs it twice.
+            try {
+                val result = repository.optimizeRoute(
                     technicianId = technicianId,
                     routeDate    = today,
                     jobs         = current.jobs,
                 )
+                // Reorder: build a map of id → job for fast lookup, then
+                // emit the proposed_order first, then any remainders.
+                val jobMap = current.jobs.associateBy { it.id }
+                val ordered = result.proposedOrder.mapNotNull { jobMap[it] }
+                val inOrder = ordered.map { it.id }.toSet()
+                val remainder = current.jobs.filter { it.id !in inOrder }
+                val reordered = ordered + remainder
+                _state.update { s ->
+                    s.copy(
+                        isOptimizing = false,
+                        jobs         = reordered,
+                        optimizationBanner = OptimizationBanner(
+                            distanceKm    = result.totalDistanceKm,
+                            startFromHome = result.startFromHome,
+                            note          = result.note,
+                        ),
+                    )
+                }
+                Log.i(TAG, "optimizeRoute: reordered ${ordered.size} jobs, " +
+                    "~${result.totalDistanceKm} km (${result.algorithm})")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "optimizeRoute failed: ${e.message}")
+                _state.update {
+                    it.copy(
+                        isOptimizing = false,
+                        toastMessage  = e.message ?: "Route optimisation failed",
+                    )
+                }
             }
-                .onSuccess { result ->
-                    // Reorder: build a map of id → job for fast lookup, then
-                    // emit the proposed_order first, then any remainders.
-                    val jobMap = current.jobs.associateBy { it.id }
-                    val ordered = result.proposedOrder.mapNotNull { jobMap[it] }
-                    val inOrder = ordered.map { it.id }.toSet()
-                    val remainder = current.jobs.filter { it.id !in inOrder }
-                    val reordered = ordered + remainder
-                    _state.update { s ->
-                        s.copy(
-                            isOptimizing = false,
-                            jobs         = reordered,
-                            optimizationBanner = OptimizationBanner(
-                                distanceKm    = result.totalDistanceKm,
-                                startFromHome = result.startFromHome,
-                                note          = result.note,
-                            ),
-                        )
-                    }
-                    Log.i(TAG, "optimizeRoute: reordered ${ordered.size} jobs, " +
-                        "~${result.totalDistanceKm} km (${result.algorithm})")
-                }
-                .onFailure { e ->
-                    Log.w(TAG, "optimizeRoute failed: ${e.message}")
-                    _state.update {
-                        it.copy(
-                            isOptimizing = false,
-                            toastMessage  = e.message ?: "Route optimisation failed",
-                        )
-                    }
-                }
         }
     }
 
