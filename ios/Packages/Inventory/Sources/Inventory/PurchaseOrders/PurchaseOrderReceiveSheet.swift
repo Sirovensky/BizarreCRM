@@ -39,6 +39,9 @@ public final class PurchaseOrderReceiveViewModel {
         do {
             _ = try await repo.receive(id: po.id, ReceivePORequest(lines: lines))
             return true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PO receive batch-increments stock for every line. Server may have committed when sheet was dismissed; retry doubles inventory deltas. Return false silently — caller must refetch the PO to see current state, not retry.
+            return false
         } catch {
             AppLog.ui.error("PO receive failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription

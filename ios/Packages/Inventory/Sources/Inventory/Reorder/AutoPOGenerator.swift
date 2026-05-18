@@ -64,6 +64,9 @@ public final class AutoPOGenerator {
             let po = try await poRepo.create(request)
             AppLog.ui.info("AutoPOGenerator: Draft PO #\(po.id, privacy: .public) created with \(lines.count, privacy: .public) lines.")
             return .created(po)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: auto-PO generator creates one draft PO with N lines. Server may have committed when sheet was dismissed; .failed banner tempts retry → duplicate draft POs for the same suggestions. Return .failed with a no-op message that the caller treats as "see drafts list" rather than a retry prompt.
+            return .failed("")
         } catch {
             AppLog.ui.error("AutoPOGenerator: PO creation failed — \(error.localizedDescription, privacy: .public)")
             return .failed(error.localizedDescription)
