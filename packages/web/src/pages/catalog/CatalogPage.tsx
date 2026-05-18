@@ -136,6 +136,16 @@ export function CatalogPage() {
     if (catSearchTimerRef.current) clearTimeout(catSearchTimerRef.current);
     catSearchTimerRef.current = setTimeout(() => setDebouncedSearch(val), 350);
   };
+  // BUGHUNT-2026-05-17: handleSearchChange sets a 350ms setTimeout but no
+  // unmount cleanup. If the operator types in the search box then leaves
+  // the catalog tab (or the route unmounts), the pending timer fires on
+  // a dead component and calls setDebouncedSearch — React warns, and the
+  // closure pins the unmounted component state for GC.
+  useEffect(() => {
+    return () => {
+      if (catSearchTimerRef.current) clearTimeout(catSearchTimerRef.current);
+    };
+  }, []);
 
   // WEB-FH-020 (Fixer-B5 2026-04-25): only poll catalog-stats while there is
   // an active job. Previously the page burned a stats refetch every 5s for the
