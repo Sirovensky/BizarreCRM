@@ -54,6 +54,12 @@ public final class NotifPrefsViewModel {
         errorMessage = nil
         do {
             preferences = try await repository.fetchAll()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: read-only load. View teardown / `.task`
+            // re-fire on sheet redisplay cancels the in-flight fetch — that
+            // is not an error condition. Painting `errorMessage` would
+            // surface a banner the user never triggered.
+            return
         } catch {
             AppLog.ui.error("NotifPrefs load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -125,6 +131,20 @@ public final class NotifPrefsViewModel {
         let snapshot = preferences
         do {
             preferences = try await repository.batchUpdate(changed)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: write path. Reverting the snapshot AND
+            // painting "Couldn't save preferences" on cancellation tempts
+            // the user to re-tap the channel toggle — which fires a second
+            // PUT /api/v1/notification-preferences/me with a fresh idempotency
+            // path. The server then writes duplicate audit log rows
+            // (preference_changed × N), and may swap channel state in the
+            // server's favour after the cancelled-but-applied save lands.
+            // Leave the optimistic state in place; the next legitimate save
+            // or load() will reconcile. Server-side idempotency for this
+            // endpoint is keyed only on (user, event), so on the rare case
+            // the server already committed the request before cancellation
+            // the row count stays correct.
+            return
         } catch {
             preferences = snapshot
             AppLog.ui.error("NotifPrefs save failed: \(error.localizedDescription, privacy: .public)")
