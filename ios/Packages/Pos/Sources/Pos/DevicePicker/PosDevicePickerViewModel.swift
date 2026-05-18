@@ -46,6 +46,11 @@ public final class PosDevicePickerViewModel {
 
         do {
             options = try await repository.fetchAssets(customerId: customerId)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismissed mid-fetch. Don't paint
+            // "Task was cancelled" and don't collapse to fallback rows —
+            // the next .task with the same customerId retries cleanly.
+            return
         } catch {
             AppLog.ui.error(
                 "PosDevicePickerVM load failed: \(error.localizedDescription, privacy: .public)"
