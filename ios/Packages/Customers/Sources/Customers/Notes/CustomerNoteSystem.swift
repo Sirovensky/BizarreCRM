@@ -620,7 +620,13 @@ public struct NoteEditHistorySheet: View {
     private func load() async {
         isLoading = true
         defer { isLoading = false }
-        versions = (try? await api.customerNoteVersions(noteId: noteId)) ?? []
+        // BUGHUNT-2026-05-18: `try?` swallows CancellationError; the `?? []`
+        // then clobbers a previously-loaded versions list when the sheet's
+        // .task is cancelled mid-flight (rapid sheet open/close or pull-to-
+        // refresh races). Capture first, write under the cancel guard.
+        let resolved = (try? await api.customerNoteVersions(noteId: noteId)) ?? []
+        if Task.isCancelled { return }
+        versions = resolved
     }
 }
 

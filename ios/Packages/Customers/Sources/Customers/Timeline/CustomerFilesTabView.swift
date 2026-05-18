@@ -130,7 +130,13 @@ final class CustomerFilesViewModel {
     func loadVersions(for file: CustomerFile) async {
         isLoadingVersions = true
         defer { isLoadingVersions = false }
-        fileVersions = (try? await api.customerFileVersions(fileId: file.id)) ?? []
+        // BUGHUNT-2026-05-18: same cancel-clobber as
+        // CustomerComplaintView.load — `try?` returns nil on cancel, `?? []`
+        // writes empty over the prior list if the version sheet's .task is
+        // cancelled mid-flight.
+        let resolved = (try? await api.customerFileVersions(fileId: file.id)) ?? []
+        if Task.isCancelled { return }
+        fileVersions = resolved
     }
 }
 

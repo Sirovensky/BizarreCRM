@@ -206,7 +206,12 @@ public struct CustomerRelatedCustomersCard: View {
     private func load() async {
         isLoading = true
         defer { isLoading = false }
-        relationships = (try? await api.customerRelationships(customerId: customerId)) ?? []
+        // BUGHUNT-2026-05-18: cancel-clobber — `try?` returns nil and `?? []`
+        // wipes a previously-loaded relationships card when the timeline
+        // re-renders mid-load. Capture first, guard before writing.
+        let resolved = (try? await api.customerRelationships(customerId: customerId)) ?? []
+        if Task.isCancelled { return }
+        relationships = resolved
     }
 }
 

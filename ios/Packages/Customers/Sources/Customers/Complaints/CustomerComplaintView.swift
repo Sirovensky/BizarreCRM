@@ -366,7 +366,14 @@ public struct CustomerComplaintsSection: View {
     private func load() async {
         isLoading = true
         defer { isLoading = false }
-        complaints = (try? await api.customerComplaints(customerId: customerId)) ?? []
+        // BUGHUNT-2026-05-18: `try?` swallows CancellationError to nil; the
+        // `?? []` then wipes a previously-loaded complaints list when a
+        // sheet-dismissal-mid-load races with the .task lifecycle. Capture
+        // the resolved value first and only write under the not-cancelled
+        // guard — same pattern as LeadRelatedRecordsView et al.
+        let resolved = (try? await api.customerComplaints(customerId: customerId)) ?? []
+        if Task.isCancelled { return }
+        complaints = resolved
     }
 }
 

@@ -138,11 +138,16 @@ public struct ComplaintRootCauseTrendView: View {
         if let cid = customerId {
             query.append(URLQueryItem(name: "customer_id", value: "\(cid)"))
         }
-        summaries = (try? await api.get(
+        // BUGHUNT-2026-05-18: cancel-clobber on the root-cause summary card.
+        // A pull-to-refresh on the parent screen cancels the in-flight request,
+        // `try?` returns nil, and `?? []` blanks the previously-loaded chart.
+        let resolved = (try? await api.get(
             "/api/v1/complaints/root-cause-summary",
             query: query,
             as: [ComplaintRootCauseSummary].self
         )) ?? []
+        if Task.isCancelled { return }
+        summaries = resolved
     }
 }
 
