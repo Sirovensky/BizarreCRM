@@ -193,6 +193,13 @@ public final class DocumentScanViewModel {
         do {
             let url = try await uploader(pdfData)
             uploadState = .success(url: url)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PDF upload cancelled mid-flight may have
+            // flushed multipart body server-side. .failure banner tempts
+            // retry that duplicates the attachment row. Reset to .idle so
+            // user must deliberately re-tap Attach.
+            uploadState = .idle
+            return
         } catch {
             uploadState = .failure(message: error.localizedDescription)
         }
