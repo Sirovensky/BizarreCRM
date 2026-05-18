@@ -1,6 +1,7 @@
 import SwiftUI
 import DesignSystem
 import Networking
+import Core
 
 // MARK: - TimesheetEditViewModel
 
@@ -34,6 +35,11 @@ public final class TimesheetEditViewModel {
 
     public func save() async {
         guard canSave else { return }
+        // BUGHUNT-2026-05-17: re-entry guard. The Save toolbar button is
+        // .disabled while .saving, but the surrounding Task is untracked —
+        // a second tap after a brief network blip could resubmit. Refuse
+        // re-entry while saving.
+        if case .saving = saveState { return }
         saveState = .saving
         let edit = TimesheetEditRequest(
             clockIn: clockInText.isEmpty ? nil : clockInText,
@@ -44,6 +50,14 @@ public final class TimesheetEditViewModel {
             let updated = try await api.editShift(shiftId: shift.id, edit: edit)
             saveState = .saved
             onSaved?(updated)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: editShift PATCH may have already landed
+            // before the sheet's Save Task was cancelled. Painting
+            // "Failed: cancelled" tempts the manager to re-tap Save,
+            // double-stamping the audit log with the same correction
+            // reason. Roll back to .idle so the manager refreshes the
+            // timesheet to verify rather than retap blindly.
+            saveState = .idle
         } catch {
             saveState = .failed(error.localizedDescription)
         }
