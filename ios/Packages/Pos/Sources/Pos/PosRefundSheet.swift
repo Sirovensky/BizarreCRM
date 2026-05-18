@@ -280,6 +280,11 @@ final class PosRefundViewModel {
 
     var canSubmit: Bool {
         if case .sending = status { return false }
+        // BUGHUNT-2026-05-17: the sheet stays visible for ~900ms after `.sent`
+        // (the auto-dismiss delay). Leaving the Refund button tappable in that
+        // window let a fast double-tap fire a second `posReturn` call — a real
+        // double-refund hazard since the endpoint has no idempotency key.
+        if case .sent = status { return false }
         // §16.9 — when the picker says `.other`, require explicit text so
         // we never submit an unstructured-but-empty reason.
         if reasonPreset == .other,
@@ -335,6 +340,12 @@ final class PosRefundViewModel {
     }
 
     func submit() async {
+        // BUGHUNT-2026-05-17: defense in depth — `canSubmit` already gates
+        // the button, but make `submit()` self-guarding against an already
+        // in-flight or already-completed refund so a stray call path can't
+        // double-post the request.
+        if case .sending = status { return }
+        if case .sent = status { return }
         guard let api else {
             status = .unavailable("Coming soon — not yet enabled on your server.")
             return

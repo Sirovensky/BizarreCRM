@@ -346,10 +346,13 @@ final class PosReturnDetailViewModel {
     }
 
     var canSubmit: Bool {
-        guard case .sending = status else {
-            return totalRefundCents > 0
-        }
-        return false
+        if case .sending = status { return false }
+        // BUGHUNT-2026-05-17: this sheet has no auto-dismiss after `.sent`,
+        // so the Refund button used to stay tappable indefinitely after a
+        // successful refund — a re-tap fired a second `posReturn` (no
+        // idempotency key) and double-refunded the invoice.
+        if case .sent = status { return false }
+        return totalRefundCents > 0
     }
 
     // MARK: - Data
