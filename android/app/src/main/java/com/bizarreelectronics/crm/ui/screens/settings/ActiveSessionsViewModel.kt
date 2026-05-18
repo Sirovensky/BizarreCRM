@@ -22,6 +22,7 @@ import com.bizarreelectronics.crm.data.remote.api.AuthApi
 import com.bizarreelectronics.crm.data.remote.dto.ActiveSessionDto
 import com.bizarreelectronics.crm.util.AppError
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -151,6 +152,17 @@ class ActiveSessionsViewModel @Inject constructor(
             } catch (e: IOException) {
                 _uiState.value = current.copy(sessions = snapshot)
                 _revokeMessage.value = "Network error — changes not saved"
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation. DELETE
+                // /auth/sessions/{id} may have already succeeded
+                // server-side. The previous broad `catch (e: Exception)`
+                // arm would (a) roll the session back into the list
+                // (showing a session that no longer exists) and (b)
+                // emit a misleading "Unexpected error" toast. Don't
+                // touch the optimistic state on cancellation -
+                // structured concurrency takes us back to a clean VM
+                // and the next refresh will reconcile.
+                throw e
             } catch (e: Exception) {
                 _uiState.value = current.copy(sessions = snapshot)
                 _revokeMessage.value = "Unexpected error revoking session"
