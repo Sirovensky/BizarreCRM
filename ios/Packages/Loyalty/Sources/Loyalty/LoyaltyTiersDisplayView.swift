@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import DesignSystem
 import Networking
 
@@ -34,6 +35,8 @@ public final class LoyaltyTiersDisplayViewModel {
         do {
             tiers = try await api.listMembershipTiers()
             state = tiers.isEmpty ? .comingSoon : .loaded
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch let t as APITransportError {
             if case .httpStatus(let c, _) = t, c == 402 || c == 404 || c == 501 {
                 state = .comingSoon

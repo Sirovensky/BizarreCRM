@@ -137,6 +137,11 @@ public struct VoicemailTranscriptionView: View {
                 }
             }
             state = .done(text: text)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels transcription; reset so the
+            // next attempt can retry from idle.
+            state = .idle
+            return
         } catch {
             state = .failed(message: error.localizedDescription)
         }

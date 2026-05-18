@@ -39,6 +39,8 @@ public final class ExpenseDetailViewModel {
         do {
             let expense = try await api.getExpense(id: id)
             state = .loaded(expense)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             AppLog.ui.error("Expense detail load failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)
@@ -53,6 +55,10 @@ public final class ExpenseDetailViewModel {
         do {
             try await api.deleteExpense(id: id)
             didDelete = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels DELETE; server may have
+            // committed. Optimistic-delete is handled by parent list.
+            return
         } catch {
             AppLog.ui.error("Expense delete failed: \(error.localizedDescription, privacy: .public)")
             deleteError = error.localizedDescription
@@ -75,6 +81,11 @@ public final class ExpenseDetailViewModel {
         do {
             try await api.approveExpense(id: id)
             await load()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels approve POST, but server
+            // may have committed — reimbursement workflow triggered.
+            // Retap could trigger it twice. Stay silent.
+            return
         } catch {
             AppLog.ui.error("Expense approve failed: \(error.localizedDescription, privacy: .public)")
             approvalError = error.localizedDescription
@@ -90,6 +101,9 @@ public final class ExpenseDetailViewModel {
         do {
             try await api.denyExpense(id: id, reason: reason)
             await load()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: see approve(). Stay silent.
+            return
         } catch {
             AppLog.ui.error("Expense deny failed: \(error.localizedDescription, privacy: .public)")
             approvalError = error.localizedDescription

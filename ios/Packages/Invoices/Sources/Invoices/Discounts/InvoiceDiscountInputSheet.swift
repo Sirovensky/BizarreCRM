@@ -103,6 +103,14 @@ public final class InvoiceDiscountInputViewModel {
                 message: resp.message
             )
             BrandHaptics.success()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancels POST, but server
+            // may have applied the discount + decremented redemption
+            // counter for one-time codes. Retap hits 409 ("already
+            // applied") or burns a second redemption from the pool.
+            // Stay silent.
+            state = .idle
+            return
         } catch let appError as AppError {
             state = .error(appError.errorDescription ?? appError.localizedDescription)
         } catch {
