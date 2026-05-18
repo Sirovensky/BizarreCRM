@@ -91,9 +91,14 @@ public final class ShiftHistoryViewModel {
         var utcCal = Calendar(identifier: .gregorian)
         utcCal.timeZone = TimeZone(identifier: "UTC")!
         let today = utcCal.startOfDay(for: now())
-        let iso = ISO8601DateFormatter()
+        // BUGHUNT-2026-05-18: same fix family as Shift.rawDurationMinutes —
+        // default ISO8601DateFormatter rejects both Node fractional ISO and
+        // SQLite SQL-style. Result: nil-on-parse made every server-fetched
+        // entry fall through to `historicalEntries`, and the "Today" tab on
+        // ShiftHistory was permanently empty even when the user had clocked
+        // in 30 seconds ago.
         return entries.filter { entry in
-            guard let date = iso.date(from: entry.clockIn) else { return false }
+            guard let date = ShiftTimestampParser.parse(entry.clockIn) else { return false }
             return utcCal.isDate(date, inSameDayAs: today)
         }
     }
@@ -104,9 +109,8 @@ public final class ShiftHistoryViewModel {
         var utcCal = Calendar(identifier: .gregorian)
         utcCal.timeZone = TimeZone(identifier: "UTC")!
         let today = utcCal.startOfDay(for: now())
-        let iso = ISO8601DateFormatter()
         return entries.filter { entry in
-            guard let date = iso.date(from: entry.clockIn) else { return true }
+            guard let date = ShiftTimestampParser.parse(entry.clockIn) else { return true }
             return !utcCal.isDate(date, inSameDayAs: today)
         }
     }

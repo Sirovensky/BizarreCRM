@@ -223,12 +223,15 @@ private struct ShiftRowView: View {
     }
 
     private var clockInDisplay: String {
-        guard let d = Self.isoFormatter.date(from: shift.clockIn) else { return shift.clockIn }
+        // BUGHUNT-2026-05-18: ShiftTimestampParser covers fractional ISO +
+        // SQL-style; bare ISO8601DateFormatter rejected both and the timesheet
+        // row showed the raw timestamp string instead of "9:00 AM".
+        guard let d = ShiftTimestampParser.parse(shift.clockIn) else { return shift.clockIn }
         return Self.timeFormatter.string(from: d)
     }
 
     private var clockOutDisplay: String {
-        guard let out = shift.clockOut, let d = Self.isoFormatter.date(from: out) else { return "–" }
+        guard let out = shift.clockOut, let d = ShiftTimestampParser.parse(out) else { return "–" }
         return Self.timeFormatter.string(from: d)
     }
 

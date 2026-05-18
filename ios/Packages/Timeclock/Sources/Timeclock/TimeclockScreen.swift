@@ -353,18 +353,22 @@ public struct ClockEntryRow: View {
     }
 
     private var dateString: String {
-        guard let date = Self.isoFormatter.date(from: entry.clockIn) else { return entry.clockIn }
+        // BUGHUNT-2026-05-18: ShiftTimestampParser (Shift.swift) accepts both
+        // server formats; bare ISO8601DateFormatter rejected the fractional
+        // and SQL-style timestamps so the personal-history row labeled itself
+        // with the raw timestamp + "?" for the in-time.
+        guard let date = ShiftTimestampParser.parse(entry.clockIn) else { return entry.clockIn }
         return Self.dateFormatter.string(from: date)
     }
 
     private var clockInTime: String {
-        guard let date = Self.isoFormatter.date(from: entry.clockIn) else { return "?" }
+        guard let date = ShiftTimestampParser.parse(entry.clockIn) else { return "?" }
         return Self.timeFormatter.string(from: date)
     }
 
     private var clockOutTime: String {
         guard let out = entry.clockOut,
-              let date = Self.isoFormatter.date(from: out)
+              let date = ShiftTimestampParser.parse(out)
         else { return "Active" }
         return Self.timeFormatter.string(from: date)
     }

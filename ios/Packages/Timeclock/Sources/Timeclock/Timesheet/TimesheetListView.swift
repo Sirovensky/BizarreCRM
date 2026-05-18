@@ -215,17 +215,21 @@ private struct TimesheetEntryRow: View {
     }
 
     private var dateLabel: String {
-        guard let date = Self.isoFormatter.date(from: entry.clockIn) else { return entry.clockIn }
+        // BUGHUNT-2026-05-18: see ShiftTimestampParser doc — server stores
+        // both fractional-ISO and SQL-style timestamps; default ISO formatter
+        // rejected both and the timesheet list painted raw timestamps + "?"
+        // for the time column.
+        guard let date = ShiftTimestampParser.parse(entry.clockIn) else { return entry.clockIn }
         return Self.dateFormatter.string(from: date)
     }
 
     private var clockInTime: String {
-        guard let date = Self.isoFormatter.date(from: entry.clockIn) else { return "?" }
+        guard let date = ShiftTimestampParser.parse(entry.clockIn) else { return "?" }
         return Self.timeFormatter.string(from: date)
     }
 
     private var clockOutTime: String {
-        guard let out = entry.clockOut, let date = Self.isoFormatter.date(from: out) else {
+        guard let out = entry.clockOut, let date = ShiftTimestampParser.parse(out) else {
             return "Active"
         }
         return Self.timeFormatter.string(from: date)
@@ -440,7 +444,7 @@ private struct ClockEntryDetailPanel: View {
     }
 
     private func formatted(_ iso: String) -> String {
-        guard let date = Self.isoFormatter.date(from: iso) else { return iso }
+        guard let date = ShiftTimestampParser.parse(iso) else { return iso }
         return Self.dateTimeFormatter.string(from: date)
     }
 

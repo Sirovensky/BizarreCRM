@@ -368,7 +368,11 @@ private struct EntryApprovalRow: View {
     }
 
     private func formattedDate(_ iso: String) -> String {
-        guard let d = Self.isoFormatter.date(from: iso) else { return iso }
+        // BUGHUNT-2026-05-18: ShiftTimestampParser handles Node fractional ISO
+        // and SQLite SQL-style; default ISO8601DateFormatter rejected both,
+        // so the VoiceOver a11y label spoke the raw "2026-05-18T10:30:45.123Z"
+        // string instead of "May 18, 2026."
+        guard let d = ShiftTimestampParser.parse(iso) else { return iso }
         let f = DateFormatter()
         f.dateStyle = .medium
         f.timeStyle = .none
@@ -376,7 +380,7 @@ private struct EntryApprovalRow: View {
     }
 
     private func formattedTime(_ iso: String) -> String {
-        guard let d = Self.isoFormatter.date(from: iso) else { return "?" }
+        guard let d = ShiftTimestampParser.parse(iso) else { return "?" }
         let f = DateFormatter()
         f.timeStyle = .short
         f.dateStyle = .none
