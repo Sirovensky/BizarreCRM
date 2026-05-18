@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -44,6 +45,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.bizarreelectronics.crm.R
@@ -498,6 +501,9 @@ fun DeviceTemplateEditDialog(
                     supportingText = if (name.isBlank()) {
                         { Text(stringResource(R.string.error_field_required)) }
                     } else null,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words,
+                    ),
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -509,6 +515,9 @@ fun DeviceTemplateEditDialog(
                         label = { Text(stringResource(R.string.device_templates_field_category)) },
                         modifier = Modifier.weight(1f),
                         singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Words,
+                        ),
                     )
                     OutlinedTextField(
                         value = deviceModel,
@@ -516,6 +525,9 @@ fun DeviceTemplateEditDialog(
                         label = { Text(stringResource(R.string.device_templates_field_model)) },
                         modifier = Modifier.weight(1f),
                         singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Words,
+                        ),
                     )
                 }
                 OutlinedTextField(
@@ -524,6 +536,9 @@ fun DeviceTemplateEditDialog(
                     label = { Text(stringResource(R.string.device_templates_field_fault)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                    ),
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -536,6 +551,7 @@ fun DeviceTemplateEditDialog(
                         placeholder = { Text("0.00") },
                         modifier = Modifier.weight(1f),
                         singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     )
                     OutlinedTextField(
                         value = suggestedPriceText,
@@ -544,6 +560,7 @@ fun DeviceTemplateEditDialog(
                         placeholder = { Text("0.00") },
                         modifier = Modifier.weight(1f),
                         singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     )
                 }
                 Row(
