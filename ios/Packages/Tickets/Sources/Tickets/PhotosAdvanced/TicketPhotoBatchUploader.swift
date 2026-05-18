@@ -1,4 +1,5 @@
 import Foundation
+import Core
 import Networking
 
 // MARK: - Batch upload item
@@ -142,6 +143,13 @@ public actor TicketPhotoBatchUploader {
             let envelope = try JSONDecoder().decode(UploadEnvelope.self, from: data)
             let remoteURL = envelope.data?.first?.url ?? ""
             return (item.id, .done(remoteURL: remoteURL))
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: batch upload cancellation; multipart bytes
+            // may have flushed server-side leaving a half-written file row.
+            // Returning .failed for the photo risks operator retap that
+            // creates a duplicate row. Return .pending so caller leaves it
+            // in the queue and sync layer reconciles on next ticket load.
+            return (item.id, .pending)
         } catch {
             return (item.id, .failed(reason: error.localizedDescription))
         }
