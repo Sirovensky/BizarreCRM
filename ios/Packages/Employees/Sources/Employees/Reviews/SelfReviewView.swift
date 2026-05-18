@@ -37,6 +37,12 @@ public final class SelfReviewViewModel {
             errorMessage = "Please fill in at least your strengths."
             return
         }
+        // BUGHUNT-2026-05-17: re-entry guard. The toolbar swaps Submit for
+        // ProgressView when isSaving, but a quick double-tap before the
+        // re-render fires two updateReview PATCHes, both transitioning to
+        // .peerPending — the audit log records two transitions with
+        // identical timestamps.
+        guard !isSaving else { return }
         isSaving = true
         defer { isSaving = false }
         errorMessage = nil
@@ -46,6 +52,12 @@ public final class SelfReviewViewModel {
                 UpdateReviewRequest(selfReview: combined, status: .peerPending)
             )
             onSaved(updated)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: updateReview PATCH may have landed before
+            // cancellation fired. Painting "cancelled" tempts the employee
+            // to retap Submit, double-stamping the .peerPending transition.
+            // Suppress so the parent refresh shows the actual saved state.
+            errorMessage = nil
         } catch {
             AppLog.ui.error("SelfReview save failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
