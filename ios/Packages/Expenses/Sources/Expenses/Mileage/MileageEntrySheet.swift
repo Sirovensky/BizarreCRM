@@ -177,6 +177,11 @@ public final class MileageEntryViewModel {
         do {
             let entry = try await repository.create(body)
             savedEntryId = entry.id
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: mileage create POST is reimbursable
+            // money. Retap on cancellation banner duplicates the entry
+            // and reimbursement run pays out twice.
+            return
         } catch {
             AppLog.ui.error("Mileage save failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
