@@ -87,6 +87,10 @@ public final class CustomerTagEditorViewModel {
             let raw = try await api.suggestCustomerTags(query: q)
             // Filter out already-selected.
             suggestions = raw.filter { !selectedTags.contains($0) }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: keystroke debounce cancels prior search;
+            // keep prior suggestions visible.
+            return
         } catch {
             suggestions = []
         }
@@ -105,6 +109,10 @@ public final class CustomerTagEditorViewModel {
         do {
             _ = try await api.setCustomerTags(id: customerId, req)
             savedSuccessfully = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: setCustomerTags PUT may have committed;
+            // retap on banner double-PUTs same set (audit row noise).
+            return
         } catch {
             saveError = AppError.from(error).localizedDescription
         }
