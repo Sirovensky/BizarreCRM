@@ -95,11 +95,38 @@ public final class PosOfflineAuditService {
     /// Register an offline sale with the current outage.
     /// Call from `PosSyncOpExecutor` when a sale is queued during an outage.
     public func registerOfflineSale(idempotencyKey: String) {
-        guard let index = outageRecords.indices.last else { return }
-        if outageRecords[index].outageEndedAt == nil {
-            outageRecords[index].pendingSaleIdempotencyKeys.append(idempotencyKey)
-            persistRecords()
+        // BUGHUNT-2026-05-17: previously the lookup was `outageRecords.indices.last`
+        // combined with a `outageEndedAt == nil` gate. Three failure modes:
+        //   1. If `recordOutageStart` was never called (e.g. the connectivity
+        //      monitor missed the offline transition), the LAST record is a
+        //      stale closed outage and the sale was dropped silently — never
+        //      appearing in the manager reconcile report.
+        //   2. If the LAST record happened to be closed but there's an
+        //      in-progress outage earlier in the array, the sale was dropped
+        //      despite being legitimately offline.
+        //   3. Re-enqueue of the same sale (executor retry, app relaunch
+        //      mid-outage) appended the idempotency key twice, making the
+        //      reconcile report under-count "N synced of M total".
+        // Fix: prefer `currentOutage`, fall back to "open an outage NOW" so
+        // the sale is never silently dropped, and de-dup the append.
+        let targetIndex: Int
+        if let ongoing = currentOutage,
+           let idx = outageRecords.firstIndex(where: { $0.id == ongoing.id }) {
+            targetIndex = idx
+        } else if let lastIdx = outageRecords.indices.last,
+                  outageRecords[lastIdx].outageEndedAt == nil {
+            targetIndex = lastIdx
+        } else {
+            AppLog.pos.warning("PosOfflineAuditService: registerOfflineSale without active outage — opening one retroactively for key \(idempotencyKey, privacy: .private)")
+            recordOutageStart()
+            guard let lastIdx = outageRecords.indices.last else { return }
+            targetIndex = lastIdx
         }
+        guard !outageRecords[targetIndex].pendingSaleIdempotencyKeys.contains(idempotencyKey) else {
+            return
+        }
+        outageRecords[targetIndex].pendingSaleIdempotencyKeys.append(idempotencyKey)
+        persistRecords()
     }
 
     /// Returns a human-readable manager report string for the most-recent completed outage.
