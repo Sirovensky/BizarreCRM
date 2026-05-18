@@ -25,8 +25,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -95,10 +97,17 @@ fun InsightsScreen(
                         }
                     }
                     state.busyHoursError != null -> {
-                        ErrorState(
-                            message = state.busyHoursError ?: "Failed to load heatmap.",
-                            onRetry = { viewModel.loadBusyHoursHeatmap() },
-                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .semantics { liveRegion = LiveRegionMode.Assertive },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            ErrorState(
+                                message = state.busyHoursError ?: "Failed to load heatmap.",
+                                onRetry = { viewModel.loadBusyHoursHeatmap() },
+                            )
+                        }
                     }
                     else -> {
                         // BusyHoursHeatmap handles empty-array stub state internally.

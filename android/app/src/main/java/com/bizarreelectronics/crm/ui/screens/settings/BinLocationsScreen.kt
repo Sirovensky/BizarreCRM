@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -286,7 +287,18 @@ fun BinLocationsScreen(
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             EmptyState(
                                 title = "No bin locations yet",
-                                subtitle = "Tap + to create your first aisle / shelf / bin address.",
+                                subtitle = "Define aisle / shelf / bin addresses so inventory can be picked quickly.",
+                                action = {
+                                    FilledTonalButton(onClick = { showCreateDialog = true }) {
+                                        Icon(
+                                            Icons.Default.Add,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                        Spacer(Modifier.size(8.dp))
+                                        Text("Add bin location")
+                                    }
+                                },
                             )
                         }
                     } else {
