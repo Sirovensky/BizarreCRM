@@ -40,6 +40,8 @@ final class SupportEmailViewModel {
         do {
             let contact = try await api.fetchSupportContact()
             supportEmail = contact.email
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             loadError = error.localizedDescription
         }
