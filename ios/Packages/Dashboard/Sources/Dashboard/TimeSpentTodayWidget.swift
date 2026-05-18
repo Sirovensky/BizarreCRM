@@ -114,14 +114,22 @@ public struct TimeSpentTodayWidget: View {
     }
 
     public var body: some View {
-        switch vm.state {
-        case .loading:
-            EmptyView()
-        case .unavailable:
-            EmptyView()
-        case .loaded(let data):
-            WidgetCard(data: data, liveMinutes: vm.liveMinutes)
+        // BUGHUNT-2026-05-17: nothing was calling `vm.load()` from this
+        // widget. Initial state is `.loading`, every branch of the switch
+        // renders before any caller could trigger the fetch, so the widget
+        // sat in `.loading` for the entire dashboard session and never
+        // rendered. Add a top-level `.task` to kick off the load on mount.
+        Group {
+            switch vm.state {
+            case .loading:
+                EmptyView()
+            case .unavailable:
+                EmptyView()
+            case .loaded(let data):
+                WidgetCard(data: data, liveMinutes: vm.liveMinutes)
+            }
         }
+        .task { await vm.load() }
     }
 }
 
