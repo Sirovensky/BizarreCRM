@@ -17,6 +17,7 @@
 
 #if canImport(UIKit)
 import SwiftUI
+import Core
 import DesignSystem
 import Networking
 
@@ -74,6 +75,10 @@ public final class CheckInFlowViewModel {
     public private(set) var isOffline: Bool = false
 
     @ObservationIgnored private let api: (any APIClient)?
+    /// BUGHUNT-2026-05-17: stable idempotency key for the deposit POST so a
+    /// retry after a cancelled finalize doesn't generate a fresh UUID and
+    /// double-charge the customer's check-in deposit.
+    @ObservationIgnored private var depositIdempotencyKey: String?
     public var onComplete: ((CheckInDraft) -> Void)?
 
     public init(draft: CheckInDraft = CheckInDraft(), api: (any APIClient)? = nil) {
@@ -162,13 +167,20 @@ public final class CheckInFlowViewModel {
             // `invoiceId` mirrors ticketId for now; the server creates an invoice per ticket.
             let depositCents = draft.depositCents
             if depositCents > 0 {
-                let idempotencyKey = UUID().uuidString
+                // BUGHUNT-2026-05-17: reuse a stable idempotency key across
+                // retries so a cancelled finalize followed by a retry tap
+                // doesn't generate a fresh UUID and double-charge the
+                // customer's deposit. Server-side payment dedup keys on
+                // (invoice_id, idempotency_key).
+                if depositIdempotencyKey == nil {
+                    depositIdempotencyKey = UUID().uuidString
+                }
                 _ = try await api.recordCheckinDeposit(
                     invoiceId: ticketId,          // server maps ticket→invoice on this path
                     depositCents: depositCents,
                     method: "cash",
                     notes: "Check-in deposit",
-                    idempotencyKey: idempotencyKey
+                    idempotencyKey: depositIdempotencyKey ?? UUID().uuidString
                 )
             }
 
@@ -176,7 +188,16 @@ public final class CheckInFlowViewModel {
             _ = try await api.finalizeCheckinTicket(id: ticketId)
 
             isOffline = false
+            // Reset the idempotency key on successful finalize so a second
+            // check-in via the same VM instance starts fresh.
+            depositIdempotencyKey = nil
             onComplete?(draft)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: cancellation mid-chain. The stable
+            // idempotency key above ensures a retry of the deposit is safe.
+            // Don't paint isOffline + saveError("Task was cancelled") — that
+            // misleads the cashier into thinking the network failed.
+            return
         } catch {
             isOffline = true
             saveError = error
