@@ -122,6 +122,17 @@ public final class TwoFactorChallengeViewModel {
         do {
             let resp = try await repository.challenge(challengeToken: challengeToken, code: code)
             result = .success(accessToken: resp.accessToken, refreshToken: resp.refreshToken)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: TOTP verify cancelled mid-flight (user
+            // navigated, app backgrounded). If the POST landed first, the
+            // server has already consumed the TOTP code window. Calling
+            // recordFailure() and clearing digits would bump the operator
+            // toward lockout AND tempt a re-tap that 401s because the same
+            // code can't be reused, painting "Code invalid" on a session
+            // that was actually verified. Stay silent on cancellation; the
+            // operator can tap Verify again only if they choose to.
+            digits = Array(repeating: "", count: 6)
+            return
         } catch {
             recordFailure()
             errorMessage = AppError.from(error).errorDescription
@@ -158,6 +169,15 @@ public final class TwoFactorChallengeViewModel {
                 refreshToken: resp.refreshToken,
                 codesRemaining: resp.codesRemaining
             )
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: recovery codes are single-use server-side.
+            // A cancellation toast tempted a re-tap with the same code that
+            // had already been consumed — server 401s, "code invalid"
+            // appears on screen, and the user thinks their backup codes
+            // are broken. They're not — that one is gone forever. Stay
+            // silent; the operator can paste a fresh code if needed.
+            recoveryCodeInput = ""
+            return
         } catch {
             errorMessage = AppError.from(error).errorDescription
             recoveryCodeInput = ""
