@@ -284,6 +284,11 @@ public final class StarPrinterAdapter: ReceiptPrinter, @unchecked Sendable {
         let bytes = EscPosCommandBuilder.receipt(payload)
         do {
             try await bridge.send(bytes)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: don't wrap cancel as printFailed — the
+            // caller's "Print failed, retry?" prompt would tempt retap that
+            // may double-print if the bytes already reached the printer.
+            throw e
         } catch {
             throw ReceiptPrinterError.printFailed(error.localizedDescription)
         }
@@ -297,6 +302,10 @@ public final class StarPrinterAdapter: ReceiptPrinter, @unchecked Sendable {
         let bytes = EscPosCommandBuilder.drawerKick()
         do {
             try await bridge.send(bytes)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: drawer kick cancel — if bytes already
+            // dispatched, the drawer may have opened. Don't paint drawerFailed.
+            throw e
         } catch {
             throw ReceiptPrinterError.drawerFailed(error.localizedDescription)
         }
