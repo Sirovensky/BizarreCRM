@@ -35,6 +35,7 @@ import com.bizarreelectronics.crm.data.remote.dto.TaxClassOption
 import com.bizarreelectronics.crm.data.repository.InventoryRepository
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -249,6 +250,10 @@ class InventoryCreateViewModel @Inject constructor(
             return
         }
         val current = _state.value
+        // BUGHUNT-2026-05-17: re-entry guard — double-tap on Save would POST
+        // twice before the launch had a chance to set isSubmitting, creating
+        // two inventory items with identical names/SKUs.
+        if (current.isSubmitting) return
         val retail = current.retailPrice.toDouble()
 
         viewModelScope.launch {
@@ -285,6 +290,11 @@ class InventoryCreateViewModel @Inject constructor(
                         createdId = createdId,
                     )
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: bare catch (e: Exception) below would
+                // paint "Failed to create inventory item" on back-nav, tempting
+                // a re-tap that creates a duplicate inventory row.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSubmitting = false,
