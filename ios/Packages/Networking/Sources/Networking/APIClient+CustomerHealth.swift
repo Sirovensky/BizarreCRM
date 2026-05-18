@@ -55,31 +55,38 @@ public struct CustomerLTVTierResponse: Decodable, Sendable {
 // MARK: - APIClient extension
 
 public extension APIClient {
-    /// `GET /crm/customers/:id/health-score`
+    // BUGHUNT-2026-05-17: all three wrappers below used `/crm/...` bare
+    // paths. iOS APIClient base URL is the shop origin; server mounts
+    // crm.routes at `/api/v1/crm` (index.ts L1768). Customer health
+    // score, RFM recalculate, and LTV tier all 404'd silently — the
+    // customer detail RFM panel just rendered "Health score unavailable"
+    // for every customer.
+
+    /// `GET /api/v1/crm/customers/:id/health-score`
     /// Returns the DB-cached health score + LTV for a customer.
     /// Throws `APITransportError.notImplemented` when the endpoint is absent.
     func customerHealthScore(customerId: Int64) async throws -> CustomerHealthScoreResponse {
         try await get(
-            "/crm/customers/\(customerId)/health-score",
+            "/api/v1/crm/customers/\(customerId)/health-score",
             as: CustomerHealthScoreResponse.self
         )
     }
 
-    /// `POST /crm/customers/:id/health-score/recalculate`
+    /// `POST /api/v1/crm/customers/:id/health-score/recalculate`
     /// Triggers server-side RFM recomputation and returns the updated score.
     func recalculateCustomerHealthScore(customerId: Int64) async throws -> CustomerHealthRecalcResponse {
         try await post(
-            "/crm/customers/\(customerId)/health-score/recalculate",
+            "/api/v1/crm/customers/\(customerId)/health-score/recalculate",
             body: EmptyBody(),
             as: CustomerHealthRecalcResponse.self
         )
     }
 
-    /// `GET /crm/customers/:id/ltv-tier`
+    /// `GET /api/v1/crm/customers/:id/ltv-tier`
     /// Returns the stored LTV tier + lifetime_value_cents.
     func customerLTVTier(customerId: Int64) async throws -> CustomerLTVTierResponse {
         try await get(
-            "/crm/customers/\(customerId)/ltv-tier",
+            "/api/v1/crm/customers/\(customerId)/ltv-tier",
             as: CustomerLTVTierResponse.self
         )
     }
