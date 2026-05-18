@@ -109,6 +109,12 @@ public final class BulkPriceAdjustmentViewModel {
         do {
             priceRows = try await api.listRepairPrices(category: categoryFilter)
             phase = .idle
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismissed before list arrived — don't
+            // leave the VM in `.failed` (which would render an error banner
+            // when the user just navigated away). Reset to idle.
+            phase = .idle
+            return
         } catch {
             AppLog.ui.error("BulkPriceAdjustment load failed: \(error.localizedDescription, privacy: .public)")
             phase = .failed(error.localizedDescription)
@@ -137,6 +143,12 @@ public final class BulkPriceAdjustmentViewModel {
     /// Only rows where `newPrice != originalPrice` are sent to the server
     /// (i.e. a zero-delta row is skipped).
     public func applyChanges() async {
+        // BUGHUNT-2026-05-17: re-entry guard — `.applying` already short-circuits
+        // most accidental double-taps via the button's `.disabled(isBusy)`, but
+        // a fast double-tap can still squeeze in before the next frame. Without
+        // this guard each tap would PUT every changed price twice → duplicate
+        // audit rows + the bulk total dollar delta gets logged twice.
+        if case .applying = phase { return }
         guard case .preview(let results) = phase else { return }
         let changed = results.filter { abs($0.delta) > 0.001 }
         guard !changed.isEmpty else {
@@ -153,6 +165,17 @@ public final class BulkPriceAdjustmentViewModel {
             do {
                 _ = try await api.updateRepairPrice(id: result.id, laborPrice: result.newPrice)
                 successCount += 1
+            } catch let e where AppError.isCancellation(e) {
+                // BUGHUNT-2026-05-17: a cancellation mid-batch means the user
+                // backed out (sheet dismissed, task torn down, or app
+                // backgrounded). Per-row PUT is money-equivalent: the server
+                // may or may not have applied this row, and the next row's
+                // PUT would race the same uncertainty. Stop the loop and
+                // mark partial-apply explicitly rather than counting this row
+                // as either success or failure — and DON'T surface a banner,
+                // since the user already knows they cancelled.
+                phase = .applied(successCount: successCount)
+                return
             } catch {
                 AppLog.ui.error("BulkPriceAdjustment PUT \(result.id) failed: \(error.localizedDescription, privacy: .public)")
                 lastError = error.localizedDescription
