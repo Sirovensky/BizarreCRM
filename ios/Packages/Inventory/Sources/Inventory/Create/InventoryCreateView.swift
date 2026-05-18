@@ -98,6 +98,9 @@ public final class InventoryCreateViewModel {
             let created = try await api.createInventoryItem(req)
             createdId = created.id
             clearDraft()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: createInventoryItem may have already committed server-side when the task is cancelled (sheet dismissed). A "Failed" banner tempts a retry → duplicate SKU INSERT (server UNIQUE may reject but draft state is then ambiguous). Stay silent; preserve draft for explicit retry.
+            return
         } catch {
             if InventoryOfflineQueue.isNetworkError(error) {
                 await enqueueOffline(req)
