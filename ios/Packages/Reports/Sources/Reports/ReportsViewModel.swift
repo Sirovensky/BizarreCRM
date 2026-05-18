@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Observation
+import Core
 import Networking
 
 // MARK: - ReportTab
@@ -44,10 +45,22 @@ public final class ReportsViewModel {
 
     // MARK: - Active tab
     // §91.15 Per-tab data scoping: changing tabs triggers a scoped load.
-
+    //
+    // BUGHUNT-2026-05-17: rapid tab switches previously spawned untracked
+    // `Task { await loadForActiveTab() }` blocks. A slow earlier load (e.g.
+    // .insights, which fans out CSAT/NPS/employee-perf calls) could land
+    // *after* a faster later load (e.g. .sales) and stomp the freshly
+    // loaded card data, leaving the visible tab showing partial/empty
+    // state. Track the task and cancel the prior one on each tab change.
     public var activeTab: ReportTab = .sales {
-        didSet { Task { await loadForActiveTab() } }
+        didSet {
+            activeTabLoadTask?.cancel()
+            activeTabLoadTask = Task { @MainActor [weak self] in
+                await self?.loadForActiveTab()
+            }
+        }
     }
+    @ObservationIgnored private var activeTabLoadTask: Task<Void, Never>?
 
     // MARK: - Granularity (day / week / month)
     // Controls the group_by parameter sent to GET /api/v1/reports/sales.
@@ -240,6 +253,10 @@ public final class ReportsViewModel {
 
     /// §91.15 Per-tab scoped load — fetches only the data the active tab needs.
     /// Avoids fetching sales-revenue on the Tickets tab or inventory KPIs on Sales.
+    ///
+    /// BUGHUNT-2026-05-17: If a prior tab-change task was cancelled while
+    /// in-flight, bail out so a stale fetch doesn't overwrite the newer
+    /// tab's data or clear isLoading underneath the newer task.
     public func loadForActiveTab() async {
         isLoading = true
         errorMessage = nil
@@ -266,6 +283,7 @@ public final class ReportsViewModel {
                 group.addTask { await self.loadNPS() }
             }
         }
+        if Task.isCancelled { return }
         lastSyncedAt = Date()
         isLoading = false
     }
