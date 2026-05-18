@@ -820,11 +820,34 @@ class SyncManager @Inject constructor(
                 val invoiceId = invoiceResponse.data?.id
                     ?: throw Exception("Failed to convert ticket to invoice")
 
-                // Step 2: Record payment
-                invoiceApi.recordPayment(
-                    invoiceId,
-                    RecordPaymentRequest(amount = amount, method = method)
-                )
+                // BUGHUNT-2026-05-17: protect the recordPayment step against
+                // coroutine cancellation occurring AFTER convertToInvoice has
+                // already mutated server state. Without NonCancellable, a
+                // cancel between step 1 and step 2 (Doze, WorkManager
+                // replacement, app teardown) would leave the queue entry
+                // marked "pending", and the next flushQueue tick would
+                // re-dispatch the whole entry — calling convertToInvoice
+                // AGAIN on a ticket that is already converted. If the server
+                // is not idempotent (no /tickets/:id/convert-to-invoice
+                // idempotency key plumbed through), that produces a
+                // duplicate invoice. Even with idempotent step 1, this
+                // window still lets the payment go unrecorded if step 2
+                // is dropped (the customer's invoice has no payment).
+                // NonCancellable ensures step 2 at least gets attempted
+                // once before cancellation tears down the coroutine.
+                //
+                // Note: this does NOT fix the broader non-cancellation
+                // retry hazard — if recordPayment fails with a transient
+                // network error, the entry still retries step 1. A full
+                // fix needs server-side idempotency (client_request_id
+                // on convert-to-invoice) or persisted partial-success
+                // state.  Tracked separately.
+                withContext(NonCancellable) {
+                    invoiceApi.recordPayment(
+                        invoiceId,
+                        RecordPaymentRequest(amount = amount, method = method)
+                    )
+                }
             }
             else -> Log.w(TAG, "Unknown operation '${entry.operation}' for checkout #${entry.entityId}")
         }
