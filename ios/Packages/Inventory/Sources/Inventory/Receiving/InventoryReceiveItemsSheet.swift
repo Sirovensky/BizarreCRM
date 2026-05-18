@@ -87,8 +87,14 @@ public struct InventoryReceiveItemsSheet: View {
                     Section("Add item") {
                         TextField("SKU or barcode", text: $manualSKU)
                             .autocorrectionDisabled()
+                            #if canImport(UIKit)
+                            .textInputAutocapitalization(.never)
+                            #endif
                             .accessibilityLabel("Enter SKU or barcode")
                         TextField("Item name (optional)", text: $manualName)
+                            #if canImport(UIKit)
+                            .textInputAutocapitalization(.words)
+                            #endif
                             .accessibilityLabel("Item name")
                         Stepper("Qty: \(manualQty)", value: $manualQty, in: 1...9999)
                             .accessibilityLabel("Quantity: \(manualQty)")
