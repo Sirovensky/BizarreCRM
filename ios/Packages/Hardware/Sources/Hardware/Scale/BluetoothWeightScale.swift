@@ -35,7 +35,7 @@ public actor BluetoothWeightScale: WeightScale {
 
     private let peripheral: CBPeripheral
     private var latestWeight: Weight?
-    private var continuations: [AsyncStream<Weight>.Continuation] = []
+    private var continuationTokens: [_ContinuationToken] = []
 
     // MARK: - Init
 
@@ -61,7 +61,20 @@ public actor BluetoothWeightScale: WeightScale {
 
     public nonisolated func stream() -> AsyncStream<Weight> {
         AsyncStream { continuation in
-            Task { await self._addContinuation(continuation) }
+            // BUGHUNT-2026-05-18: previously the continuation was appended
+            // to `continuations` but never removed — each stream() caller
+            // permanently leaked one slot, and `didReceiveCharacteristicData`
+            // looped over a growing array on every BLE notification. AsyncStream
+            // calls `onTermination` when the consumer cancels or the loop ends;
+            // hook it to drop the slot. Use the continuation's object identity
+            // for removal (AsyncStream.Continuation is a struct without
+            // Equatable, but we wrap it in a class-id token).
+            let token = _ContinuationToken(continuation: continuation)
+            Task { await self._addContinuation(token) }
+            continuation.onTermination = { [weak self] _ in
+                guard let self else { return }
+                Task { await self._removeContinuation(token) }
+            }
         }
     }
 
@@ -103,7 +116,7 @@ public actor BluetoothWeightScale: WeightScale {
         let netGrams = max(0, weight.grams - tareOffsetGrams)
         let netWeight = Weight(grams: netGrams, isStable: weight.isStable)
         latestWeight = netWeight
-        for cont in continuations { cont.yield(netWeight) }
+        for tok in continuationTokens { tok.continuation.yield(netWeight) }
         AppLog.hardware.info("BluetoothWeightScale: raw=\(weight.grams)g tare=\(self.tareOffsetGrams)g net=\(netGrams)g")
     }
 
@@ -140,8 +153,21 @@ public actor BluetoothWeightScale: WeightScale {
 
     // MARK: - Private helpers
 
-    private func _addContinuation(_ continuation: AsyncStream<Weight>.Continuation) {
-        continuations.append(continuation)
-        if let w = latestWeight { continuation.yield(w) }
+    private func _addContinuation(_ token: _ContinuationToken) {
+        continuationTokens.append(token)
+        if let w = latestWeight { token.continuation.yield(w) }
+    }
+
+    private func _removeContinuation(_ token: _ContinuationToken) {
+        continuationTokens.removeAll { $0 === token }
+    }
+}
+
+/// Class wrapper for AsyncStream.Continuation (a struct) so we can remove
+/// a specific subscriber by object identity on stream termination.
+private final class _ContinuationToken: @unchecked Sendable {
+    let continuation: AsyncStream<BluetoothWeightScale.Weight>.Continuation
+    init(continuation: AsyncStream<BluetoothWeightScale.Weight>.Continuation) {
+        self.continuation = continuation
     }
 }
