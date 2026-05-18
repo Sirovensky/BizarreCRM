@@ -119,6 +119,11 @@ public final class CampaignCreateViewModel {
             )
             let row = try await api.createCampaignServer(req)
             successCampaign = Campaign.from(row)
+        } catch let e where AppError.isCancellation(e) {
+            // Sheet dismissed mid-create; the server may have already
+            // created the campaign row. Stay silent rather than tempting
+            // a retry that duplicates the row.
+            return
         } catch {
             AppLog.ui.error("Campaign create failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -129,6 +134,13 @@ public final class CampaignCreateViewModel {
         do {
             try await api.approveSendCampaign(id: campaignId, managerPin: pin)
             return true
+        } catch let e where AppError.isCancellation(e) {
+            // Approval triggers SMS sending — a real money write. If the
+            // server already accepted, retrying would attempt to charge
+            // again (server-side idempotency is best-effort). Return false
+            // without painting a misleading "Approval failed" message;
+            // the caller can refetch campaign state to disambiguate.
+            return false
         } catch {
             errorMessage = "Approval failed: \(error.localizedDescription)"
             return false
