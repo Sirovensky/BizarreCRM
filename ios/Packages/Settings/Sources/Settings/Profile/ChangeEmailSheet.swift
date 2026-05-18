@@ -38,12 +38,22 @@ final class ChangeEmailViewModel {
     }
 
     func submit() async -> Bool {
+        guard !isSaving else { return false }
         isSaving = true
         defer { isSaving = false }
         errorMessage = nil
         do {
             try await api.settingsRequestEmailChange(newEmail: newEmail, currentPassword: currentPassword)
             return true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: change-email POST triggers a verification
+            // email to the NEW address + audit row. Cancellation banner
+            // tempts the user to retap, which on partial-success sends a
+            // SECOND verification email (and double-audits "email change
+            // requested"). Stay silent on cancellation; the user can
+            // re-enter the form deliberately if the verification didn't
+            // arrive in their inbox.
+            return false
         } catch {
             errorMessage = error.localizedDescription
             return false
