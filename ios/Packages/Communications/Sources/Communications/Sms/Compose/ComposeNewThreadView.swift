@@ -77,6 +77,13 @@ public final class ComposeNewThreadViewModel {
             _ = try await api.sendSms(to: p, message: m)
             sentPhone = p
             completion(p)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sendSms is a POST with no idempotency key.
+            // If the server accepted the request before the Task was cancelled,
+            // the SMS already went out — surfacing "failed" tempts a re-tap that
+            // double-sends to the customer (TCPA + carrier billing risk). Stay
+            // silent on cancellation; the user can verify in the thread list.
+            return
         } catch {
             AppLog.ui.error("ComposeNewThread send failed: \(error.localizedDescription, privacy: .public)")
             sendError = error.localizedDescription
