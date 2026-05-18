@@ -6,6 +6,7 @@ import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.TimeOffApi
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -157,33 +158,39 @@ class TimeOffViewModel @Inject constructor(
                 "type" to type.apiValue,
                 "reason" to reason,
             )
-            runCatching { timeOffApi.submitRequest(body) }
-                .onSuccess {
-                    _state.value = _state.value.copy(
-                        showRequestDialog = false,
-                        toastMessage = "Time-off request submitted",
-                    )
-                    loadRequests()
-                }
-                .onFailure {
-                    _state.value = _state.value.copy(toastMessage = "Failed to submit request")
-                }
+            // BUGHUNT-2026-05-17: runCatching swallowed CancellationException.
+            // submitRequest commits a PTO row server-side; retap on a
+            // spurious failure DUPLICATES the request.
+            try {
+                timeOffApi.submitRequest(body)
+                _state.value = _state.value.copy(
+                    showRequestDialog = false,
+                    toastMessage = "Time-off request submitted",
+                )
+                loadRequests()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(toastMessage = "Failed to submit request")
+            }
         }
     }
 
     /** Manager approves a pending request. */
     fun approveRequest(requestId: Long) {
         viewModelScope.launch {
-            runCatching {
+            // BUGHUNT-2026-05-17: runCatching swallowed CancellationException.
+            // Approve commits + notifies the requester; retap re-fires the
+            // approval notification.
+            try {
                 timeOffApi.updateRequest(requestId, mapOf("action" to "approve"))
+                _state.value = _state.value.copy(toastMessage = "Request approved")
+                loadRequests()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(toastMessage = "Failed to approve request")
             }
-                .onSuccess {
-                    _state.value = _state.value.copy(toastMessage = "Request approved")
-                    loadRequests()
-                }
-                .onFailure {
-                    _state.value = _state.value.copy(toastMessage = "Failed to approve request")
-                }
         }
     }
 
@@ -194,30 +201,32 @@ class TimeOffViewModel @Inject constructor(
                 put("action", "reject")
                 if (reason.isNotBlank()) put("reason", reason)
             }
-            runCatching { timeOffApi.updateRequest(requestId, body) }
-                .onSuccess {
-                    _state.value = _state.value.copy(toastMessage = "Request rejected")
-                    loadRequests()
-                }
-                .onFailure {
-                    _state.value = _state.value.copy(toastMessage = "Failed to reject request")
-                }
+            // BUGHUNT-2026-05-17: see approve.
+            try {
+                timeOffApi.updateRequest(requestId, body)
+                _state.value = _state.value.copy(toastMessage = "Request rejected")
+                loadRequests()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(toastMessage = "Failed to reject request")
+            }
         }
     }
 
     /** Staff cancels their own pending request. */
     fun cancelRequest(requestId: Long) {
         viewModelScope.launch {
-            runCatching {
+            // BUGHUNT-2026-05-17: runCatching swallowed CancellationException.
+            try {
                 timeOffApi.updateRequest(requestId, mapOf("action" to "cancel"))
+                _state.value = _state.value.copy(toastMessage = "Request cancelled")
+                loadRequests()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(toastMessage = "Failed to cancel request")
             }
-                .onSuccess {
-                    _state.value = _state.value.copy(toastMessage = "Request cancelled")
-                    loadRequests()
-                }
-                .onFailure {
-                    _state.value = _state.value.copy(toastMessage = "Failed to cancel request")
-                }
         }
     }
 
