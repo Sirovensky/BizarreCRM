@@ -55,6 +55,7 @@ import com.bizarreelectronics.crm.ui.theme.ErrorRed
 import com.bizarreelectronics.crm.ui.theme.SuccessGreen
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -425,11 +426,23 @@ class ReportsViewModel @Inject constructor(
     /** Create a new scheduled report and reload the list on success. */
     fun createSchedule(spec: ScheduledReportSpec) {
         viewModelScope.launch {
-            runCatching { reportApi.createScheduledReport(spec) }
-                .onSuccess { loadScheduledReports() }
-                .onFailure { e ->
-                    _state.update { it.copy(scheduleSnackbar = "Failed to create schedule: ${e.message}") }
-                }
+            try {
+                reportApi.createScheduledReport(spec)
+                loadScheduledReports()
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation. runCatching used
+                // to swallow CancellationException and route it through
+                // onFailure as "Failed to create schedule". The POST may
+                // have already created the schedule server-side -- which
+                // immediately starts sending the report to recipients on the
+                // configured cadence. A misleading "Failed to create"
+                // snackbar tempts the user to re-tap Create, registering a
+                // DUPLICATE schedule that emails the same report twice on
+                // each run.
+                throw e
+            } catch (e: Throwable) {
+                _state.update { it.copy(scheduleSnackbar = "Failed to create schedule: ${e.message}") }
+            }
         }
     }
 
