@@ -77,11 +77,20 @@ public actor SyncFlusher {
         var failureCount = 0
 
         for record in due {
+            // BUGHUNT-2026-05-17: drop out cleanly when the flush Task is
+            // cancelled (user backgrounded, BGTask deadline elapsed). The
+            // previous bare catches treated CancellationError as a real
+            // handler failure, bumping attempt count and eventually
+            // dead-lettering rows that were perfectly valid.
+            if Task.isCancelled { break }
+
             guard let id = record.id else { continue }
             let kind = record.kind ?? "\(record.entity ?? "unknown").\(record.op ?? "unknown")"
 
             do {
                 try await SyncQueueStore.shared.markInFlight(id)
+            } catch is CancellationError {
+                break
             } catch {
                 AppLog.sync.error("markInFlight failed for \(kind, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 failureCount += 1
@@ -101,6 +110,12 @@ public actor SyncFlusher {
                 try await handler(record)
                 try await SyncQueueStore.shared.markSucceeded(id)
                 AppLog.sync.info("sync replay OK: \(kind, privacy: .public) id=\(id)")
+            } catch is CancellationError {
+                // Leave the row in `in_flight` — a subsequent flush will
+                // see it back in `due` once the markInFlight TTL expires,
+                // without consuming an attempt.
+                AppLog.sync.info("sync flush cancelled mid-record (kind=\(kind, privacy: .public) id=\(id))")
+                break
             } catch {
                 // Domain handlers should raise a typed error with enough
                 // context for the operator; we record the stringified form
