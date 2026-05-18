@@ -107,6 +107,12 @@ public final class LeadStatusNoteViewModel {
         do {
             let updated = try await api.updateLead(id: leadId, body: body)
             state = .saved(updated)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismissed; PUT may have committed
+            // + fired workflow SMS hook. Reset to .idle so retap is
+            // deliberate (banner would double-fire customer SMS).
+            state = .idle
+            return
         } catch {
             AppLog.ui.error("Status update failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)
