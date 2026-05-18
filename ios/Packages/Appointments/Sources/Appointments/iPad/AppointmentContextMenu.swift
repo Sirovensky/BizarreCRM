@@ -55,6 +55,13 @@ final class AppointmentContextMenuViewModel {
             reminderSent = true
             onRefresh()
             AppLog.ui.info("Reminder sent for appointment \(appointment.id, privacy: .public)")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: TCPA — same SMS/email hook fires as
+            // AppointmentDetailViewModel.sendReminder. If the context-menu
+            // task is cancelled (row scrolled out, view torn down), the
+            // server may already have queued the message. Painting an error
+            // tempts a retap that double-texts the customer.
+            return
         } catch {
             errorMessage = AppError.from(error).errorDescription ?? "Failed to send reminder."
             AppLog.ui.error("Reminder send failed: \(error.localizedDescription, privacy: .public)")
