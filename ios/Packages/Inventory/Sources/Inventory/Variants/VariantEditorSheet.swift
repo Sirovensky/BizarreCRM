@@ -195,6 +195,9 @@ final class VariantEditorViewModel {
         defer { isLoading = false }
         do {
             existingVariants = try await api.listVariants(parentSKU: parentSKU)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: variant list is read-only; silent on cancellation avoids stale banner after view dismiss
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -265,6 +268,9 @@ final class VariantEditorViewModel {
             )
             do {
                 _ = try await api.createVariant(req)
+            } catch let e where AppError.isCancellation(e) {
+                // BUGHUNT-2026-05-17: variant creation mid-loop cancelled (sheet dismissed); silent return prevents fake "Failed" banner that tempts user retry → duplicate child rows on parent SKU
+                return
             } catch {
                 errorMessage = "Failed to create \(combo.displayLabel): \(error.localizedDescription)"
                 return
