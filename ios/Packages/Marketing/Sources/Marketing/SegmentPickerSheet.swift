@@ -21,6 +21,10 @@ final class SegmentPickerViewModel {
         do {
             let resp = try await api.listSegments()
             segments = resp.segments
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: picker dismiss cancellation; keep prior
+            // segments visible.
+            return
         } catch {
             AppLog.ui.error("Segment picker load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
