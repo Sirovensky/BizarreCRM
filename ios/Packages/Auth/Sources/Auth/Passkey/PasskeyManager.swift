@@ -132,6 +132,11 @@ public final class PasskeyManager: Sendable {
             authorization = try await controller.performRequests([request])
         } catch let err as ASAuthorizationError where err.code == .canceled {
             throw AppError.cancelled
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: Swift task-tree cancel (not user-tap cancel)
+            // was being wrapped as .unknown. Surface as .cancelled so the
+            // ViewModel can transition to .idle instead of .failed.
+            throw AppError.cancelled
         } catch {
             throw AppError.unknown(underlying: error)
         }
@@ -173,6 +178,11 @@ public final class PasskeyManager: Sendable {
         do {
             authorization = try await controller.performRequests([request])
         } catch let err as ASAuthorizationError where err.code == .canceled {
+            throw AppError.cancelled
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: Swift task-tree cancel (not user-tap cancel)
+            // was being wrapped as .unknown. Surface as .cancelled so the
+            // ViewModel can transition to .idle instead of .failed.
             throw AppError.cancelled
         } catch {
             throw AppError.unknown(underlying: error)
