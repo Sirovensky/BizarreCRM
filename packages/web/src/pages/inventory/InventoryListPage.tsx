@@ -696,13 +696,15 @@ export function InventoryListPage() {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Min Price</label>
-            <input type="number" value={minPrice} onChange={e => setMinPrice(e.target.value)} placeholder="0"
+            <label htmlFor="inv-min-price" className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Min Price</label>
+            <input id="inv-min-price" type="number" inputMode="decimal" min={0} step="0.01" value={minPrice} onChange={e => setMinPrice(e.target.value)} placeholder="0"
+              aria-label="Minimum price filter"
               className="w-full text-sm rounded-md border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Max Price</label>
-            <input type="number" value={maxPrice} onChange={e => setMaxPrice(e.target.value)} placeholder="999"
+            <label htmlFor="inv-max-price" className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Max Price</label>
+            <input id="inv-max-price" type="number" inputMode="decimal" min={0} step="0.01" value={maxPrice} onChange={e => setMaxPrice(e.target.value)} placeholder="999"
+              aria-label="Maximum price filter"
               className="w-full text-sm rounded-md border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5" />
           </div>
           <div className="flex items-end gap-2">

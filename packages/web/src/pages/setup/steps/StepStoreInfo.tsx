@@ -92,6 +92,9 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack, onSkip }: Ste
             value={address}
             onChange={(e) => onUpdate({ store_address: e.target.value })}
             placeholder="123 Main St, City, State ZIP"
+            autoFocus
+            autoComplete="street-address"
+            autoCapitalize="words"
             aria-invalid={!!errors.address}
             aria-describedby={errors.address ? 'setup-store-address-error' : undefined}
             className={`w-full rounded-xl border bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:outline-none focus-visible:ring-2 dark:bg-surface-700 dark:text-surface-100 ${
@@ -152,6 +155,11 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack, onSkip }: Ste
               value={email}
               onChange={(e) => onUpdate({ store_email: e.target.value })}
               placeholder="shop@example.com"
+              autoComplete="email"
+              inputMode="email"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
               aria-invalid={!!errors.email}
               aria-describedby={errors.email ? 'setup-store-email-error' : undefined}
               className={`w-full rounded-xl border bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:outline-none focus-visible:ring-2 dark:bg-surface-700 dark:text-surface-100 ${
