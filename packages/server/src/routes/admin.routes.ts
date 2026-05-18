@@ -451,14 +451,29 @@ router.get('/backups', (req, res) => {
 // (acquires/releases via acquireTenantBackupLock). The route just needs to
 // fail-fast if this tenant already has a backup in flight. In single-tenant
 // mode the lock key is "__single__".
+//
+// BUGHUNT-2026-05-17: this route was a bare async handler. Express 4 does
+// not catch unhandled rejections from async handlers, so any throw inside
+// `runBackup` (encryption failure, disk full, etc.) became an
+// unhandledRejection and left the client request hanging forever (TCP keepalive
+// would eventually reap it, but the admin UI looked frozen). Wrap in try/catch
+// so a backup failure renders a proper 500 + audit log entry.
 router.post('/backup', async (req, res) => {
   const db = req.db;
   if (isTenantBackupRunning()) {
     res.status(429).json({ success: false, message: 'Backup already in progress for this shop' });
     return;
   }
-  const result = await runBackup(db);
-  res.json({ success: result.success, data: result });
+  try {
+    const result = await runBackup(db);
+    res.json({ success: result.success, data: result });
+  } catch (e: unknown) {
+    const err = e as Error;
+    logger.error('admin_backup_error', { error: err.message, stack: err.stack });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Backup failed. Check server logs.' });
+    }
+  }
 });
 
 // GET /admin/backups/:filename/download — stream the encrypted file for off-site copy.
