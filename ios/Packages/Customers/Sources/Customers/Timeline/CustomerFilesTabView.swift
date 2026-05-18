@@ -480,6 +480,11 @@ struct CustomerFilePDFAnnotator: View {
         do {
             try await api.uploadCustomerFileAnnotation(fileId: file.id, pngData: data)
             dismiss()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: sheet dismiss mid-upload — server may have
+            // saved the annotation already. Retap would write a duplicate
+            // annotation row on the same file.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
