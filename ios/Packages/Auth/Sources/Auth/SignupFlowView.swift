@@ -89,6 +89,15 @@ public final class SignupFlowViewModel {
     // MARK: - Submit
 
     public func submit() async {
+        // BUGHUNT-2026-05-17: re-entry guard against duplicate tenant creation.
+        // The view's "Create shop" button is .disabled(!canGoNext || isSubmitting),
+        // but `goNext()` on the .confirm step kicks off `Task { await submit() }`
+        // and returns immediately. Two rapid taps in the same UI frame both
+        // schedule a Task, and both run `api.signup(...)` before isSubmitting
+        // has flipped — producing two POST /api/v1/auth/setup calls (and two
+        // tenants on the cloud side, since each carries its own DB row). Guard
+        // here in the VM as the single source of truth.
+        guard !isSubmitting else { return }
         isSubmitting = true
         errorMessage = nil
         defer { isSubmitting = false }

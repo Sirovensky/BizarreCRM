@@ -12,6 +12,7 @@ import com.bizarreelectronics.crm.ui.screens.inventory.components.InventorySort
 import com.bizarreelectronics.crm.ui.screens.inventory.components.StockStatus
 import com.bizarreelectronics.crm.ui.screens.inventory.components.applyInventorySortOrder
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -190,6 +191,15 @@ class InventoryListViewModel @Inject constructor(
                         reason = reason,
                     ),
                 )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: stock adjustment is a real inventory
+                // mutation. Bare catch (e: Exception) below swallowed
+                // cancellation and triggered a full loadItems() reload, masking
+                // whether the server actually applied the delta. Re-throw so
+                // the launch dies cleanly; the optimistic UI state remains
+                // and the next loadItems() call (e.g. on screen resume) will
+                // reconcile against the server.
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "adjustStockBy($id, $delta) failed: ${e.message}")
                 // Roll back optimistic update on failure
@@ -211,6 +221,10 @@ class InventoryListViewModel @Inject constructor(
                 } else {
                     _state.value = _state.value.copy(barcodeLookupError = "No item found for barcode: $code")
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: don't paint "Barcode lookup failed: ..."
+                // when the scanner screen is just dismissed mid-lookup.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(barcodeLookupError = "Barcode lookup failed: ${e.message}")
             }
@@ -251,6 +265,12 @@ class InventoryListViewModel @Inject constructor(
                 )
                 // Refresh list so updated stock levels / new POs are visible
                 refresh()
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: auto-reorder POSTs server-side PO
+                // creation. Bare catch would paint "Auto-reorder failed: ..."
+                // on dialog dismissal mid-request and tempt the user to re-run
+                // it, generating duplicate POs.
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "runAutoReorder failed: ${e.message}")
                 _state.value = _state.value.copy(

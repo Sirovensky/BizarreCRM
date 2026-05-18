@@ -266,6 +266,13 @@ public final class LoginFlow {
     // MARK: - Step B · REGISTER (cloud)
 
     public func submitRegister() async {
+        // BUGHUNT-2026-05-17: re-entry guard against duplicate tenant creation.
+        // Button is `.disabled(flow.isSubmitting)` in the view, but the user
+        // can tap twice within the same UI frame before `isSubmitting = true`
+        // lands on the next render — both invocations then race to POST
+        // /api/v1/signup and the server creates two shops (slug uniqueness is
+        // the only thing stopping it, and that only catches one of the pair).
+        guard !isSubmitting else { return }
         isSubmitting = true; defer { isSubmitting = false }
         errorMessage = nil
 
@@ -316,6 +323,12 @@ public final class LoginFlow {
     // MARK: - Step C · CREDENTIALS
 
     public func submitCredentials() async {
+        // BUGHUNT-2026-05-17: re-entry guard. Two rapid taps before
+        // `isSubmitting` propagates would issue two POST /auth/login attempts
+        // and consume two slots from the per-minute rate limit, plus risk
+        // racing two challenge tokens onto the same flow (the second response
+        // overwriting the first's `step`).
+        guard !isSubmitting else { return }
         isSubmitting = true; defer { isSubmitting = false }
         errorMessage = nil
         rateLimitRetryAfter = nil
@@ -529,6 +542,11 @@ public final class LoginFlow {
     }
 
     private func submitTwoFactor(challenge: String) async {
+        // BUGHUNT-2026-05-17: re-entry guard. Double-tap on Verify could
+        // double-consume the 6-digit TOTP code (server marks the window
+        // as used on first verify, second call 401s and clears totpCode
+        // mid-success). Also burns a slot on the per-minute 2FA rate limit.
+        guard !isSubmitting else { return }
         isSubmitting = true; defer { isSubmitting = false }
         errorMessage = nil
 
@@ -570,6 +588,11 @@ public final class LoginFlow {
     /// should force the user to regenerate new backup codes — we surface
     /// `remainingBackupCodes` so Dashboard can act on it.
     private func submitBackupCode(challenge: String) async {
+        // BUGHUNT-2026-05-17: re-entry guard. Backup codes are single-use,
+        // server-side — a double-tap would silently consume two codes
+        // (first succeeds, second 401s, user has no way to know one was
+        // burned) and `remainingBackupCodes` would be off by one.
+        guard !isSubmitting else { return }
         isSubmitting = true; defer { isSubmitting = false }
         errorMessage = nil
 
