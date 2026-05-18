@@ -104,6 +104,8 @@ public final class DataExportViewModel {
         defer { isLoadingSchedules = false }
         do {
             schedules = try await repository.listSchedules()
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-18: list-screen nav cancel — don't paint
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -115,6 +117,14 @@ public final class DataExportViewModel {
         do {
             let created = try await repository.createSchedule(request)
             schedules = schedules + [created]
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: same hazard as legacy saveSchedule below —
+            // server may have committed the schedule creation before the
+            // task was cancelled. A "create failed" toast tempts a re-tap
+            // that writes a SECOND schedule firing on every cadence tick
+            // (duplicate scheduled-export rows = duplicate exfiltration
+            // to the configured delivery destination).
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -126,6 +136,10 @@ public final class DataExportViewModel {
         do {
             let updated = try await repository.updateSchedule(id: id, request: request)
             schedules = schedules.map { $0.id == id ? updated : $0 }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: PATCH may have committed; re-tap could
+            // overwrite a freshly-edited row from another device.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -143,6 +157,8 @@ public final class DataExportViewModel {
                         status: .paused)
                     : s
             }
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-18: idempotent server pause, but the toast misleads
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -160,6 +176,8 @@ public final class DataExportViewModel {
                         status: .active)
                     : s
             }
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-18: see pauseSchedule
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -169,6 +187,11 @@ public final class DataExportViewModel {
         do {
             try await repository.cancelSchedule(id: id)
             schedules = schedules.filter { $0.id != id }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: DELETE may have committed server-side;
+            // the second DELETE returns 404 ("not found") that the user
+            // reads as a real failure — confusing but not destructive.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -205,6 +228,10 @@ public final class DataExportViewModel {
         do {
             try await repository.deleteSchedule(id: id)
             legacySchedules = legacySchedules.filter { $0.id != id }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: see cancelSchedule — DELETE may have
+            // landed; a "delete failed" toast leads to confusing UX.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
