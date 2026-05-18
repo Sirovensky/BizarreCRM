@@ -614,6 +614,10 @@ router.post('/auto-reorder', requirePermission('inventory.bulk_action'), asyncHa
 router.get('/stock-alerts-summary', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
 
+  // BUGHUNT-2026-05-17: respect low_stock_dismissed_at. Without this clause
+  // the dashboard tile shows alerts the user has already acknowledged via
+  // POST /inventory/dismiss-low-stock, which is the same inconsistency the
+  // dedicated /low-stock endpoint had (now fixed in the same commit pass).
   const lowStockItems = await adb.all<any>(`
     SELECT i.id, i.name, i.sku, i.in_stock, i.reorder_level, i.supplier_id, s.name as supplier_name
     FROM inventory_items i
@@ -622,6 +626,7 @@ router.get('/stock-alerts-summary', asyncHandler(async (req, res) => {
       AND i.item_type != 'service'
       AND i.is_reorderable = 1
       AND i.in_stock <= i.reorder_level
+      AND i.low_stock_dismissed_at IS NULL
     ORDER BY i.in_stock ASC
     LIMIT 200
   `);
