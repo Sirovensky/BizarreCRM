@@ -78,6 +78,14 @@ public final class AppointmentKanbanViewModel {
                 )
                 // Reload to get server state
                 await load()
+            } catch let e where AppError.isCancellation(e) {
+                // BUGHUNT-2026-05-17: PATCH reschedule via drag-and-drop on
+                // the kanban board. If a re-drag interrupts the in-flight
+                // PATCH, painting an error tempts the operator to drop again
+                // — which fires a second PATCH and may also re-emit the
+                // confirmed-status SMS hook. Stay silent; the next load()
+                // reconciles the row to wherever it actually landed.
+                return
             } catch {
                 errorMessage = "Reschedule failed: \(error.localizedDescription)"
             }
