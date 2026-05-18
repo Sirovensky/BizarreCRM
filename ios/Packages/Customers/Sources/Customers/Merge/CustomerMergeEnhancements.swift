@@ -127,6 +127,14 @@ public actor CustomerUnmergeService {
                 as: EmptyResponse.self
             )
             return .success
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: unmerge is a destructive write that
+            // reverses a merge. If cancelled mid-flight the server may
+            // have already applied + audit logged. Retap would 409 once
+            // the window expires AND audit-stack-trace two reversal
+            // attempts. Return .failed("") so caller doesn't paint a
+            // banner.
+            return .failed("")
         } catch {
             if let transport = error as? APITransportError,
                case .httpStatus(409, _) = transport {
