@@ -342,7 +342,18 @@ fun LeadListScreen(
                         EmptyState(
                             icon = Icons.Default.PersonSearch,
                             title = "No leads found",
-                            subtitle = "Add a lead with the + button below",
+                            subtitle = "Capture prospects, track follow-ups, and convert them to customers.",
+                            action = {
+                                FilledTonalButton(onClick = onCreateClick) {
+                                    Icon(
+                                        Icons.Default.Add,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Add lead")
+                                }
+                            },
                         )
                     }
                 }

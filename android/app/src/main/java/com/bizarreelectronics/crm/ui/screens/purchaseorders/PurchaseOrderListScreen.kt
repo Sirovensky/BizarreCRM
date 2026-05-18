@@ -108,7 +108,18 @@ fun PurchaseOrderListScreen(
                     ) {
                         EmptyState(
                             title = "No purchase orders",
-                            subtitle = "Tap + to create your first purchase order.",
+                            subtitle = "Reorder stock from suppliers and track receipts.",
+                            action = {
+                                FilledTonalButton(onClick = onCreateClick) {
+                                    Icon(
+                                        Icons.Default.Add,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Create PO")
+                                }
+                            },
                         )
                     }
                 }

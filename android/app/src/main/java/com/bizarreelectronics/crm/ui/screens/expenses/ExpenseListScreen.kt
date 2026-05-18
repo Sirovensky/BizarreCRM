@@ -437,6 +437,7 @@ fun ExpenseListScreen(
                     }
                 }
                 state.expenses.isEmpty() -> {
+                    val noFilters = state.searchQuery.isEmpty() && state.selectedCategory == "All"
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -446,11 +447,24 @@ fun ExpenseListScreen(
                         EmptyState(
                             icon = Icons.Default.AttachMoney,
                             title = "No expenses found",
-                            subtitle = if (state.searchQuery.isNotEmpty() || state.selectedCategory != "All") {
+                            subtitle = if (!noFilters) {
                                 "Try adjusting your filters"
                             } else {
-                                "Tap + to record your first expense"
+                                "Log a business expense with a receipt photo to keep records clean."
                             },
+                            action = if (noFilters) {
+                                {
+                                    FilledTonalButton(onClick = onCreateClick) {
+                                        Icon(
+                                            Icons.Default.Add,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Record expense")
+                                    }
+                                }
+                            } else null,
                         )
                     }
                 }

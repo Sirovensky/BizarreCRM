@@ -128,7 +128,18 @@ fun PaymentLinkListScreen(
                     EmptyState(
                         icon = Icons.Default.Link,
                         title = "No payment links",
-                        subtitle = "Tap + to create one",
+                        subtitle = "Send a customer a checkout link to collect payment online.",
+                        action = {
+                            FilledTonalButton(onClick = onCreateClick) {
+                                Icon(
+                                    Icons.Default.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text("Create payment link")
+                            }
+                        },
                     )
                 }
                 else -> PullToRefreshBox(
