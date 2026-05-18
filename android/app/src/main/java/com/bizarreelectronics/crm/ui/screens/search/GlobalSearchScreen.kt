@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
@@ -235,7 +236,15 @@ private fun InlineSearchField(
             }
         },
         singleLine = true,
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        // BUGHUNT-2026-05-18: search bar inherited default capitalization, so
+        // typing "jane@x.com" auto-capitalized the first letter and broke
+        // lowercase email lookups against the server index. .None matches
+        // the iOS .never convention used across the rest of the app.
+        keyboardOptions = KeyboardOptions(
+            imeAction = ImeAction.Search,
+            capitalization = KeyboardCapitalization.None,
+            autoCorrect = false,
+        ),
         keyboardActions = KeyboardActions(onSearch = { onSearch() }),
         shape = RoundedCornerShape(16.dp),
         colors = TextFieldDefaults.colors(
