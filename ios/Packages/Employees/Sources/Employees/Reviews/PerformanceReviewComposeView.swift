@@ -33,6 +33,12 @@ public final class PerformanceReviewComposeViewModel {
             errorMessage = "Manager draft cannot be empty."
             return
         }
+        // BUGHUNT-2026-05-17: re-entry guard. The toolbar swaps Save for a
+        // ProgressView while isSaving, but a quick double-tap before
+        // SwiftUI re-renders fires two updateReview PATCHes — the second
+        // can transition the review to .managerReady on top of a partial
+        // save, scrambling the audit history.
+        guard !isSaving else { return }
         isSaving = true
         defer { isSaving = false }
         errorMessage = nil
@@ -46,6 +52,14 @@ public final class PerformanceReviewComposeViewModel {
                 )
             )
             onSaved(updated)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: updateReview PATCH may have landed before
+            // cancellation fired. Painting "cancelled" as errorMessage
+            // tempts the manager to retap Save, double-stamping the
+            // .managerReady transition (audit log records two transitions
+            // with the same timestamp). Suppress so the list refresh on
+            // dismiss reveals the actual saved review.
+            errorMessage = nil
         } catch {
             AppLog.ui.error("ReviewCompose save failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
