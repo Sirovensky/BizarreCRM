@@ -129,21 +129,27 @@ private struct WSToastBanner: View {
                     if value.translation.height < -20 { dismiss() }
                 }
         )
-        .onAppear { present() }
+        .onAppear {
+            withAnimation(.spring(duration: 0.35, bounce: 0.3)) {
+                offset = 0
+                opacity = 1
+            }
+        }
+        // BUGHUNT-2026-05-17: the auto-dismiss was spawned via Task { ... }
+        // from onAppear, which is NOT cancelled when the toast is replaced
+        // by a new one. A delayed dismiss for toast A would then call
+        // onDismiss() and clear the binding for toast B, dropping the new
+        // notification mid-animation. .task is bound to the view's lifetime
+        // and is cancelled on disappear, so the timer fires only for the
+        // toast that's still on screen.
+        .task {
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            dismiss()
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(toast.message)
         .accessibilityAddTraits(.isButton)
-    }
-
-    private func present() {
-        withAnimation(.spring(duration: 0.35, bounce: 0.3)) {
-            offset = 0
-            opacity = 1
-        }
-        Task {
-            try? await Task.sleep(for: .seconds(4))
-            dismiss()
-        }
     }
 
     private func dismiss() {
