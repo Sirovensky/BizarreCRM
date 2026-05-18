@@ -53,10 +53,23 @@ public final class CustomerDetailViewModel {
         async let invoices = try? repo.recentInvoices(id: customerId)
         async let notes = try? repo.notes(id: customerId)
 
-        snapshot.analytics = await analytics
-        snapshot.recentTickets = await tickets
-        snapshot.recentInvoices = await invoices
-        snapshot.notes = await notes
+        let resolvedAnalytics = await analytics
+        let resolvedTickets = await tickets
+        let resolvedInvoices = await invoices
+        let resolvedNotes = await notes
+
+        // BUGHUNT-2026-05-18: bail without clobbering previously-loaded
+        // secondaries when the parent task was cancelled mid-flight. The
+        // `try?` on each async let swallows the cancellation as nil, so the
+        // raw writes below would blank out prior analytics / recent
+        // tickets / invoices / notes whenever a navigation raced the
+        // secondary fetches.
+        if Task.isCancelled { return }
+
+        snapshot.analytics = resolvedAnalytics
+        snapshot.recentTickets = resolvedTickets
+        snapshot.recentInvoices = resolvedInvoices
+        snapshot.notes = resolvedNotes
     }
 }
 
