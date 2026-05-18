@@ -24,6 +24,10 @@ public final class TimeOffRequestsSidebarViewModel {
     public private(set) var loadState: LoadState = .idle
     public private(set) var pendingRequests: [TimeOffRequest] = []
     public private(set) var actionError: String?
+    /// BUGHUNT-2026-05-17: per-request in-flight tracker so the row can disable
+    /// its Approve/Deny buttons (or the VM can refuse the second tap) while the
+    /// first POST is in flight.
+    public private(set) var inFlightIds: Set<Int64> = []
 
     @ObservationIgnored private let api: APIClient
     /// §14.9 — called when a request is approved so the shift grid can refresh
@@ -49,12 +53,24 @@ public final class TimeOffRequestsSidebarViewModel {
     }
 
     public func approve(_ request: TimeOffRequest) async {
+        // BUGHUNT-2026-05-17: re-entry guard. The row's Approve button has no
+        // .disabled state; a rapid double-tap fires two POSTs for the same
+        // request id, double-approving on the server.
+        guard !inFlightIds.contains(request.id) else { return }
+        inFlightIds.insert(request.id)
+        defer { inFlightIds.remove(request.id) }
         actionError = nil
         do {
             let approved = try await api.approveTimeOff(id: request.id)
             pendingRequests.removeAll { $0.id == request.id }
             // §14.9 — notify shift grid so it can add a PTO block and re-check conflicts
             onApproved?(approved)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: approve POST may have landed before
+            // cancellation fired. Painting actionError tempts a retap that
+            // double-approves the same request. Suppress; the list refresh
+            // on pull-to-refresh will remove the row if it's truly approved.
+            actionError = nil
         } catch {
             AppLog.ui.error("Approve PTO failed: \(error.localizedDescription, privacy: .public)")
             actionError = error.localizedDescription
@@ -62,10 +78,17 @@ public final class TimeOffRequestsSidebarViewModel {
     }
 
     public func deny(_ request: TimeOffRequest) async {
+        // BUGHUNT-2026-05-17: matching re-entry guard for deny.
+        guard !inFlightIds.contains(request.id) else { return }
+        inFlightIds.insert(request.id)
+        defer { inFlightIds.remove(request.id) }
         actionError = nil
         do {
             _ = try await api.denyTimeOff(id: request.id, reason: nil)
             pendingRequests.removeAll { $0.id == request.id }
+        } catch let e where AppError.isCancellation(e) {
+            // Same reasoning as approve.
+            actionError = nil
         } catch {
             AppLog.ui.error("Deny PTO failed: \(error.localizedDescription, privacy: .public)")
             actionError = error.localizedDescription
