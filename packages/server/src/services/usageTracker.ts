@@ -211,6 +211,18 @@ export function reserveStorage(tenantId: number | undefined, bytes: number, limi
   const month = getCurrentMonth();
   const limitBytes = limitMb * 1024 * 1024;
 
+  // BUGHUNT-2026-05-17: better-sqlite3's default `db.transaction(fn)` opens
+  // with BEGIN DEFERRED, which means two concurrent uploads can both read
+  // `current = 100` (from their independent snapshot), both pass the
+  // `current + bytes > limitBytes` check, and both proceed with the UPSERT.
+  // The UPSERT itself is atomic against the row, so the final storage_bytes
+  // ends up at `100 + A + B` — but the limit check has been bypassed,
+  // letting tenants exceed their quota under bursty load. Promote to
+  // `.immediate()` which issues BEGIN IMMEDIATE: SQLite acquires the
+  // RESERVED lock at the start of the transaction, serialising readers
+  // against writers and forcing the second caller to see the first's
+  // committed storage_bytes before its own check. Same fix applied to
+  // reserveTicketCreation below.
   const reservation = masterDb.transaction((): boolean => {
     const usage = masterDb.prepare(
       'SELECT storage_bytes FROM tenant_usage WHERE tenant_id = ? AND month = ?'
@@ -225,7 +237,7 @@ export function reserveStorage(tenantId: number | undefined, bytes: number, limi
       ON CONFLICT(tenant_id, month) DO UPDATE SET storage_bytes = storage_bytes + ?
     `).run(tenantId, month, bytes, bytes);
     return true;
-  })();
+  }).immediate();
 
   return reservation;
 }
@@ -263,6 +275,11 @@ export function reserveTicketCreation(
   const prev = new Date(Date.UTC(y, m - 1, 1));
   const prevMonth = prev.toISOString().slice(0, 7);
 
+  // BUGHUNT-2026-05-17: see reserveStorage above — promoting to BEGIN
+  // IMMEDIATE so two concurrent ticket creates against the Free-tier cap
+  // can't both read `current = 49`, both pass the < 50 check, and both
+  // increment to 51. Otherwise a Free tenant can sneak past the 50-ticket
+  // cap by hammering the create endpoint with concurrent requests.
   const reservation = masterDb.transaction((): { allowed: boolean; current: number } => {
     const row = masterDb.prepare(
       'SELECT COALESCE(SUM(tickets_created), 0) AS total FROM tenant_usage WHERE tenant_id = ? AND month IN (?, ?)'
@@ -277,7 +294,7 @@ export function reserveTicketCreation(
       ON CONFLICT(tenant_id, month) DO UPDATE SET tickets_created = tickets_created + 1
     `).run(tenantId, currentMonth);
     return { allowed: true, current: current + 1 };
-  })();
+  }).immediate();
 
   return { allowed: reservation.allowed, current: reservation.current, limit };
 }
