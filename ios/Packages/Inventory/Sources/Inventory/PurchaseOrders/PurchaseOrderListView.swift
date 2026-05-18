@@ -238,7 +238,7 @@ public struct PurchaseOrderListView: View {
             Text("No purchase orders")
                 .font(.brandTitleMedium())
                 .foregroundStyle(.bizarreOnSurface)
-            Text("Tap + to create your first purchase order.")
+            Text("Create your first purchase order to start tracking supplier deliveries.")
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
                 .multilineTextAlignment(.center)
@@ -248,7 +248,7 @@ public struct PurchaseOrderListView: View {
                 .tint(.bizarreOrange)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityLabel("No purchase orders. Tap plus to create one.")
+        .accessibilityLabel("No purchase orders. Tap New PO to create one.")
     }
 
     private func errorState(_ msg: String) -> some View {

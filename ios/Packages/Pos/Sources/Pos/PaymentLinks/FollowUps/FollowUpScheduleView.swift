@@ -76,9 +76,15 @@ public struct FollowUpScheduleView: View {
             Text("No follow-ups scheduled")
                 .font(.brandTitleMedium())
                 .foregroundStyle(.bizarreOnSurface)
-            Text("Tap + to set up automated reminders.")
+            Text("Set up automated reminders so unpaid payment links nudge customers without you lifting a finger.")
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, BrandSpacing.lg)
+            Button("Add Reminder") { showEditor = true }
+                .buttonStyle(.borderedProminent)
+                .tint(.bizarreOrange)
+                .accessibilityLabel("Add follow-up reminder")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

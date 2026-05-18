@@ -157,10 +157,14 @@ public struct BundleRuleEditor: View {
                 Text("No bundle rules yet.")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.bizarreOnSurface)
-                Text("Tap + to create a rule like \"bundle all invoices per day\".")
+                Text("Combine related notifications so you get one summary instead of dozens — e.g. \"bundle all invoices per day\".")
                     .font(.system(size: 14))
                     .foregroundStyle(.bizarreOnSurfaceMuted)
                     .multilineTextAlignment(.center)
+                Button("Add Rule") { presentingAddSheet = true }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.bizarreOrange)
+                    .accessibilityLabel("Add bundle rule")
             }
             .frame(maxWidth: .infinity)
             .padding(BrandSpacing.xl)

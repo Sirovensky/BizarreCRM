@@ -513,12 +513,17 @@ public struct CustomReportListView: View {
             }
 
             if queries.isEmpty {
-                ContentUnavailableView(
-                    "No custom reports yet",
-                    systemImage: "chart.bar.xaxis",
-                    description: Text("Tap + to build your first custom report")
-                )
-                .accessibilityLabel("No custom reports. Tap plus to create one.")
+                ContentUnavailableView {
+                    Label("No custom reports yet", systemImage: "chart.bar.xaxis")
+                } description: {
+                    Text("Build your first custom report to slice your data by entity, measure, and date range.")
+                } actions: {
+                    Button("Build Report") { showBuilder = true }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.bizarreOrange)
+                        .accessibilityLabel("Build new custom report")
+                }
+                .accessibilityLabel("No custom reports. Tap Build Report to create one.")
             }
         }
     }

@@ -169,9 +169,14 @@ public struct GroupDetailView: View {
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurface)
             if vm.canManageMembers {
-                Text("Tap + to add members.")
+                Text("Add customers to this group to send them targeted campaigns.")
                     .font(.brandLabelSmall())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center)
+                Button("Add Members") { showingAddPicker = true }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.bizarreOrange)
+                    .accessibilityLabel("Add members to group")
             }
         }
         .frame(maxWidth: .infinity)
