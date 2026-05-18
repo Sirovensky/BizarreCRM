@@ -138,6 +138,16 @@ public final class InvoiceReturnViewModel {
         do {
             let result = try await api.createReturnRefund(body: body)
             state = .success(refundId: result.id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: createReturnRefund is a real-money POST
+            // with no idempotency key. A `.failed("cancelled")` toast on a
+            // mid-flight cancel tempted a re-tap that — if the server had
+            // already accepted the original POST — would double-refund the
+            // invoice (and double-restock the items). Reset to `.idle`
+            // silently so the cashier must re-confirm intent; the next
+            // invoice detail refresh shows whether the original landed.
+            state = .idle
+            return
         } catch {
             AppLog.ui.error("Invoice return submission failed: \(error.localizedDescription, privacy: .public)")
             handleError(AppError.from(error))

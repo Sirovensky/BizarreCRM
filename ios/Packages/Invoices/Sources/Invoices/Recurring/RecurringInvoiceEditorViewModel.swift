@@ -72,6 +72,16 @@ public final class RecurringInvoiceEditorViewModel {
                 _ = try await api.createRecurringRule(req)
             }
             didSave = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: createRecurringRule is POST without an
+            // idempotency key. A "cancelled" toast on the create path
+            // tempted a re-tap that — if the server had already accepted
+            // the original POST — would persist a second recurring rule.
+            // With autoSend=true that would silently generate (and email)
+            // duplicate invoices to the customer on every cycle. Stay
+            // silent on cancellation; the rule list refresh reveals
+            // whether the create landed.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
