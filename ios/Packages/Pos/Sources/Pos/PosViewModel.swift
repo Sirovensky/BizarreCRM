@@ -233,6 +233,15 @@ public final class PosViewModel {
 
         let (detail, loyalty) = await (detailTask, loyaltyTask)
 
+        // BUGHUNT-2026-05-18: bail without writing back when the parent task
+        // was cancelled mid-flight. The inner do/catches swallow the
+        // CancellationError as `nil`, so without this guard the load would
+        // clobber a previously-populated customerContext (tax-exempt flag,
+        // loyalty balance, etc.) with blank values whenever the customer
+        // re-fetch raced a navigation. The next non-cancelled call re-
+        // populates from scratch.
+        if Task.isCancelled { return }
+
         // Tax-exempt heuristic: look for "tax_exempt" tag until the server
         // adds a dedicated column (audit gap §74 item TBD).
         let tags = detail?.tagList ?? []
