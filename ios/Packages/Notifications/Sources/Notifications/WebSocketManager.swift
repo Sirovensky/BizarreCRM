@@ -223,8 +223,12 @@ public actor WebSocketManager {
         heartbeatTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 25_000_000_000)
-                guard !Task.isCancelled else { return }
-                await self?.pingAll()
+                // BUGHUNT-2026-05-17: break on weak-self deinit so the task
+                // doesn't spin forever after the manager goes away. The
+                // optional chain `self?.pingAll()` would silently no-op
+                // while the loop keeps burning a background slot every 25s.
+                guard let strongSelf = self, !Task.isCancelled else { return }
+                await strongSelf.pingAll()
             }
         }
     }
