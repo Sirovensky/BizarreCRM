@@ -93,6 +93,11 @@ struct InventoryFullFormView: View {
                 .focused($focus, equals: .name)
                 .submitLabel(.next)
                 .onSubmit { focus = .sku }
+                // BUGHUNT-2026-05-18: default `.sentences` capitalized the
+                // first letter typed, so "iPhone 14 Pro" became "IPhone 14
+                // pro" after iOS auto-edited the first char. `.words`
+                // matches catalog-name conventions across most shops.
+                .textInputAutocapitalization(.words)
                 .accessibilityLabel("Item name, required")
 
             HStack(spacing: BrandSpacing.sm) {
@@ -142,6 +147,8 @@ struct InventoryFullFormView: View {
             .accessibilityLabel("Category picker")
 
             TextField("Manufacturer", text: $manufacturer)
+                .textInputAutocapitalization(.words)
+                .textContentType(.organizationName)
                 .focused($focus, equals: .manufacturer)
                 .accessibilityLabel("Manufacturer name")
         }
