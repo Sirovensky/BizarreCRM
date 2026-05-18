@@ -295,6 +295,12 @@ final class RoleUsersInspectorViewModel {
             // Clear overrides — fresh data from server is authoritative.
             assignedOverrides.removeAll()
             unassignedOverrides.removeAll()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancel mid-load. Don't paint an error
+            // banner on an inspector the user just closed; the next open
+            // re-fires .task and reloads.
+            isLoading = false
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
