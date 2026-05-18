@@ -141,6 +141,8 @@ public final class PasskeyViewModel {
         do {
             let list = try await repository.listCredentials()
             credentials = list.sorted { $0.createdAt > $1.createdAt }
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             // Non-fatal: list may be unavailable during session boot.
             state = .failed(AppError.from(error))
@@ -152,6 +154,11 @@ public final class PasskeyViewModel {
         do {
             try await repository.deleteCredential(id: id)
             credentials = credentials.filter { $0.id != id }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels DELETE; server may have
+            // committed. Keep optimistic remove.
+            credentials = credentials.filter { $0.id != id }
+            return
         } catch {
             state = .failed(AppError.from(error))
         }

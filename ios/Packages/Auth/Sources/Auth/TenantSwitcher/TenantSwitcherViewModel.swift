@@ -96,6 +96,8 @@ public final class TenantSwitcherViewModel {
         do {
             let tenants = try await store.load()
             state = .loaded(tenants)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             state = .failed(AppError.from(error).localizedDescription)
         }
@@ -128,6 +130,12 @@ public final class TenantSwitcherViewModel {
             // After switch, reload to reflect last-accessed ordering.
             let refreshed = try await store.load()
             state = .loaded(refreshed)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels mid-switch. The active
+            // tenant ID may already be written to Keychain — stay in
+            // .switching so on retry we re-execute cleanly without
+            // surfacing a misleading .failed banner.
+            return
         } catch {
             state = .failed(AppError.from(error).localizedDescription)
         }

@@ -1,6 +1,7 @@
 import SwiftUI
 import Charts
 import Observation
+import Core
 import Networking
 import DesignSystem
 
@@ -29,6 +30,9 @@ public final class RevenueSparklineViewModel {
         do {
             let payload = try await repo.fetchDashboardSummary()
             state = .loaded(payload.revenueTrend)
+        } catch let e where AppError.isCancellation(e) {
+            state = .idle  // BUGHUNT-2026-05-17: refresh cancel
+            return
         } catch {
             state = .failed(error.localizedDescription)
         }

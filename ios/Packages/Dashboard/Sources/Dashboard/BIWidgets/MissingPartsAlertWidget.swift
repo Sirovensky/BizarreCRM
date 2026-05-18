@@ -1,5 +1,6 @@
 import SwiftUI
 import Observation
+import Core
 import DesignSystem
 
 // MARK: - MissingPartsAlertWidget
@@ -28,6 +29,9 @@ public final class MissingPartsViewModel {
         do {
             let payload = try await repo.fetchMissingParts()
             state = .loaded(payload)
+        } catch let e where AppError.isCancellation(e) {
+            state = .idle  // BUGHUNT-2026-05-17: refresh cancel
+            return
         } catch {
             state = .failed(error.localizedDescription)
         }

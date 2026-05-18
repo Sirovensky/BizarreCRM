@@ -1,6 +1,7 @@
 import SwiftUI
 import Charts
 import Observation
+import Core
 import DesignSystem
 
 // MARK: - OpenTicketsByStatusWidget
@@ -30,6 +31,9 @@ public final class OpenTicketsByStatusViewModel {
             let payload = try await repo.fetchDashboardSummary()
             let active = payload.statusCounts.filter { $0.count > 0 }
             state = .loaded(active)
+        } catch let e where AppError.isCancellation(e) {
+            state = .idle  // BUGHUNT-2026-05-17: refresh cancel
+            return
         } catch {
             state = .failed(error.localizedDescription)
         }

@@ -1,6 +1,7 @@
 import SwiftUI
 import Charts
 import Observation
+import Core
 import Networking
 import DesignSystem
 
@@ -44,6 +45,9 @@ public final class ProfitHeroViewModel {
                    / max(trend[trend.count - 2].revenue, 1)) * 100
                 : nil
             state = .loaded(.init(netMarginPct: margin, revenueTrend: trend, comparedToPreviousPct: delta))
+        } catch let e where AppError.isCancellation(e) {
+            state = .idle  // BUGHUNT-2026-05-17: refresh cancel
+            return
         } catch {
             state = .failed(error.localizedDescription)
         }

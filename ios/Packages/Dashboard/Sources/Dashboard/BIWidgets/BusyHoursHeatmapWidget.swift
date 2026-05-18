@@ -1,6 +1,7 @@
 import SwiftUI
 import Charts
 import Observation
+import Core
 import DesignSystem
 
 // MARK: - BusyHoursHeatmapWidget
@@ -29,6 +30,11 @@ public final class BusyHoursViewModel {
         do {
             let payload = try await repo.fetchBusyHours()
             state = .loaded(payload)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: dashboard refresh cancels load; reset
+            // to .idle so reload() can retry.
+            state = .idle
+            return
         } catch {
             state = .failed(error.localizedDescription)
         }
