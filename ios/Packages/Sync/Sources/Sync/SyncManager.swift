@@ -254,13 +254,18 @@ public final class SyncManager {
     }
 
     private func forceDeadLetter(id: Int64, op: SyncQueueRecord, reason: String) async {
-        // markFailed with maxAttempts will auto-move to dead_letter table.
-        var mutableOp = op
-        mutableOp.attemptCount = SyncQueueStore.maxAttempts - 1
+        // BUGHUNT-2026-05-17: previous implementation mutated a *local* copy of
+        // `op` and called `markFailed` once, expecting that to push the row
+        // into dead-letter. But `markFailed` re-reads attempt_count from the
+        // DB and increments it by 1 — so on a freshly-enqueued row the count
+        // becomes 1 (not 10) and the row stays in the queue, looping through
+        // the same validation/conflict error nine more times before finally
+        // dead-lettering. `SyncQueueStore.forceDeadLetter` moves the row in
+        // a single transaction with no retry budget consumed.
         do {
-            try await SyncQueueStore.shared.markFailed(id, error: reason)
+            try await SyncQueueStore.shared.forceDeadLetter(id, error: reason)
         } catch {
-            AppLog.sync.error("forceDeadLetter markFailed threw: \(error, privacy: .public)")
+            AppLog.sync.error("forceDeadLetter threw: \(error, privacy: .public)")
         }
     }
 

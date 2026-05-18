@@ -134,13 +134,12 @@ public actor SyncFlusher {
         return failureCount == 0 ? .allOK : .partial
     }
 
-    /// Bump the row's attempt count to `maxAttempts` in a single shot so
-    /// `markFailed` tips it into the dead-letter archive. We don't have a
-    /// dedicated public API for "promote now" so we round-trip through the
-    /// standard failure path.
+    /// BUGHUNT-2026-05-17: use the dedicated `forceDeadLetter` path instead
+    /// of looping `markFailed` ten times. The old loop worked but logged a
+    /// "failed (attempt N)" line at each iteration plus the final dead-letter
+    /// line, polluting the operator log with eleven entries for a single
+    /// unresolvable handler. One transaction, one log line.
     private func promoteStraightToDeadLetter(id: Int64) async throws {
-        for _ in 0..<SyncQueueStore.maxAttempts {
-            try? await SyncQueueStore.shared.markFailed(id, error: "no registered handler")
-        }
+        try await SyncQueueStore.shared.forceDeadLetter(id, error: "no registered handler")
     }
 }

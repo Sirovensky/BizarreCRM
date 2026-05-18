@@ -232,6 +232,46 @@ public actor SyncQueueStore {
         }
     }
 
+    /// BUGHUNT-2026-05-17: callers handling non-retriable errors (validation,
+    /// conflict, missing handler) need to skip straight to dead-letter on the
+    /// first failure. The previous workaround in `SyncManager.forceDeadLetter`
+    /// mutated a *local* `SyncQueueRecord` then called `markFailed` once —
+    /// which read the DB row, incremented `attempt_count` from its actual value
+    /// (typically 0), and re-queued the row with `attempt_count=1` because
+    /// 1 < maxAttempts. Result: validation errors loop forever burning retries
+    /// instead of being surfaced to the operator via the dead-letter screen.
+    /// This method runs the move-to-dead-letter in a single transaction so a
+    /// non-retriable error gets tombstoned the moment it's classified.
+    public func forceDeadLetter(_ id: Int64, error: String) async throws {
+        guard let pool = await Database.shared.pool() else { return }
+        try await pool.write { db in
+            guard var row = try SyncQueueRecord.filter(Column("id") == id).fetchOne(db) else { return }
+            row.attemptCount = SyncQueueStore.maxAttempts
+            row.lastAttempt = Date()
+            row.lastError = error
+            try db.execute(sql: """
+                INSERT INTO sync_dead_letter
+                    (op, entity, payload, idempotency_key, attempt_count,
+                     last_error, first_attempted, last_attempted, moved_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    row.op ?? "unknown",
+                    row.entity ?? "unknown",
+                    row.payload,
+                    row.idempotencyKey,
+                    row.attemptCount,
+                    row.lastError,
+                    row.enqueuedAt,
+                    row.lastAttempt ?? Date(),
+                    Date()
+                ]
+            )
+            try SyncQueueRecord.filter(Column("id") == id).deleteAll(db)
+            AppLog.sync.error("sync_queue → dead_letter (forced) id=\(id) reason=\(error)")
+        }
+    }
+
     public func pendingCount() async throws -> Int {
         guard let pool = await Database.shared.pool() else { return 0 }
         return try await pool.read { db in
