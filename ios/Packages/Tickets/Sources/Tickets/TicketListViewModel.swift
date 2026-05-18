@@ -220,6 +220,14 @@ public final class TicketListViewModel {
         do {
             try await api.setTicketPinned(ticketId: ticket.id, pinned: !ticket.isPinned)
             await refresh()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: pin toggle is a PATCH on server state; if the
+            // view dismisses or the user rapidly taps multiple rows the prior
+            // Task may be cancelled mid-flight. Don't log this as an error —
+            // a successful but cancelled toggle still mutated the row, so a
+            // confused "Toggle pin failed" log line is misleading. The next
+            // refresh will reconcile.
+            return
         } catch {
             AppLog.ui.error("Toggle pin failed: \(error.localizedDescription, privacy: .public)")
         }
