@@ -401,14 +401,19 @@ export async function sendTicketStatusNotification(db: Database.Database, ctx: N
     const customer = db
       .prepare('SELECT sms_opt_in, sms_consent_transactional FROM customers WHERE id = ?')
       .get(ticket.customer_id) as AnyRow | undefined;
-    // BUGHUNT-2026-05-16: Ticket status notifications are TRANSACTIONAL.
-    // Match the dunningScheduler invariant (line 730): suppress only when
-    // BOTH flags are explicitly 0. OR-ing would block any customer whose
-    // sms_opt_in is 0 (the migration 001 default) even though their
-    // sms_consent_transactional column is 1.
+    // BUGHUNT-2026-05-17 [TCPA]: previous logic AND-gated the two flags,
+    // which let a STOPped customer keep receiving "transactional" SMS as
+    // long as sms_consent_transactional was still 1. The STOP keyword
+    // handler (sms.routes.ts:1406) flips sms_opt_in to 0 specifically as
+    // the master kill-switch — once set, NO automated outbound SMS may
+    // fire, regardless of any other consent column. This is the TCPA
+    // hard rule. Match the OR-pattern used by index.ts:2822/3149/3230/
+    // 3310/3382 for appointment/ticket/invoice/estimate auto-SMS: if
+    // EITHER flag is explicitly 0, suppress. NULL stays opted-in so
+    // legacy rows without the migration-063 column aren't dropped.
     const optedOut =
       customer != null &&
-      customer.sms_opt_in === 0 && customer.sms_consent_transactional === 0;
+      (customer.sms_opt_in === 0 || customer.sms_consent_transactional === 0);
     if (optedOut) {
       logger.info('SMS skipped: customer opted out', {
         customerId: ticket.customer_id,
