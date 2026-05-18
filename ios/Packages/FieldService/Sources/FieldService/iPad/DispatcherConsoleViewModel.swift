@@ -11,6 +11,7 @@
 import Foundation
 import Observation
 import Networking
+import Core
 
 // MARK: - TechStatus
 
@@ -271,6 +272,12 @@ public final class DispatcherConsoleViewModel {
     /// Reassign all `selectedJobIds` to a technician, updating status to `.assigned`.
     public func batchReassign(toTechnicianId: Int64) async {
         guard !selectedJobIds.isEmpty else { return }
+        // BUGHUNT-2026-05-17: re-entry guard. The dispatcher console has a
+        // single reassign button but a quick double-tap before SwiftUI
+        // re-renders the .inProgress state spawns two parallel loops over
+        // the same selectedJobIds, sending duplicate PATCHes to every
+        // selected job (some servers ignore status==current, some don't).
+        if case .inProgress = batchState { return }
         batchState = .inProgress
 
         var failed = 0
@@ -278,6 +285,16 @@ public final class DispatcherConsoleViewModel {
             let req = FSJobStatusRequest(status: .assigned)
             do {
                 _ = try await api.updateFieldServiceJobStatus(id: jobId, request: req)
+            } catch let e where AppError.isCancellation(e) {
+                // BUGHUNT-2026-05-17: bulk operation must re-throw inner
+                // CancellationError. The previous catch swallowed it and
+                // kept iterating, firing PATCHes for the remaining jobIds
+                // even after the dispatcher had navigated away or backed out
+                // of the batch. Bail out to .idle so the loop stops; the
+                // already-sent PATCHes will show up on loadJobs refresh.
+                batchState = .idle
+                await loadJobs()
+                return
             } catch {
                 failed += 1
             }
