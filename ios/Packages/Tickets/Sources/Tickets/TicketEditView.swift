@@ -32,14 +32,15 @@ public struct TicketEditView: View {
                     // BUGHUNT-2026-05-18: same free-text date trap as the
                     // create flow — swap to DatePicker bound through a
                     // String<->Date adapter so server contract stays
-                    // YYYY-MM-DD regardless of device locale.
+                    // YYYY-MM-DD regardless of device locale. No `in:`
+                    // range — an existing past-due ticket must round-trip
+                    // its original date when the user opens the form.
                     DatePicker(
                         "Due on",
                         selection: Binding(
                             get: { Self.parseDueOn(vm.dueOn) ?? Date().addingTimeInterval(60 * 60 * 24 * 3) },
                             set: { newDate in vm.dueOn = Self.formatDueOn(newDate) }
                         ),
-                        in: Date()...,
                         displayedComponents: .date
                     )
                     .datePickerStyle(.compact)
