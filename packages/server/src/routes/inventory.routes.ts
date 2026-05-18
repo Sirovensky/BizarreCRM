@@ -444,11 +444,14 @@ router.get('/low-stock', asyncHandler(async (req, res) => {
 // GET /inventory/summary — Stock value summary
 router.get('/summary', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
+  // BUGHUNT-2026-05-17: low_stock_items count was including rows the user
+  // had dismissed via /inventory/dismiss-low-stock. The list filter and the
+  // dashboard tile already respect the dismiss; the summary KPI now matches.
   const summary = await adb.get(`
     SELECT
       COUNT(*) AS total_items,
       COUNT(CASE WHEN in_stock > 0 THEN 1 END) AS in_stock_items,
-      COUNT(CASE WHEN in_stock <= COALESCE(reorder_level, 0) AND in_stock >= 0 AND item_type != 'service' AND is_reorderable = 1 THEN 1 END) AS low_stock_items,
+      COUNT(CASE WHEN in_stock <= COALESCE(reorder_level, 0) AND in_stock >= 0 AND item_type != 'service' AND is_reorderable = 1 AND low_stock_dismissed_at IS NULL THEN 1 END) AS low_stock_items,
       COALESCE(SUM(CASE WHEN item_type != 'service' THEN in_stock * retail_price ELSE 0 END), 0) AS total_retail_value,
       COALESCE(SUM(CASE WHEN item_type != 'service' THEN in_stock * cost_price ELSE 0 END), 0) AS total_cost_value,
       COALESCE(SUM(in_stock), 0) AS total_units
