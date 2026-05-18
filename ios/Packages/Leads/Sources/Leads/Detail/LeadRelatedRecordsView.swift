@@ -87,8 +87,15 @@ public struct LeadRelatedRecordsView: View {
         defer { isLoading = false }
         async let tickets = (try? await api.leadRelatedTickets(leadId: leadId)) ?? []
         async let estimates = (try? await api.leadRelatedEstimates(leadId: leadId)) ?? []
-        relatedTickets = await tickets
-        relatedEstimates = await estimates
+        let resolvedTickets = await tickets
+        let resolvedEstimates = await estimates
+        // BUGHUNT-2026-05-18: bail without clobbering when cancelled. `try?`
+        // swallows CancellationError into a nil → `?? []` write would
+        // blank out the previously-loaded related records when a faster
+        // re-load or nav-pop cancels mid-flight.
+        if Task.isCancelled { return }
+        relatedTickets = resolvedTickets
+        relatedEstimates = resolvedEstimates
     }
 }
 

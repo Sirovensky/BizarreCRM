@@ -110,7 +110,17 @@ public final class MembershipAutoRenewViewModel {
         defer { isLoading = false }
         async let cardTask    = fetchCard()
         async let chargeTask  = fetchLastCharge()
-        (cardOnFile, lastChargeResult) = await (cardTask, chargeTask)
+        let resolvedCard = await cardTask
+        let resolvedCharge = await chargeTask
+        // BUGHUNT-2026-05-18: bail without clobbering cardOnFile /
+        // lastChargeResult when cancelled. fetchCard / fetchLastCharge
+        // swallow CancellationError via try?, so without this guard a
+        // navigation race would blank out a previously-loaded card-on-file
+        // (which is what the auto-renew toggle reads to display the masked
+        // card number).
+        if Task.isCancelled { return }
+        cardOnFile = resolvedCard
+        lastChargeResult = resolvedCharge
     }
 
     private func fetchCard() async -> CardOnFile? {
