@@ -53,6 +53,7 @@ import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -131,21 +132,24 @@ class RoleManagementViewModel @Inject constructor(
         if (name.isBlank()) return
         viewModelScope.launch {
             _state.value = _state.value.copy(showCreateDialog = false)
-            runCatching {
+            try {
                 rolesApi.createRole(CreateRoleBody(name = name.trim().lowercase(), description = description.ifBlank { null }))
+                _state.value = _state.value.copy(actionMessage = "Role '${name.lowercase()}' created")
+                loadRoles()
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: runCatching swallowed CancellationException
+                // and painted "Failed to create role" on back-nav, tempting a
+                // re-tap which would create a duplicate-name role (caught by
+                // the 409 path, but the user UX is still broken).
+                throw e
+            } catch (t: Throwable) {
+                val msg = if (t is retrofit2.HttpException && t.code() == 409) {
+                    "Role '${name.lowercase()}' already exists"
+                } else {
+                    t.message ?: "Failed to create role"
+                }
+                _state.value = _state.value.copy(actionMessage = msg)
             }
-                .onSuccess {
-                    _state.value = _state.value.copy(actionMessage = "Role '${name.lowercase()}' created")
-                    loadRoles()
-                }
-                .onFailure { t ->
-                    val msg = if (t is retrofit2.HttpException && t.code() == 409) {
-                        "Role '${name.lowercase()}' already exists"
-                    } else {
-                        t.message ?: "Failed to create role"
-                    }
-                    _state.value = _state.value.copy(actionMessage = msg)
-                }
         }
     }
 
@@ -161,14 +165,18 @@ class RoleManagementViewModel @Inject constructor(
         val id = _state.value.pendingDeleteId ?: return
         viewModelScope.launch {
             _state.value = _state.value.copy(pendingDeleteId = null)
-            runCatching { rolesApi.deleteRole(id) }
-                .onSuccess {
-                    _state.value = _state.value.copy(actionMessage = "Role deleted")
-                    loadRoles()
-                }
-                .onFailure {
-                    _state.value = _state.value.copy(actionMessage = it.message ?: "Failed to delete role")
-                }
+            try {
+                rolesApi.deleteRole(id)
+                _state.value = _state.value.copy(actionMessage = "Role deleted")
+                loadRoles()
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: see createRole — runCatching also
+                // swallowed cancellation here. Delete is idempotent on the
+                // server but the fake snackbar is misleading.
+                throw e
+            } catch (t: Throwable) {
+                _state.value = _state.value.copy(actionMessage = t.message ?: "Failed to delete role")
+            }
         }
     }
 
