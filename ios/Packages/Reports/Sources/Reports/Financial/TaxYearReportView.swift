@@ -20,6 +20,12 @@ final class TaxYearReportViewModel {
     private(set) var exportCSV: String?
 
     @ObservationIgnored private let api: APIClient
+    /// BUGHUNT-2026-05-17: track the in-flight load to cancel prior year fetches.
+    /// The Stepper in the toolbar fires `.onChange { Task { await vm.load() } }`
+    /// on every increment, so rapid year-stepping (2024 → 2025 → 2026) used to
+    /// leave three loads in flight; the slowest landing wrote stale year data
+    /// over the latest pick.
+    @ObservationIgnored private var loadTask: Task<Void, Never>?
 
     private static let monthFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -30,9 +36,19 @@ final class TaxYearReportViewModel {
     init(api: APIClient) { self.api = api }
 
     func load() async {
+        loadTask?.cancel()
+        let task = Task<Void, Never> { [weak self] in
+            await self?.performLoad()
+        }
+        loadTask = task
+        await task.value
+    }
+
+    private func performLoad() async {
         loadState = .loading
         do {
             let pnlResp = try await api.getFinanceTaxYear(year: selectedYear)
+            if Task.isCancelled { return }
             // Build monthly revenue from full year range
             let months = (1...12).map { month -> (month: String, amountCents: Int) in
                 let comps = DateComponents(year: selectedYear, month: month)
@@ -47,6 +63,8 @@ final class TaxYearReportViewModel {
                 totalCOGSCents: pnlResp.cogsCents
             )
             loadState = .loaded(data)
+        } catch let e where AppError.isCancellation(e) {
+            return
         } catch {
             AppLog.ui.error("TaxYear load failed: \(error.localizedDescription, privacy: .public)")
             loadState = .failed(error.localizedDescription)
