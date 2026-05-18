@@ -101,6 +101,13 @@ public final class EstimateSignedPushHandler: Sendable {
                 approvedVersionId: estimate.approvedVersionNumber.map { Int64($0) }
             )
             await onSuccess(result.ticketId)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: convert is a server-side row create. If the
+            // task is cancelled (user backgrounded the notification action mid-
+            // flight) the convert may have committed — surfacing a "failed"
+            // log entry and inviting another tap would create a duplicate
+            // ticket. Stay silent.
+            return
         } catch {
             AppLog.ui.error(
                 "Notification one-tap convert failed for estimate \(estimateId): \(error.localizedDescription, privacy: .public)"
