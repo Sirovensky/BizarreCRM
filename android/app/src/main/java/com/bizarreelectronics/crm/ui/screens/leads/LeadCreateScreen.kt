@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -349,7 +350,10 @@ fun LeadCreateScreen(
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("First Name *") },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Next,
+                    capitalization = KeyboardCapitalization.Words,
+                ),
                 keyboardActions = onNext,
             )
 
@@ -359,7 +363,10 @@ fun LeadCreateScreen(
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Last Name") },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Next,
+                    capitalization = KeyboardCapitalization.Words,
+                ),
                 keyboardActions = onNext,
             )
 
@@ -395,7 +402,10 @@ fun LeadCreateScreen(
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Address") },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Next,
+                    capitalization = KeyboardCapitalization.Words,
+                ),
                 keyboardActions = onNext,
             )
 
