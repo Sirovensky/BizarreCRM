@@ -57,8 +57,18 @@ export function DepositCollectModal({
       if (!isFinite(parsed) || parsed <= 0 || parsed > 999_999.99) {
         throw new Error('Enter a positive amount up to $999,999.99');
       }
-      // Reject fractional cents (more than 2 decimal places)
-      if (Math.round(parsed * 100) !== parsed * 100) {
+      // BUGHUNT-2026-05-17: the previous check
+      //   Math.round(parsed * 100) !== parsed * 100
+      // incorrectly rejected legitimate 2-decimal amounts because of
+      // IEEE-754 drift. parseFloat('0.29') * 100 === 28.999999999999996,
+      // so the equality fails and we threw "fractional cents" on every
+      // ".29" or ".58" deposit. Detect >2 decimals on the source STRING
+      // (after stripping whitespace and a leading '$') instead — that's
+      // what the user actually typed, with no float math involved. The
+      // amountCents conversion below already uses Math.round and is
+      // correct.
+      const decimals = /\.([0-9]+)/.exec(amount.trim().replace(/^\$/, ''));
+      if (decimals && decimals[1].length > 2) {
         throw new Error('Amount cannot have fractional cents (max 2 decimal places)');
       }
       const amountCents = Math.round(parsed * 100);
