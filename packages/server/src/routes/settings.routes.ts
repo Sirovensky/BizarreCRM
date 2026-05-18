@@ -1754,98 +1754,115 @@ async function sendSetupInviteEmail(
   return sent ? 'sent' : 'failed';
 }
 
+// BUGHUNT-2026-05-17: wrap bare-async handler. AppError throws from validateEmail,
+// duplicate-email/username checks, and PIN validation; `bcrypt.hashSync` can
+// throw on malformed input; `sendSetupInviteEmail` reaches an external SMTP host
+// and can reject. Without a top-level try/catch every one of those becomes an
+// unhandledRejection that crashes the server.
 router.post('/setup-invites', adminOnly, async (req, res) => {
-  const adb = req.asyncDb;
-  const db = req.db;
-  const { name, email: rawEmail, role: rawRole, send_invite, pin } = req.body;
+  try {
+    const adb = req.asyncDb;
+    const db = req.db;
+    const { name, email: rawEmail, role: rawRole, send_invite, pin } = req.body;
 
-  const email = validateEmail(rawEmail, 'email', true)!;
-  const { firstName, lastName } = splitSetupInviteName(name);
-  const role = normalizeSetupInviteRole(rawRole);
-  const shouldSendInvite = send_invite !== false;
+    const email = validateEmail(rawEmail, 'email', true)!;
+    const { firstName, lastName } = splitSetupInviteName(name);
+    const role = normalizeSetupInviteRole(rawRole);
+    const shouldSendInvite = send_invite !== false;
 
-  if (pin !== undefined && pin !== null && pin !== '') {
-    if (typeof pin !== 'string' || !/^\d{4}$/.test(pin)) {
-      throw new AppError('PIN must be a 4-digit number', 400);
+    if (pin !== undefined && pin !== null && pin !== '') {
+      if (typeof pin !== 'string' || !/^\d{4}$/.test(pin)) {
+        throw new AppError('PIN must be a 4-digit number', 400);
+      }
     }
-  }
 
-  if (config.multiTenant && req.tenantLimits?.maxUsers != null) {
-    const userCount = await adb.get<{ c: number }>(
-      'SELECT COUNT(*) as c FROM users WHERE is_active = 1',
+    if (config.multiTenant && req.tenantLimits?.maxUsers != null) {
+      const userCount = await adb.get<{ c: number }>(
+        'SELECT COUNT(*) as c FROM users WHERE is_active = 1',
+      );
+      const current = userCount?.c ?? 0;
+      if (current >= req.tenantLimits.maxUsers) {
+        res.status(403).json({
+          success: false,
+          upgrade_required: true,
+          feature: 'user_limit',
+          message: `User limit reached (${current}/${req.tenantLimits.maxUsers}). Upgrade to Pro for unlimited users.`,
+          current,
+          limit: req.tenantLimits.maxUsers,
+        });
+        return;
+      }
+    }
+
+    const existingEmail = await adb.get<{ id: number }>(
+      'SELECT id FROM users WHERE lower(email) = lower(?)',
+      email,
     );
-    const current = userCount?.c ?? 0;
-    if (current >= req.tenantLimits.maxUsers) {
-      res.status(403).json({
-        success: false,
-        upgrade_required: true,
-        feature: 'user_limit',
-        message: `User limit reached (${current}/${req.tenantLimits.maxUsers}). Upgrade to Pro for unlimited users.`,
-        current,
-        limit: req.tenantLimits.maxUsers,
-      });
+    if (existingEmail) throw new AppError('A user with this email already exists', 409);
+
+    const username = await makeUniqueSetupInviteUsername(adb, email);
+    const placeholderPasswordHash = bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 12);
+    const pinHash = pin ? bcrypt.hashSync(pin, 12) : null;
+
+    // BUGHUNT-2026-05-17: the SELECT above is TOCTOU — two concurrent admin
+    // invites for the same email both pass the pre-check, then the second
+    // INSERT hits UNIQUE(email) (migration 001) and surfaces as a generic
+    // 500. Translate the constraint violation to the same friendly 409
+    // shape the pre-check returns on the no-race path.
+    let result;
+    try {
+      result = await adb.run(`
+        INSERT INTO users (username, email, password_hash, first_name, last_name, role, pin, password_set, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, datetime('now'), datetime('now'))
+      `, username, email, placeholderPasswordHash, firstName, lastName, role, pinHash);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/UNIQUE constraint.*users\.(email|username)/i.test(msg)) {
+        throw new AppError('A user with this email or username already exists', 409);
+      }
+      throw err;
+    }
+
+    const userId = Number(result.lastInsertRowid);
+    let deliveryStatus: SetupInviteDeliveryStatus = shouldSendInvite ? 'failed' : 'skipped';
+    if (shouldSendInvite) {
+      const token = await createSetupInviteToken(adb, userId);
+      const inviteUrl = buildSetupInviteUrl(req, token);
+      const inviterName = [req.user?.first_name, req.user?.last_name].filter(Boolean).join(' ') || req.user?.username || '';
+      deliveryStatus = await sendSetupInviteEmail(db, email, `${firstName} ${lastName}`.trim(), inviteUrl, inviterName);
+    }
+
+    const user = await adb.get<any>(
+      'SELECT id, username, email, first_name, last_name, role, is_active, password_set FROM users WHERE id = ?',
+      userId,
+    );
+
+    audit(db, 'setup_user_invited', req.user!.id, req.ip || 'unknown', {
+      created_user_id: userId,
+      username,
+      role,
+      delivery_status: deliveryStatus,
+      has_pin: !!pin,
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        user,
+        delivery: { status: deliveryStatus },
+      },
+    });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Bad request' });
       return;
     }
-  }
-
-  const existingEmail = await adb.get<{ id: number }>(
-    'SELECT id FROM users WHERE lower(email) = lower(?)',
-    email,
-  );
-  if (existingEmail) throw new AppError('A user with this email already exists', 409);
-
-  const username = await makeUniqueSetupInviteUsername(adb, email);
-  const placeholderPasswordHash = bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 12);
-  const pinHash = pin ? bcrypt.hashSync(pin, 12) : null;
-
-  // BUGHUNT-2026-05-17: the SELECT above is TOCTOU — two concurrent admin
-  // invites for the same email both pass the pre-check, then the second
-  // INSERT hits UNIQUE(email) (migration 001) and surfaces as a generic
-  // 500. Translate the constraint violation to the same friendly 409
-  // shape the pre-check returns on the no-race path.
-  let result;
-  try {
-    result = await adb.run(`
-      INSERT INTO users (username, email, password_hash, first_name, last_name, role, pin, password_set, is_active, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, datetime('now'), datetime('now'))
-    `, username, email, placeholderPasswordHash, firstName, lastName, role, pinHash);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (/UNIQUE constraint.*users\.(email|username)/i.test(msg)) {
-      throw new AppError('A user with this email or username already exists', 409);
+    logger.error('settings_setup_invites_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to send setup invite' });
     }
-    throw err;
   }
-
-  const userId = Number(result.lastInsertRowid);
-  let deliveryStatus: SetupInviteDeliveryStatus = shouldSendInvite ? 'failed' : 'skipped';
-  if (shouldSendInvite) {
-    const token = await createSetupInviteToken(adb, userId);
-    const inviteUrl = buildSetupInviteUrl(req, token);
-    const inviterName = [req.user?.first_name, req.user?.last_name].filter(Boolean).join(' ') || req.user?.username || '';
-    deliveryStatus = await sendSetupInviteEmail(db, email, `${firstName} ${lastName}`.trim(), inviteUrl, inviterName);
-  }
-
-  const user = await adb.get<any>(
-    'SELECT id, username, email, first_name, last_name, role, is_active, password_set FROM users WHERE id = ?',
-    userId,
-  );
-
-  audit(db, 'setup_user_invited', req.user!.id, req.ip || 'unknown', {
-    created_user_id: userId,
-    username,
-    role,
-    delivery_status: deliveryStatus,
-    has_pin: !!pin,
-  });
-
-  res.status(201).json({
-    success: true,
-    data: {
-      user,
-      delivery: { status: deliveryStatus },
-    },
-  });
 });
 
 // SCAN-1098 [HIGH]: staff email dump was ungated. Any authenticated user
@@ -1859,86 +1876,111 @@ router.get('/users', adminOnly, async (req, res) => {
   res.json({ success: true, data: users });
 });
 
+// BUGHUNT-2026-05-17: wrap bare-async handler. Multiple AppError throws on bad
+// input plus bcrypt.hashSync calls and an INSERT that re-throws AppError on a
+// 409 collision. Every one of these crashes the server without a top-level catch.
 router.post('/users', adminOnly, async (req, res) => {
-  const adb = req.asyncDb;
-  const db = req.db;
-  // bcrypt imported at top level
-  const { username, email, password, first_name, last_name, role = 'technician', pin } = req.body;
-  if (!username || !first_name || !last_name) throw new AppError('Username, first name and last name required', 400);
-  if (password && password.length < 8) throw new AppError('Password must be at least 8 characters', 400);
-  // SCAN-1108: cap password/pin length BEFORE bcrypt.hashSync. bcryptjs is a
-  // pure-JS implementation — a 10MB password string would block the single
-  // Node event loop for minutes while the prep runs, stalling every other
-  // request. bcrypt truncates inputs at 72 bytes anyway so the cap is a
-  // no-op for legitimate callers.
-  if (password && password.length > 72) throw new AppError('Password must be 72 characters or fewer', 400);
-  if (pin != null && typeof pin === 'string' && pin.length > 32) throw new AppError('PIN must be 32 characters or fewer', 400);
-  // SEC: Reject any role value that is not in the shared allowlist.
-  if (!VALID_ROLES.has(role)) throw new AppError(`Invalid role "${role}". Must be one of: ${[...VALID_ROLES].join(', ')}`, 400);
+  try {
+    const adb = req.asyncDb;
+    const db = req.db;
+    // bcrypt imported at top level
+    const { username, email, password, first_name, last_name, role = 'technician', pin } = req.body;
+    if (!username || !first_name || !last_name) throw new AppError('Username, first name and last name required', 400);
+    if (password && password.length < 8) throw new AppError('Password must be at least 8 characters', 400);
+    // SCAN-1108: cap password/pin length BEFORE bcrypt.hashSync. bcryptjs is a
+    // pure-JS implementation — a 10MB password string would block the single
+    // Node event loop for minutes while the prep runs, stalling every other
+    // request. bcrypt truncates inputs at 72 bytes anyway so the cap is a
+    // no-op for legitimate callers.
+    if (password && password.length > 72) throw new AppError('Password must be 72 characters or fewer', 400);
+    if (pin != null && typeof pin === 'string' && pin.length > 32) throw new AppError('PIN must be 32 characters or fewer', 400);
+    // SEC: Reject any role value that is not in the shared allowlist.
+    if (!VALID_ROLES.has(role)) throw new AppError(`Invalid role "${role}". Must be one of: ${[...VALID_ROLES].join(', ')}`, 400);
 
-  // Tier: enforce user limit (Free = 1 user, Pro = unlimited).
-  // Only counts active users — deactivating a user frees up a seat.
-  if (config.multiTenant && req.tenantLimits?.maxUsers != null) {
-    const userCount = await adb.get<{ c: number }>(
-      'SELECT COUNT(*) as c FROM users WHERE is_active = 1'
-    );
-    const current = userCount?.c ?? 0;
-    if (current >= req.tenantLimits.maxUsers) {
-      res.status(403).json({
+    // Tier: enforce user limit (Free = 1 user, Pro = unlimited).
+    // Only counts active users — deactivating a user frees up a seat.
+    if (config.multiTenant && req.tenantLimits?.maxUsers != null) {
+      const userCount = await adb.get<{ c: number }>(
+        'SELECT COUNT(*) as c FROM users WHERE is_active = 1'
+      );
+      const current = userCount?.c ?? 0;
+      if (current >= req.tenantLimits.maxUsers) {
+        res.status(403).json({
+          success: false,
+          upgrade_required: true,
+          feature: 'user_limit',
+          message: `User limit reached (${current}/${req.tenantLimits.maxUsers}). Upgrade to Pro for unlimited users.`,
+          current,
+          limit: req.tenantLimits.maxUsers,
+        });
+        return;
+      }
+    }
+
+    // Check for duplicate username
+    const existing = await adb.get<any>('SELECT id FROM users WHERE username = ?', username);
+    if (existing) throw new AppError(`Username "${username}" already exists`, 409);
+
+    const hash = password ? bcrypt.hashSync(password, 12) : null;
+    const pinHash = pin ? bcrypt.hashSync(pin, 12) : null;
+    const passwordSet = password ? 1 : 0;
+    // BUGHUNT-2026-05-17: the SELECT above is TOCTOU and only covers
+    // username — users.email also has a UNIQUE constraint (migration 001)
+    // that is bypassed entirely. Translate either UNIQUE collision to the
+    // same friendly 409 shape so concurrent creates / duplicate emails
+    // surface as 409 instead of 500.
+    let result;
+    try {
+      result = await adb.run(`
+        INSERT INTO users (username, email, password_hash, first_name, last_name, role, pin, password_set)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `, username, email || null, hash, first_name, last_name, role, pinHash, passwordSet);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/UNIQUE constraint.*users\.username/i.test(msg)) {
+        throw new AppError(`Username "${username}" already exists`, 409);
+      }
+      if (/UNIQUE constraint.*users\.email/i.test(msg)) {
+        throw new AppError(`A user with email "${email}" already exists`, 409);
+      }
+      throw err;
+    }
+    const user = await adb.get<any>('SELECT id, username, email, first_name, last_name, role, is_active FROM users WHERE id = ?', result.lastInsertRowid);
+
+    // AL1: audit user creation — especially important when the new user is an
+    // admin/manager, because the old code left no paper trail for privilege grants.
+    audit(db, 'user_created', req.user!.id, req.ip || 'unknown', {
+      created_user_id: result.lastInsertRowid,
+      username,
+      role,
+      has_password: !!password,
+      has_pin: !!pin,
+    });
+    res.status(201).json({ success: true, data: user });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string; code?: string };
+      res.status(ae.status).json({
         success: false,
-        upgrade_required: true,
-        feature: 'user_limit',
-        message: `User limit reached (${current}/${req.tenantLimits.maxUsers}). Upgrade to Pro for unlimited users.`,
-        current,
-        limit: req.tenantLimits.maxUsers,
+        ...(ae.code ? { code: ae.code } : {}),
+        message: ae.message || 'Bad request',
       });
       return;
     }
-  }
-
-  // Check for duplicate username
-  const existing = await adb.get<any>('SELECT id FROM users WHERE username = ?', username);
-  if (existing) throw new AppError(`Username "${username}" already exists`, 409);
-
-  const hash = password ? bcrypt.hashSync(password, 12) : null;
-  const pinHash = pin ? bcrypt.hashSync(pin, 12) : null;
-  const passwordSet = password ? 1 : 0;
-  // BUGHUNT-2026-05-17: the SELECT above is TOCTOU and only covers
-  // username — users.email also has a UNIQUE constraint (migration 001)
-  // that is bypassed entirely. Translate either UNIQUE collision to the
-  // same friendly 409 shape so concurrent creates / duplicate emails
-  // surface as 409 instead of 500.
-  let result;
-  try {
-    result = await adb.run(`
-      INSERT INTO users (username, email, password_hash, first_name, last_name, role, pin, password_set)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, username, email || null, hash, first_name, last_name, role, pinHash, passwordSet);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (/UNIQUE constraint.*users\.username/i.test(msg)) {
-      throw new AppError(`Username "${username}" already exists`, 409);
+    logger.error('settings_create_user_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to create user' });
     }
-    if (/UNIQUE constraint.*users\.email/i.test(msg)) {
-      throw new AppError(`A user with email "${email}" already exists`, 409);
-    }
-    throw err;
   }
-  const user = await adb.get<any>('SELECT id, username, email, first_name, last_name, role, is_active FROM users WHERE id = ?', result.lastInsertRowid);
-
-  // AL1: audit user creation — especially important when the new user is an
-  // admin/manager, because the old code left no paper trail for privilege grants.
-  audit(db, 'user_created', req.user!.id, req.ip || 'unknown', {
-    created_user_id: result.lastInsertRowid,
-    username,
-    role,
-    has_password: !!password,
-    has_pin: !!pin,
-  });
-  res.status(201).json({ success: true, data: user });
 });
 
+// BUGHUNT-2026-05-17: wrap bare-async handler. The 280-line body throws
+// AppError for every validation failure (password length, role allowlist,
+// last-admin guard, post-recovery cooldown, etc.) and performs multiple
+// bcrypt.hashSync + DB writes. Without a top-level catch each one becomes an
+// unhandledRejection that crashes the server.
 router.put('/users/:id', adminOnly, async (req, res) => {
+  try {
   const adb = req.asyncDb;
   const db = req.db;
   const targetUserId = Number(req.params.id);
@@ -2220,6 +2262,21 @@ router.put('/users/:id', adminOnly, async (req, res) => {
     req.params.id,
   );
   res.json({ success: true, data: user });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string; code?: string };
+      res.status(ae.status).json({
+        success: false,
+        ...(ae.code ? { code: ae.code } : {}),
+        message: ae.message || 'Bad request',
+      });
+      return;
+    }
+    logger.error('settings_update_user_error', { error: e instanceof Error ? e.message : String(e), id: req.params.id });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to update user' });
+    }
+  }
 });
 
 // (Old COGS reconciliation removed — moved to catalog.routes.ts syncCostPricesFromCatalog)
