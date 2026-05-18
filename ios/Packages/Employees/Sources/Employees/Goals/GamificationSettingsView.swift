@@ -86,11 +86,18 @@ public final class GamificationSettingsViewModel {
     }
 
     public func save() async {
+        // BUGHUNT-2026-05-17: re-entry guard.
+        guard !isSaving else { return }
         isSaving = true
         defer { isSaving = false }
         errorMessage = nil
         do {
             settings = try await api.updateGamificationSettings(settings)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PATCH may have landed before
+            // cancellation. Suppress the error so the user doesn't see
+            // "cancelled" under a setting they may have saved.
+            errorMessage = nil
         } catch {
             AppLog.ui.error("GamificationSettings save failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -193,11 +200,16 @@ public final class GamificationPreferencesViewModel {
     }
 
     public func save() async {
+        // BUGHUNT-2026-05-17: matching re-entry guard for prefs.
+        guard !isSaving else { return }
         isSaving = true
         defer { isSaving = false }
         errorMessage = nil
         do {
             prefs = try await api.updateGamificationPreferences(employeeId: employeeId, prefs: prefs)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PATCH may have landed; suppress.
+            errorMessage = nil
         } catch {
             AppLog.ui.error("GamificationPreferences save failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
