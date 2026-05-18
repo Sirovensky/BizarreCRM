@@ -144,6 +144,15 @@ public final class CustomerMergeViewModel {
         do {
             _ = try await api.mergeCustomers(req)
             mergeComplete = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: customer merge is destructive — the
+            // mergeId customer is folded into keepId server-side. A
+            // cancellation toast tempted a re-tap that, if the original
+            // merge had already landed, would 404 on the now-missing
+            // candidate row (best case) or pick up a different reused id
+            // (worst case, unlikely with autoincrement). Stay silent; the
+            // customer list refresh shows whether the merge landed.
+            return
         } catch {
             // HTTP 409 = conflict (e.g. open ticket on the merge candidate).
             if let transport = error as? APITransportError,

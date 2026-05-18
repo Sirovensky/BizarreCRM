@@ -213,17 +213,29 @@ public struct OfflineSaleDetailView: View {
             for _ in 0..<remaining {
                 try await SyncQueueStore.shared.markFailed(id, error: "Cancelled by operator")
             }
-            // 2. Find and discard the dead-letter row. We use deadLetterCount
-            //    to confirm the row landed, then prune by searching for our key.
-            if let key = record.idempotencyKey {
-                let dlRows = try await SyncQueueStore.shared.deadLetter(limit: 50)
-                if let dlRow = dlRows.first(where: { $0.op == (record.op ?? "") && $0.entity == (record.entity ?? "") }) {
-                    try await SyncQueueStore.shared.discardDeadLetter(dlRow.id)
-                }
-                _ = key   // suppress unused warning
+            // 2. Find and discard the dead-letter row. `deadLetter(limit:)` returns
+            //    rows ORDER BY moved_at DESC, so the freshest matching op+entity is
+            //    the one we just moved. We can't filter by idempotency key because
+            //    `DeadLetterRow` doesn't expose it (see SyncQueueStore.swift §251).
+            // BUGHUNT-2026-05-17: previously gated on `record.idempotencyKey` and
+            // bound it to `key` only to suppress an unused-variable warning. The
+            // actual match was op+entity, so a nil idempotency key skipped the
+            // discard entirely — leaving the dead-letter row behind. Drop the
+            // unused guard so cancel always prunes the row we just moved.
+            let dlRows = try await SyncQueueStore.shared.deadLetter(limit: 50)
+            if let dlRow = dlRows.first(where: { $0.op == (record.op ?? "") && $0.entity == (record.entity ?? "") }) {
+                try await SyncQueueStore.shared.discardDeadLetter(dlRow.id)
             }
             dismiss()
             onDismiss()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: bare `catch { errorMessage = ... }` painted a
+            // fake "Task was cancelled" toast when the sheet was dismissed during
+            // the markFailed loop, and on retry tempted a double-cancel that
+            // could overshoot maxAttempts. Treat cancellation as benign — the
+            // partial markFailed work is already persisted and the next reload
+            // shows the row's current attempt count accurately.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
