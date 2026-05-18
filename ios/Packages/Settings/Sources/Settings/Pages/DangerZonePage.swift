@@ -40,6 +40,15 @@ public final class DangerZoneViewModel: Sendable {
             try await api.revokeAllSessions()
             successMessage = "All other sessions signed out."
             errorMessage = nil
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: revokeAllSessions is a destructive bulk
+            // operation — server tears down every refresh-token row for
+            // the user (writes a session_revoked audit row per device).
+            // Surfacing "cancelled" as a banner tempts a re-tap; if the
+            // POST landed before the task was torn down, a second tap
+            // double-audits and may revoke a freshly-issued session.
+            // Stay silent on cancellation.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -53,6 +62,13 @@ public final class DangerZoneViewModel: Sendable {
             try await api.resetDemoData()
             successMessage = "Demo data reset."
             errorMessage = nil
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: resetDemoData wipes and re-seeds tenant
+            // data server-side. A cancellation banner here would invite a
+            // re-tap that — if the original POST already kicked off the
+            // wipe — would run the destructive job twice (double-truncate
+            // + double-seed audit). Stay silent.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -71,6 +87,15 @@ public final class DangerZoneViewModel: Sendable {
             successMessage = "Tenant deletion initiated."
             errorMessage = nil
             managerPIN = ""
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: deleteTenant is the most destructive
+            // operation in the app — re-tapping after a "cancelled"
+            // banner could submit the manager PIN a second time and
+            // double-schedule tenant teardown. Keep the PIN cleared
+            // (preserve original wipe) but DO NOT show any error toast
+            // that could provoke a confirm-and-retry from the admin.
+            managerPIN = ""
+            return
         } catch {
             errorMessage = error.localizedDescription
             managerPIN = ""
