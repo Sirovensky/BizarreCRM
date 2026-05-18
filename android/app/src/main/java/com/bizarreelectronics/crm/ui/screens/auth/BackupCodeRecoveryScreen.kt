@@ -19,6 +19,7 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -215,6 +216,8 @@ fun BackupCodeRecoveryScreen(
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Email,
                     imeAction = ImeAction.Next,
+                    capitalization = KeyboardCapitalization.None,
+                    autoCorrect = false,
                 ),
                 keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                 isError = state.error != null,
@@ -232,6 +235,10 @@ fun BackupCodeRecoveryScreen(
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Text,
                     imeAction = ImeAction.Next,
+                    // Backup codes are uppercase letters + digits; autocorrect off
+                    // so the IME doesn't dictionary-replace e.g. "XYZA" → "Xena".
+                    capitalization = KeyboardCapitalization.Characters,
+                    autoCorrect = false,
                 ),
                 keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                 isError = state.error != null,
