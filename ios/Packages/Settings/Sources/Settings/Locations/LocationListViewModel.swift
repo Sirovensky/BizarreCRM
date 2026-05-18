@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import Core
 
 // MARK: - §60.1 LocationListViewModel
 
@@ -75,6 +76,10 @@ public final class LocationListViewModel {
         do {
             let updated = try await repo.setActive(id: id, active: active)
             locations = locations.map { $0.id == updated.id ? updated : $0 }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: setActive PUT may have committed; retap on
+            // banner would flip back. Reload reconciles state.
+            return
         } catch {
             loadState = .error(error.localizedDescription)
         }
@@ -86,6 +91,11 @@ public final class LocationListViewModel {
         do {
             try await repo.deleteLocation(id: id)
             locations = locations.filter { $0.id != id }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: location DELETE may have committed; retap
+            // on banner would 404 (and audit-log a confusing delete attempt
+            // on a missing row).
+            return
         } catch {
             loadState = .error(error.localizedDescription)
         }
