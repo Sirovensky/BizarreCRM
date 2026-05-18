@@ -63,14 +63,31 @@ public extension SmsThreadViewModel {
             await load()
             return
         }
-        // Parse dates for comparison.
-        let formatter = ISO8601DateFormatter()
-        if let existingDate = formatter.date(from: lastMsg.createdAt ?? ""),
-           dto.createdAt > existingDate {
+        // BUGHUNT-2026-05-18: was `ISO8601DateFormatter()` with default options,
+        // which rejects Node `Date.toISOString()` millisecond-precision strings.
+        // Result: `existingDate` was nil for every server-fetched thread, the
+        // `if let` short-circuited, and inbound WS push events for a new SMS
+        // never triggered `load()` — the thread stayed stale until the user
+        // navigated away and back. Try fractional → plain.
+        let parsed = Self.parseIsoTimestamp(lastMsg.createdAt ?? "")
+        if let existingDate = parsed, dto.createdAt > existingDate {
             await load()
             // Signal new message so the view can scroll + animate in.
             newMessageId = Int64(dto.id)
+        } else if parsed == nil {
+            // Unparseable timestamp — assume the WS event is fresher and reload.
+            await load()
+            newMessageId = Int64(dto.id)
         }
+    }
+
+    private static func parseIsoTimestamp(_ raw: String) -> Date? {
+        let frac = ISO8601DateFormatter()
+        frac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = frac.date(from: raw) { return d }
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        return plain.date(from: raw)
     }
 }
 

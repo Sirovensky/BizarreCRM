@@ -95,9 +95,18 @@ public struct DeliveryReportView: View {
     // MARK: - Helpers
 
     private func formattedTimestamp(_ iso: String) -> String {
-        let parser = ISO8601DateFormatter()
-        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = parser.date(from: iso) {
+        // BUGHUNT-2026-05-18: previously only tried fractional ISO. Plain ISO
+        // (no millisecond component, emitted by some server hand-built strings)
+        // fell through to the raw display path, leaking "2026-05-18T10:30:45Z"
+        // into the delivery report timeline instead of "May 18, 2026 at 10:30 AM."
+        let frac = ISO8601DateFormatter()
+        frac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = frac.date(from: iso) {
+            return DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
+        }
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        if let date = plain.date(from: iso) {
             return DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
         }
         return iso
