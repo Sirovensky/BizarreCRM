@@ -13,6 +13,10 @@ public struct GroupListView: View {
     @State private var vm: GroupListViewModel
     @State private var selectedGroupId: Int64?
     @State private var compactPath: [Int64] = []
+    /// BUGHUNT-2026-05-18: server cascades on `DELETE /sms/groups/:id`,
+    /// removing every membership too. Gate behind a confirmation dialog
+    /// so a stray swipe doesn't wipe months of segmentation work.
+    @State private var pendingDelete: CustomerGroup?
     private let repo: CustomerGroupsRepository
 
     public init(repo: CustomerGroupsRepository) {
@@ -27,6 +31,24 @@ public struct GroupListView: View {
             } else {
                 regularLayout
             }
+        }
+        .confirmationDialog(
+            pendingDelete.map { "Delete \"\($0.name)\"?" } ?? "Delete group?",
+            isPresented: Binding(
+                get: { pendingDelete != nil },
+                set: { if !$0 { pendingDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let g = pendingDelete {
+                    Task { await vm.deleteGroup(id: g.id) }
+                }
+                pendingDelete = nil
+            }
+            Button("Cancel", role: .cancel) { pendingDelete = nil }
+        } message: {
+            Text("Members will be removed from this group. Their customer records aren't deleted.")
         }
     }
 
@@ -114,7 +136,7 @@ public struct GroupListView: View {
                         $0.hoverEffect(.highlight)
                             .contextMenu {
                                 Button(role: .destructive) {
-                                    Task { await vm.deleteGroup(id: group.id) }
+                                    pendingDelete = group
                                 } label: {
                                     Label("Delete group", systemImage: "trash")
                                 }
@@ -123,7 +145,7 @@ public struct GroupListView: View {
                     .if(Platform.isCompact) {
                         $0.swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
-                                Task { await vm.deleteGroup(id: group.id) }
+                                pendingDelete = group
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
