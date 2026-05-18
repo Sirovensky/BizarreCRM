@@ -23,6 +23,21 @@ import {
 import { cn } from '@/utils/cn';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 
+// BUGHUNT-2026-05-17: tenant.created_at is a SQLite datetime string
+// ("YYYY-MM-DD HH:MM:SS", UTC). V8 parses bare-space datetimes as LOCAL,
+// so a tenant provisioned at 00:30 UTC shows as the prior day in any
+// negative-offset zone (PST/CST/EST super-admins). Append 'Z' so the
+// Date converts UTC -> local correctly.
+function formatTenantCreatedAt(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const normalized = iso.includes('T') || iso.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(iso)
+    ? iso
+    : `${iso.replace(' ', 'T')}Z`;
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString();
+}
+
 interface LoginFormProps {
   onSuccess: () => void;
 }
@@ -270,7 +285,7 @@ function TenantRow({ tenant }: TenantRowProps) {
       <td className="px-4 py-3 text-xs text-surface-500">{tenant.plan}</td>
       <td className="px-4 py-3 text-xs text-surface-500">{tenant.db_size_mb} MB</td>
       <td className="px-4 py-3 text-xs text-surface-500">
-        {tenant.created_at ? new Date(tenant.created_at).toLocaleDateString() : '—'}
+        {formatTenantCreatedAt(tenant.created_at)}
       </td>
       <td className="px-4 py-3">
         <button
@@ -494,7 +509,7 @@ function TenantCard({ tenant }: TenantRowProps) {
         </div>
         <div>
           <span className="block text-surface-400 dark:text-surface-500 uppercase tracking-wide text-[10px] font-semibold mb-0.5">Created</span>
-          <span>{tenant.created_at ? new Date(tenant.created_at).toLocaleDateString() : '—'}</span>
+          <span>{formatTenantCreatedAt(tenant.created_at)}</span>
         </div>
       </div>
 
