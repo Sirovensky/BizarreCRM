@@ -35,10 +35,7 @@ CREATE INDEX IF NOT EXISTS idx_repair_service_aliases_alias_lower
 
 -- Seed: aliases joined to every matching service name. INSERT OR IGNORE so
 -- re-runs are safe (UNIQUE constraint catches dupes).
-INSERT OR IGNORE INTO repair_service_aliases (repair_service_id, alias)
-SELECT s.id, t.alias
-FROM repair_services s
-JOIN (VALUES
+WITH t(canonical, alias) AS (VALUES
   -- Screen Replacement -----------------------------------------------------
   ('screen replacement', 'lcd'),
   ('screen replacement', 'oled'),
@@ -482,6 +479,9 @@ JOIN (VALUES
   ('other repair', 'bent frame'),
   ('other repair', 'bent phone'),
   ('other repair', 'housing damage')
-) AS t(canonical, alias)
-  ON LOWER(s.name) = t.canonical
+)
+INSERT OR IGNORE INTO repair_service_aliases (repair_service_id, alias)
+SELECT s.id, t.alias
+FROM repair_services s
+JOIN t ON LOWER(s.name) = t.canonical
 WHERE s.is_active = 1;
