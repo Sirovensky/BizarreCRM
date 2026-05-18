@@ -171,6 +171,13 @@ public final class SetupWizardViewModel {
             _ = try await repository.submitStep(currentStep.rawValue, payload: payload)
             completedSteps.insert(currentStep.rawValue)
             pendingPayload = [:]
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: nav-cancel mid-step submit. The server
+            // may have committed the step (writes a setup_progress row);
+            // a "submit failed" toast tempts the admin to re-tap, which
+            // double-writes step completion + audit entries. The next
+            // loadServerState() reconciles which step the user is on.
+            return
         } catch {
             errorMessage = error.localizedDescription
             AppLog.ui.error("Setup step \(self.currentStep.rawValue) submit error: \(error.localizedDescription, privacy: .public)")
@@ -205,6 +212,11 @@ public final class SetupWizardViewModel {
             isDismissed = true
             isPresented = false
             AppLog.ui.info("Setup Wizard completed")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: nav-cancel mid-completeSetup. Server
+            // marks setup_complete=1; retap "Finish" would re-fire the
+            // POST and re-mark, double-auditing the setup completion.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
