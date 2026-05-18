@@ -104,6 +104,11 @@ public final class BlockChypPairingViewModel {
             markLastUsed()
             state = .paired(TerminalInfo(name: name, lastUsedAt: lastUsedDate()))
             activationCode = ""
+        } catch let e where AppError.isCancellation(e) {
+            // User explicitly cancelled (BlockChypTerminal.cancel() was called
+            // from the screen). Reset to idle instead of painting a misleading
+            // "The operation was cancelled" banner on the same screen.
+            state = .idle
         } catch let termErr as TerminalError {
             state = .failed(termErr.errorDescription ?? "Pairing failed.")
         } catch {
@@ -127,6 +132,10 @@ public final class BlockChypPairingViewModel {
             markLastUsed()
             state = .paired(TerminalInfo(name: info.name, lastUsedAt: lastUsedDate()))
             AppLog.hardware.info("BlockChypPairingViewModel: test charge approved=\(txn.approved)")
+        } catch let e where AppError.isCancellation(e) {
+            // Cashier cancelled the $1 test charge — return to paired so
+            // they can rerun the test rather than seeing a "failed" banner.
+            state = .paired(TerminalInfo(name: info.name, lastUsedAt: lastUsedDate()))
         } catch let termErr as TerminalError {
             state = .failed(termErr.errorDescription ?? "Test charge failed.")
         } catch {
