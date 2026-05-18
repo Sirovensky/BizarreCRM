@@ -1,4 +1,5 @@
 import Foundation
+import Core
 import Networking
 
 // MARK: - Upload item
@@ -108,6 +109,18 @@ public actor TicketPhotoUploadService {
             states[item.id] = .done(url: decoded.url ?? "")
             // Remove from queue on success
             queue.removeAll { $0.id == item.id }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: upload via URLSession uploadTask is a
+            // multipart POST. A cancellation mid-upload may have flushed
+            // some/all bytes; the server may have created a half-written
+            // file row OR may have rolled back. Painting .failed banner
+            // tempted the operator to retap "Retry" which restarts the
+            // upload — if the server kept the partial file, the retry
+            // creates a duplicate photo row. Reset to .queued so the user
+            // can deliberately swipe-retry, and the sync layer reconciles
+            // on next ticket load.
+            states[item.id] = .queued
+            return
         } catch {
             states[item.id] = .failed(error.localizedDescription)
         }
