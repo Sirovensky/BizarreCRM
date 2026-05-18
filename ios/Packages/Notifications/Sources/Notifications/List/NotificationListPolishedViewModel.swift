@@ -68,6 +68,10 @@ public final class NotificationListPolishedViewModel {
             } else {
                 allItems = try await api.listNotifications()
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: filter swap / pull-to-refresh cancels
+            // prior fetch; keep prior list visible.
+            return
         } catch {
             AppLog.ui.error("NotifList load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -85,6 +89,10 @@ public final class NotificationListPolishedViewModel {
             } else {
                 allItems = try await api.listNotifications()
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: repeated refresh cancels prior fetch;
+            // keep prior list visible.
+            return
         } catch {
             AppLog.ui.error("NotifList forceRefresh failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -102,6 +110,11 @@ public final class NotificationListPolishedViewModel {
         allItems.remove(at: idx)
         do {
             try await api.dismissNotification(id: id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav-away cancels server dismiss; keep
+            // the optimistic remove since server may have committed.
+            // Restoring the row would lie about server truth.
+            return
         } catch {
             allItems.insert(removed, at: min(idx, allItems.endIndex))
             errorMessage = "Couldn't dismiss notification. Please try again."
@@ -118,6 +131,10 @@ public final class NotificationListPolishedViewModel {
 
         do {
             _ = try await api.markNotificationRead(id: id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav-away cancels mark-read; keep the
+            // optimistic-read state since server may have committed.
+            return
         } catch {
             allItems[idx] = previous
             errorMessage = "Couldn't mark as read. Please try again."
@@ -132,6 +149,12 @@ public final class NotificationListPolishedViewModel {
             let resp = try await api.markAllNotificationsRead()
             let n = resp.updated ?? previousItems.filter { !$0.read }.count
             successBanner = n == 0 ? "Already up to date" : "Marked \(n) as read"
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav-away cancels mark-all; keep the
+            // optimistic-read state since server may have committed.
+            // Reverting would tempt a retap that re-emits already-read
+            // notifications as "new" via push reconciliation.
+            return
         } catch {
             allItems = previousItems
             errorMessage = "Couldn't mark all as read."
@@ -149,6 +172,9 @@ public final class NotificationListPolishedViewModel {
         allItems.remove(at: idx)
         do {
             try await api.dismissNotification(id: id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: see dismiss(id:) — keep optimistic remove.
+            return
         } catch {
             allItems.insert(previous, at: min(idx, allItems.endIndex))
             errorMessage = "Couldn't dismiss notification."

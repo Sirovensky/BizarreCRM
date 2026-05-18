@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import DesignSystem
 import Networking
 
@@ -78,6 +79,10 @@ public final class MembershipListViewModel {
                 uniqueKeysWithValues: adminSubs.map { (String($0.id), $0) }
             )
             state = .loaded
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: pull-to-refresh / nav cancels fetch;
+            // leave prior state visible so newer fetch sets .loaded.
+            return
         } catch let t as APITransportError {
             if case .httpStatus(let c, _) = t, c == 404 || c == 501 {
                 state = .comingSoon
