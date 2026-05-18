@@ -22,6 +22,14 @@ public final class ReferralLeaderboardViewModel {
         errorMessage = nil
         do {
             entries = try await service.fetchLeaderboard()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: leaderboard is reached via NavigationLink
+            // — popping the stack mid-load cancels the .task. Catch-all
+            // was painting "Could Not Load" + a cancellation message,
+            // overwriting cached entries on screen. Suppress so the prior
+            // top-10 stays visible on back-navigation until the next
+            // .task fires.
+            errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
         }
