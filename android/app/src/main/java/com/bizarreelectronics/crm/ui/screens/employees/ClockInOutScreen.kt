@@ -234,7 +234,19 @@ class ClockInOutViewModel @Inject constructor(
     fun startBreak() {
         if (!_state.value.isClockedIn || _state.value.onBreak) return
         viewModelScope.launch {
-            runCatching { employeeApi.startBreak(authPreferences.userId) }
+            try {
+                employeeApi.startBreak(authPreferences.userId)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // BUGHUNT-2026-05-17: runCatching previously swallowed
+                // CancellationException, then state was mutated to onBreak=true
+                // and the timer was started even though the coroutine was
+                // cancelled. That leaves an orphan "on break" UI state with
+                // no server-side record. Re-throw so the launch dies cleanly.
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("ClockInOutVM", "startBreak failed: ${e.message}")
+                // Continue local-only — break is non-critical for payroll
+            }
             _state.value = _state.value.copy(onBreak = true, breakElapsedSeconds = 0L)
             startBreakTimer()
         }
@@ -243,7 +255,14 @@ class ClockInOutViewModel @Inject constructor(
     fun endBreak() {
         if (!_state.value.onBreak) return
         viewModelScope.launch {
-            runCatching { employeeApi.endBreak(authPreferences.userId) }
+            try {
+                employeeApi.endBreak(authPreferences.userId)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // BUGHUNT-2026-05-17: see startBreak — same pattern.
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("ClockInOutVM", "endBreak failed: ${e.message}")
+            }
             _state.value = _state.value.copy(onBreak = false, breakElapsedSeconds = 0L)
             stopBreakTimer()
         }
