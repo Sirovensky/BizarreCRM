@@ -659,6 +659,9 @@ private fun CreateCustomerDialog(
                     onValueChange = { firstName = it.take(80) },
                     label = { Text("First name *") },
                     singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Words,
+                    ),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
@@ -666,6 +669,9 @@ private fun CreateCustomerDialog(
                     onValueChange = { lastName = it.take(80) },
                     label = { Text("Last name") },
                     singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Words,
+                    ),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
@@ -685,6 +691,7 @@ private fun CreateCustomerDialog(
                     singleLine = true,
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                         keyboardType = androidx.compose.ui.text.input.KeyboardType.Email,
+                        autoCorrect = false,
                     ),
                     modifier = Modifier.fillMaxWidth(),
                 )
