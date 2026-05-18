@@ -43,7 +43,21 @@ public final class WebSocketConnection: @unchecked Sendable {
     public func disconnect() {
         wsTask?.cancel(with: .goingAway, reason: nil)
         wsTask = nil
+        // BUGHUNT-2026-05-18: tear down the URLSession too. Without this,
+        // each WSConnection leaked an OperationQueue + dispatch-source for
+        // the lifetime of the app (WebSocketManager creates one per topic,
+        // and a logout/login cycle creates a new set without releasing the
+        // old ones). `finishTasksAndInvalidate()` lets in-flight tasks
+        // complete cleanly; `invalidateAndCancel()` would be overkill here
+        // since cancel was already issued above.
+        session.finishTasksAndInvalidate()
         AppLog.sync.info("WebSocketConnection: closed \(self.url.absoluteString, privacy: .public)")
+    }
+
+    deinit {
+        // Defensive: if the owner forgets to call disconnect, still tear
+        // down the URLSession on object destruction.
+        session.invalidateAndCancel()
     }
 
     public func ping(onComplete: (@Sendable (Error?) -> Void)? = nil) {
