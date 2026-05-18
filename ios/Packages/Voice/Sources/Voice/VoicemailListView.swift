@@ -35,6 +35,9 @@ public struct VoicemailListView: View {
             }
         }
         .task { await viewModel.load() }
+        // BUGHUNT-2026-05-18: only path to refresh was the small toolbar
+        // icon — add pull-to-refresh so the standard iOS gesture works.
+        .refreshable { await viewModel.load() }
     }
 
     // MARK: - iPhone layout
