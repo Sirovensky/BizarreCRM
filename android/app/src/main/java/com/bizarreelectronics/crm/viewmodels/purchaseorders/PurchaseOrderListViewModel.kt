@@ -7,6 +7,8 @@ import com.bizarreelectronics.crm.data.remote.dto.Pagination
 import com.bizarreelectronics.crm.data.remote.dto.PurchaseOrderRow
 import com.bizarreelectronics.crm.data.repository.PurchaseOrderRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -32,12 +34,22 @@ class PurchaseOrderListViewModel @Inject constructor(
     private val _state = MutableStateFlow(PurchaseOrderListUiState())
     val state = _state.asStateFlow()
 
+    /**
+     * BUGHUNT-2026-05-17: tracks the in-flight load so a rapid filter change
+     * cancels the previous fetch. Without this, two `viewModelScope.launch`
+     * blocks ran concurrently and whichever finished last clobbered state —
+     * a slow "draft" fetch landing after a fast "received" fetch showed
+     * "draft" rows under the "received" tab.
+     */
+    private var loadJob: Job? = null
+
     init {
         load()
     }
 
     fun load() {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
             try {
                 val data = repository.listPurchaseOrders(
@@ -49,6 +61,10 @@ class PurchaseOrderListViewModel @Inject constructor(
                     isLoading = false,
                     isRefreshing = false,
                 )
+            } catch (e: CancellationException) {
+                // Don't paint "cancelled" over the now-current load; re-throw
+                // so the structured-concurrency contract is preserved.
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "load failed: ${e.message}")
                 _state.value = _state.value.copy(
