@@ -9,6 +9,7 @@ import com.bizarreelectronics.crm.data.remote.api.EstimateVersion
 import com.bizarreelectronics.crm.data.remote.dto.EstimateLineItem
 import com.bizarreelectronics.crm.data.repository.EstimateRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -139,6 +140,14 @@ class EstimateDetailViewModel @Inject constructor(
                     actionMessage = if (ticketId != null) "Converted to ticket #$ticketId" else "Estimate converted",
                     convertedTicketId = ticketId,
                 )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: convertEstimate creates a ticket row.
+                // A "Failed to convert" toast tempted a re-tap that produced
+                // a second ticket if the original POST already landed. Clear
+                // the in-progress flag so the screen returns to idle without
+                // an actionMessage that invites a blind retry.
+                _state.value = _state.value.copy(isActionInProgress = false)
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
@@ -153,23 +162,29 @@ class EstimateDetailViewModel @Inject constructor(
     fun convertToInvoice() {
         viewModelScope.launch {
             _state.value = _state.value.copy(isActionInProgress = true)
-            runCatching { estimateApi.convertToInvoice(estimateId) }
-                .onSuccess { response ->
-                    val invoiceId = (response.data?.get("invoiceId") as? Number)?.toLong()
-                    _state.value = _state.value.copy(
-                        isActionInProgress = false,
-                        actionMessage = if (invoiceId != null) "Converted to invoice #$invoiceId" else "Converted to invoice",
-                        convertedInvoiceId = invoiceId,
-                    )
+            // BUGHUNT-2026-05-17: runCatching swallowed CancellationException
+            // and painted "Failed to convert" which tempted a re-tap that
+            // produced a second invoice row. Use try/catch so cancellation
+            // re-throws cleanly.
+            try {
+                val response = estimateApi.convertToInvoice(estimateId)
+                val invoiceId = (response.data?.get("invoiceId") as? Number)?.toLong()
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = if (invoiceId != null) "Converted to invoice #$invoiceId" else "Converted to invoice",
+                    convertedInvoiceId = invoiceId,
+                )
+            } catch (e: CancellationException) {
+                _state.value = _state.value.copy(isActionInProgress = false)
+                throw e
+            } catch (e: Exception) {
+                val msg = if (e is HttpException && e.code() == 404) {
+                    "Convert to invoice not available yet"
+                } else {
+                    e.message ?: "Failed to convert to invoice"
                 }
-                .onFailure { e ->
-                    val msg = if (e is HttpException && e.code() == 404) {
-                        "Convert to invoice not available yet"
-                    } else {
-                        e.message ?: "Failed to convert to invoice"
-                    }
-                    _state.value = _state.value.copy(isActionInProgress = false, actionMessage = msg)
-                }
+                _state.value = _state.value.copy(isActionInProgress = false, actionMessage = msg)
+            }
         }
     }
 
@@ -189,6 +204,13 @@ class EstimateDetailViewModel @Inject constructor(
                     isActionInProgress = false,
                     actionMessage = "Estimate sent via $label",
                 )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: sendEstimate fires an SMS or email to
+                // the customer — no idempotency key. A "Failed to send"
+                // toast tempted a re-tap that sent a duplicate. Clear state
+                // so the user must reopen the action sheet to retry.
+                _state.value = _state.value.copy(isActionInProgress = false)
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
