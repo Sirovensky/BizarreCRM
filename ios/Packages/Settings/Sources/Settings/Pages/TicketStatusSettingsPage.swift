@@ -226,6 +226,7 @@ public struct TicketStatusSettingsPage: View {
                 } label: {
                     Image(systemName: "plus")
                 }
+                .keyboardShortcut("n", modifiers: .command)
                 .accessibilityLabel("Add status")
                 .accessibilityIdentifier("ticketStatus.add")
             }

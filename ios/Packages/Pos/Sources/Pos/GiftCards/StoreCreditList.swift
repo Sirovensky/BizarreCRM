@@ -52,6 +52,7 @@ struct StoreCreditList: View {
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
+                    .keyboardShortcut("r", modifiers: .command)
                     .disabled({ if case .loading = loadState { return true }; return false }())
                     .accessibilityLabel("Refresh")
                     .accessibilityIdentifier("storeCredit.refresh")

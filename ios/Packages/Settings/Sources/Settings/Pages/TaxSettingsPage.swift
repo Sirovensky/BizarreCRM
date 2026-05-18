@@ -274,6 +274,7 @@ public struct TaxSettingsPage: View {
                 } label: {
                     Image(systemName: "plus")
                 }
+                .keyboardShortcut("n", modifiers: .command)
                 .accessibilityLabel("Add tax rate")
                 .accessibilityIdentifier("tax.addRate")
             }

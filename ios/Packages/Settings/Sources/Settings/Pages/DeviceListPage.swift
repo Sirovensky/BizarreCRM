@@ -143,6 +143,7 @@ public struct DeviceListPage: View {
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
+                .keyboardShortcut("r", modifiers: .command)
                 .accessibilityIdentifier("devices.refresh")
             }
         }

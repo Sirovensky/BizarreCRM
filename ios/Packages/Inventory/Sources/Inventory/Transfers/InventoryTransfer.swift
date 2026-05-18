@@ -330,6 +330,7 @@ public struct TransferListView: View {
             Button { vm.showCreateSheet = true } label: {
                 Label("New transfer", systemImage: "plus")
             }
+            .keyboardShortcut("n", modifiers: .command)
             .accessibilityLabel("Create transfer")
         }
     }

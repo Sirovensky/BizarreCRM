@@ -346,6 +346,7 @@ public struct CampaignAnalyticsView: View {
             Button { Task { await vm.load() } } label: {
                 Image(systemName: "arrow.clockwise")
             }
+            .keyboardShortcut("r", modifiers: .command)
             .accessibilityLabel("Refresh analytics")
             .disabled(vm.isLoading)
         }

@@ -30,6 +30,7 @@ public struct FollowUpScheduleView: View {
                 } label: {
                     Image(systemName: "plus")
                 }
+                .keyboardShortcut("n", modifiers: .command)
                 .accessibilityLabel("Add follow-up rule")
                 .brandGlass(.regular, in: Circle(), interactive: true)
             }
