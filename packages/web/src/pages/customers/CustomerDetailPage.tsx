@@ -1719,7 +1719,13 @@ function InfoTab({
                       <span className="px-1.5 py-0.5 rounded text-xs bg-surface-100 dark:bg-surface-700 text-surface-500 dark:text-surface-400">
                         {p.label}
                       </span>
-                      <span>{p.phone}</span>
+                      <a
+                        href={`tel:${stripPhone(p.phone)}`}
+                        className="hover:text-primary-600 dark:hover:text-primary-400 hover:underline"
+                        aria-label={`Call ${p.label}: ${p.phone}`}
+                      >
+                        {p.phone}
+                      </a>
                       {p.is_primary && (
                         <span className="text-xs text-primary-600 dark:text-primary-400">
                           Primary
@@ -1746,7 +1752,13 @@ function InfoTab({
                       <span className="px-1.5 py-0.5 rounded text-xs bg-surface-100 dark:bg-surface-700 text-surface-500 dark:text-surface-400">
                         {em.label}
                       </span>
-                      <span>{em.email}</span>
+                      <a
+                        href={`mailto:${em.email}`}
+                        className="hover:text-primary-600 dark:hover:text-primary-400 hover:underline break-all"
+                        aria-label={`Email ${em.label}: ${em.email}`}
+                      >
+                        {em.email}
+                      </a>
                       {em.is_primary && (
                         <span className="text-xs text-primary-600 dark:text-primary-400">
                           Primary

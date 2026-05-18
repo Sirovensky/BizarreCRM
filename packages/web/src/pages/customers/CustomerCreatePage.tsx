@@ -343,6 +343,8 @@ export function CustomerCreatePage() {
                     value={form.first_name}
                     onChange={(e) => updateField('first_name', e.target.value)}
                     onBlur={() => handleFieldBlur('name')}
+                    autoComplete="given-name"
+                    autoCapitalize="words"
                     className={cn('input', errors.first_name && 'border-red-500 dark:border-red-500')}
                     placeholder="John"
                     aria-invalid={errors.first_name ? true : undefined}
@@ -357,6 +359,8 @@ export function CustomerCreatePage() {
                     value={form.last_name}
                     onChange={(e) => updateField('last_name', e.target.value)}
                     onBlur={() => handleFieldBlur('name')}
+                    autoComplete="family-name"
+                    autoCapitalize="words"
                     className="input"
                     placeholder="Doe"
                   />
@@ -379,6 +383,8 @@ export function CustomerCreatePage() {
                   type="text"
                   value={form.organization}
                   onChange={(e) => updateField('organization', e.target.value)}
+                  autoComplete="organization"
+                  autoCapitalize="words"
                   className="input"
                   placeholder="Acme Corp"
                 />
@@ -399,6 +405,11 @@ export function CustomerCreatePage() {
                   value={form.email}
                   onChange={(e) => updateField('email', e.target.value)}
                   onBlur={() => handleFieldBlur('email')}
+                  autoComplete="email"
+                  inputMode="email"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
                   className={cn('input', errors.email && 'border-red-500 dark:border-red-500')}
                   placeholder="john@example.com"
                   aria-invalid={errors.email ? true : undefined}
@@ -412,6 +423,8 @@ export function CustomerCreatePage() {
                   value={form.phone}
                   onChange={(e) => updateField('phone', formatPhoneAsYouType(e.target.value))}
                   onBlur={() => handleFieldBlur('phone')}
+                  autoComplete="tel"
+                  inputMode="tel"
                   className="input"
                   placeholder="(303) 555-1234"
                 />
@@ -423,6 +436,8 @@ export function CustomerCreatePage() {
                   value={form.mobile}
                   onChange={(e) => updateField('mobile', formatPhoneAsYouType(e.target.value))}
                   onBlur={() => handleFieldBlur('phone')}
+                  autoComplete="tel"
+                  inputMode="tel"
                   className="input"
                   placeholder="(303) 555-1234"
                 />
@@ -468,6 +483,8 @@ export function CustomerCreatePage() {
                   value={form.address1}
                   onChange={(e) => updateField('address1', e.target.value)}
                   onBlur={geocodeAddress}
+                  autoComplete="address-line1"
+                  autoCapitalize="words"
                   className="input"
                   placeholder="123 Main St"
                 />
@@ -477,6 +494,8 @@ export function CustomerCreatePage() {
                   type="text"
                   value={form.address2}
                   onChange={(e) => updateField('address2', e.target.value)}
+                  autoComplete="address-line2"
+                  autoCapitalize="words"
                   className="input"
                   placeholder="Suite 100"
                 />
@@ -488,6 +507,8 @@ export function CustomerCreatePage() {
                     value={form.city}
                     onChange={(e) => updateField('city', e.target.value)}
                     onBlur={geocodeAddress}
+                    autoComplete="address-level2"
+                    autoCapitalize="words"
                     className="input"
                     placeholder="City"
                   />
@@ -498,6 +519,8 @@ export function CustomerCreatePage() {
                     value={form.state}
                     onChange={(e) => updateField('state', e.target.value)}
                     onBlur={geocodeAddress}
+                    autoComplete="address-level1"
+                    autoCapitalize="characters"
                     className="input"
                     placeholder="State"
                   />
@@ -509,6 +532,8 @@ export function CustomerCreatePage() {
                     type="text"
                     value={form.postcode}
                     onChange={(e) => updateField('postcode', e.target.value)}
+                    autoComplete="postal-code"
+                    inputMode="numeric"
                     className="input"
                     placeholder="80501"
                   />
@@ -518,6 +543,9 @@ export function CustomerCreatePage() {
                     type="text"
                     value={form.country}
                     onChange={(e) => updateField('country', e.target.value)}
+                    autoComplete="country"
+                    autoCapitalize="characters"
+                    maxLength={2}
                     className="input"
                     placeholder="US"
                   />
