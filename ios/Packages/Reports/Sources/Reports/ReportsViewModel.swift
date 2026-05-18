@@ -191,6 +191,14 @@ public final class ReportsViewModel {
     private(set) var fromDateString: String = ""
     private(set) var toDateString: String = ""
 
+    /// BUGHUNT-2026-05-17: track the in-flight loadAll fan-out so that a
+    /// rapid granularity change (Day → Week → Month) or a pull-to-refresh
+    /// during an active load cancels the earlier 30-call burst. Without
+    /// this, every flip launched a new 30+ endpoint fan-out in parallel
+    /// with the previous one, and whichever response set landed last
+    /// stomped the cards labelled with the newer granularity.
+    @ObservationIgnored private var loadAllTask: Task<Void, Never>?
+
     // MARK: - Init
 
     public init(repository: ReportsRepository) {
@@ -202,6 +210,15 @@ public final class ReportsViewModel {
 
     /// Load all data across every tab (used on initial load and pull-to-refresh).
     public func loadAll() async {
+        loadAllTask?.cancel()
+        let task = Task<Void, Never> { [weak self] in
+            await self?.performLoadAll()
+        }
+        loadAllTask = task
+        await task.value
+    }
+
+    private func performLoadAll() async {
         isLoading = true
         errorMessage = nil
         await withTaskGroup(of: Void.self) { group in
@@ -247,6 +264,9 @@ public final class ReportsViewModel {
             // §15.5 shrinkage trend
             group.addTask { await self.loadShrinkageReport() }
         }
+        // BUGHUNT-2026-05-17: if a newer loadAll cancelled us, don't stomp
+        // the freshly painted timestamp or clear the newer task's isLoading.
+        if Task.isCancelled { return }
         lastSyncedAt = Date()
         isLoading = false
     }
