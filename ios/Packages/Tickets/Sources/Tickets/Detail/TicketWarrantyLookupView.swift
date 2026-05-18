@@ -37,6 +37,13 @@ final class TicketWarrantyLookupViewModel {
             } else {
                 state = .notFound
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: previously a broad catch painted the
+            // "cancelled" localized string into state = .error(…), which
+            // stuck on the warranty sheet even though the user just typed
+            // another character / dismissed the sheet. Reset to .idle so
+            // the next lookup attempt has a clean state.
+            state = .idle
         } catch {
             state = .error(error.localizedDescription)
         }
