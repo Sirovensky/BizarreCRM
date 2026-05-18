@@ -110,6 +110,10 @@ public final class InventoryEditViewModel {
             didSave = true
             queuedOffline = true
             errorMessage = nil
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: sheet dismiss mid-enqueue — preserve the
+            // draft and let next session re-enqueue idempotently.
+            return
         } catch {
             // BUGHUNT-2026-05-17: surface queue failure.
             AppLog.sync.error("Inventory update offline-enqueue failed: \(error.localizedDescription, privacy: .public)")

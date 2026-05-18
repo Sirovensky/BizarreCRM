@@ -205,6 +205,12 @@ public final class CustomerEditViewModel {
             didSave = true
             queuedOffline = true
             errorMessage = nil
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: sheet dismiss mid-enqueue — don't paint
+            // "Could not save offline" on the sheet the user left. The
+            // draft is preserved and the next session can re-enqueue
+            // idempotently. Mirrors TicketEditDeepViewModel.enqueueOffline.
+            return
         } catch {
             // BUGHUNT-2026-05-17: surface the queue failure.
             AppLog.sync.error("Customer update offline-enqueue failed: \(error.localizedDescription, privacy: .public)")

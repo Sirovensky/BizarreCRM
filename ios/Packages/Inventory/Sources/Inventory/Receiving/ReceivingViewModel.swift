@@ -178,6 +178,12 @@ public final class ReceivingDetailViewModel {
                         payload: payload
                     )
                     showReconciliation = true
+                } catch let e where AppError.isCancellation(e) {
+                    // BUGHUNT-2026-05-18: sheet dismiss mid-enqueue —
+                    // preserve in-memory receiving state for the next
+                    // session to re-enqueue rather than flashing a
+                    // phantom "Could not queue offline" toast.
+                    return
                 } catch {
                     // BUGHUNT-2026-05-17: previously this used try? + a
                     // non-throwing enqueue, so an offline encode failure or

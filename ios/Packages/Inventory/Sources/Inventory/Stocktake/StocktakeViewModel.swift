@@ -203,6 +203,13 @@ public final class StocktakeScanViewModel {
                     pendingOfflineSync = true
                     isOffline = true
                     showReview = true
+                } catch let e where AppError.isCancellation(e) {
+                    // BUGHUNT-2026-05-18: enqueue may have partially landed
+                    // when the task was cancelled. Don't paint "Could not
+                    // queue offline" on a sheet the user already left —
+                    // the next session can re-enqueue idempotently from
+                    // the in-memory variance state (still tracked locally).
+                    return
                 } catch {
                     // BUGHUNT-2026-05-17: previously try?+non-throwing enqueue
                     // silently swallowed a queue failure and still flipped

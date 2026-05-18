@@ -198,6 +198,11 @@ public final class InventoryCreateViewModel {
             queuedOffline = true
             errorMessage = nil
             clearDraft()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: sheet dismiss mid-enqueue — preserve the
+            // draft for re-enqueue and don't paint a phantom "Could not
+            // save offline" toast on a torn-down sheet.
+            return
         } catch {
             // BUGHUNT-2026-05-17: surface queue failure so the user doesn't
             // think the new SKU was saved offline. Don't clearDraft() on

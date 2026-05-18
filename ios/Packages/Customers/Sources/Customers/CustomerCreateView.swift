@@ -103,6 +103,12 @@ public final class CustomerCreateViewModel {
             createdId = PendingSyncCustomerId
             queuedOffline = true
             errorMessage = nil
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: sheet dismiss mid-enqueue — preserve the
+            // draft and let the next session re-enqueue idempotently
+            // rather than flashing "Could not save offline" on a torn-down
+            // sheet. Mirrors TicketEditDeepViewModel.enqueueOffline.
+            return
         } catch {
             // BUGHUNT-2026-05-17: surface the queue failure so the user
             // doesn't think the customer was saved offline when it wasn't.
