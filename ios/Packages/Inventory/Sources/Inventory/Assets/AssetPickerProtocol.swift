@@ -44,6 +44,9 @@ public final class AssetPickerViewModel {
         defer { isLoading = false }
         do {
             assets = try await api.listAvailableAssets()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: picker load cancelled on sheet dismiss; silent return.
+            return
         } catch {
             errorMessage = AppError.from(error).errorDescription ?? "Failed to load assets."
             AppLog.ui.error("AssetPicker load failed: \(error.localizedDescription, privacy: .public)")

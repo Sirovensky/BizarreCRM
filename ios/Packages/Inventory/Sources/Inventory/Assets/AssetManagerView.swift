@@ -36,6 +36,9 @@ public final class AssetManagerViewModel {
         defer { isLoading = false }
         do {
             assets = try await api.listAssets()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: list reload cancelled (nav-away); keep existing list visible.
+            return
         } catch {
             errorMessage = AppError.from(error).errorDescription ?? "Failed to load assets."
             AppLog.ui.error("AssetManager load failed: \(error.localizedDescription, privacy: .public)")
@@ -46,6 +49,9 @@ public final class AssetManagerViewModel {
         do {
             try await api.deleteAsset(id: asset.id)
             assets.removeAll { $0.id == asset.id }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: deleteAsset may have committed when cancelled; retry hits 404 on already-deleted row. Silent return — list refreshes next load.
+            return
         } catch {
             errorMessage = AppError.from(error).errorDescription ?? "Delete failed."
         }
@@ -330,6 +336,9 @@ public struct AssetEditorSheet: View {
             }
             onSave()
             dismiss()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: createAsset/updateAsset may have committed when sheet was dismissed. "Save failed" banner tempts retry → duplicate asset row on create or repeat update with possibly-stale values. Silent return; caller refresh shows true state.
+            return
         } catch {
             errorMessage = AppError.from(error).errorDescription ?? "Save failed."
         }

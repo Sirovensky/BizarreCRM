@@ -79,6 +79,9 @@ public final class AssetReturnViewModel {
         do {
             _ = try await api.returnAsset(id: asset.id, request: request)
             didSucceed = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: returnAsset flips asset status server-side and may release deposit hold. If task cancelled after commit, "Return failed" banner tempts retry → second status flip on a returned asset and possible double-release of held funds. Silent return; caller refresh reveals real state.
+            return
         } catch {
             errorMessage = AppError.from(error).errorDescription ?? "Return failed."
             AppLog.ui.error("AssetReturn submit failed: \(error.localizedDescription, privacy: .public)")
