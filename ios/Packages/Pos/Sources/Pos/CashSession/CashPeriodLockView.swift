@@ -51,6 +51,10 @@ final class CashPeriodLockViewModel: @unchecked Sendable {
         defer { isLoading = false }
         do {
             locks = try await repository.listLocks()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: view popped or refresh re-fired mid-load.
+            // Don't paint a fake error — next .task retries.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -73,6 +77,13 @@ final class CashPeriodLockViewModel: @unchecked Sendable {
             let lock = try await repository.lockPeriod(request)
             locks.insert(lock, at: 0)
             lockNotes = ""
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: manager backed out mid-lock POST. Server
+            // may have committed the lock already. Painting an error tempts
+            // a retry; either the second lock creates a duplicate audit row
+            // or the server 409s with a confusing message. Stay silent and
+            // let the next load() reflect the actual state.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -90,6 +101,12 @@ final class CashPeriodLockViewModel: @unchecked Sendable {
             let req = CashPeriodUnlockRequest(managerPin: unlockManagerPin, reason: unlockReason)
             try await repository.unlockPeriod(id: id, request: req)
             locks.removeAll { $0.id == id }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: manager dismissed the PIN sheet mid-unlock.
+            // The server may have already accepted the override; painting an
+            // error tempts a re-PIN that just rolls a redundant audit entry
+            // against the manager's ID. Stay silent.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
