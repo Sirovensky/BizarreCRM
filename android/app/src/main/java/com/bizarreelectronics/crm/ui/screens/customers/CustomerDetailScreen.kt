@@ -273,6 +273,8 @@ class CustomerDetailViewModel @Inject constructor(
                 _state.value = _state.value.copy(tagPalette = palette)
             } catch (_: HttpException) {
                 // 404 → use hash-cycle defaults
+            } catch (_: CancellationException) {
+                throw CancellationException()
             } catch (_: Exception) {
                 // silent degrade
             }
@@ -351,6 +353,8 @@ class CustomerDetailViewModel @Inject constructor(
                 val response = customerApi.getAnalytics(customerId)
                 val analytics = response.data ?: return@launch
                 _state.value = _state.value.copy(analytics = analytics)
+            } catch (_: CancellationException) {
+                throw CancellationException()
             } catch (_: Exception) {
                 // Silent degrade — quick-stats row simply doesn't render.
             }
@@ -370,6 +374,8 @@ class CustomerDetailViewModel @Inject constructor(
                 val response = customerApi.getTickets(customerId)
                 val tickets = response.data?.tickets ?: return@launch
                 _state.value = _state.value.copy(recentTickets = tickets)
+            } catch (_: CancellationException) {
+                throw CancellationException()
             } catch (_: Exception) {
                 // Silent degrade — Ticket History card simply doesn't render.
             }
@@ -388,6 +394,8 @@ class CustomerDetailViewModel @Inject constructor(
                 val response = customerApi.getNotes(customerId)
                 val notes = response.data ?: return@launch
                 _state.value = _state.value.copy(notes = notes)
+            } catch (_: CancellationException) {
+                throw CancellationException()
             } catch (_: Exception) {
                 // Silent degrade — Notes card simply doesn't render.
             }
@@ -404,6 +412,8 @@ class CustomerDetailViewModel @Inject constructor(
             try {
                 val response = customerApi.getAddresses(customerId)
                 _state.value = _state.value.copy(addresses = response.data ?: emptyList())
+            } catch (_: CancellationException) {
+                throw CancellationException()
             } catch (_: Exception) {
                 _state.value = _state.value.copy(addresses = emptyList())
             }
@@ -418,7 +428,7 @@ class CustomerDetailViewModel @Inject constructor(
             try {
                 val response = customerApi.getHealthScore(customerId)
                 _state.value = _state.value.copy(healthScore = response.data)
-            } catch (_: Exception) { /* silent — 404 tolerated */ }
+            } catch (_: CancellationException) { throw CancellationException() } catch (_: Exception) { /* silent — 404 tolerated */ }
         }
     }
 
@@ -427,7 +437,7 @@ class CustomerDetailViewModel @Inject constructor(
             try {
                 val response = customerApi.recalculateHealthScore(customerId)
                 _state.value = _state.value.copy(healthScore = response.data)
-            } catch (_: Exception) { /* silent */ }
+            } catch (_: CancellationException) { throw CancellationException() } catch (_: Exception) { /* silent */ }
         }
     }
 
@@ -439,7 +449,7 @@ class CustomerDetailViewModel @Inject constructor(
             try {
                 val response = customerApi.getLtvTier(customerId)
                 _state.value = _state.value.copy(ltvTier = response.data)
-            } catch (_: Exception) { /* silent — 404 tolerated */ }
+            } catch (_: CancellationException) { throw CancellationException() } catch (_: Exception) { /* silent — 404 tolerated */ }
         }
     }
 
@@ -451,7 +461,7 @@ class CustomerDetailViewModel @Inject constructor(
             try {
                 val response = customerApi.getInvoices(customerId)
                 _state.value = _state.value.copy(invoices = response.data?.invoices ?: emptyList())
-            } catch (_: Exception) { /* silent */ }
+            } catch (_: CancellationException) { throw CancellationException() } catch (_: Exception) { /* silent */ }
         }
     }
 
@@ -461,12 +471,14 @@ class CustomerDetailViewModel @Inject constructor(
             try {
                 val response = customerApi.getAssets(customerId)
                 _state.value = _state.value.copy(assets = response.data ?: emptyList())
+            } catch (_: CancellationException) {
+                throw CancellationException()
             } catch (_: Exception) {
                 // Fall back to assets embedded in the customer detail payload
                 try {
                     val detailResponse = customerApi.getCustomer(customerId)
                     _state.value = _state.value.copy(assets = detailResponse.data?.assets ?: emptyList())
-                } catch (_: Exception) { /* silent */ }
+                } catch (_: CancellationException) { throw CancellationException() } catch (_: Exception) { /* silent */ }
             }
         }
     }
@@ -499,6 +511,10 @@ class CustomerDetailViewModel @Inject constructor(
             try {
                 customerApi.deleteCustomer(customerId)
                 onDeleted()
+            } catch (e: CancellationException) {
+                // DOUBLE-ACTION RISK: deleteCustomer is destructive. Rethrow so a back-nav
+                // cancellation does not paint "Delete failed" and tempt a re-confirmation.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     showDeleteConfirm = false,
@@ -538,6 +554,12 @@ class CustomerDetailViewModel @Inject constructor(
                 _state.value = _state.value.copy(isMerging = false, mergeCandidate = null)
                 loadCustomer()
                 onMerged()
+            } catch (e: CancellationException) {
+                // DOUBLE-ACTION RISK: mergeCustomers is destructive and non-idempotent.
+                // Rethrow so a back-nav cancellation cannot produce a false "Merge failed"
+                // that tempts the user to confirm the merge a second time.
+                _state.value = _state.value.copy(isMerging = false)
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isMerging = false,
@@ -559,6 +581,8 @@ class CustomerDetailViewModel @Inject constructor(
         return try {
             val response = customerApi.searchCustomers(query)
             (response.data ?: emptyList()).filter { it.id != customerId }
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
             emptyList()
         }
@@ -585,6 +609,9 @@ class CustomerDetailViewModel @Inject constructor(
                 _state.value = _state.value.copy(isAddingAsset = false, showAddAssetSheet = false)
                 // Reload assets after successful add
                 loadAssets()
+            } catch (e: CancellationException) {
+                _state.value = _state.value.copy(isAddingAsset = false)
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isAddingAsset = false,
@@ -603,6 +630,8 @@ class CustomerDetailViewModel @Inject constructor(
                     serial = asset.serial?.takeIf { it.isNotBlank() },
                 )
                 _state.value = _state.value.copy(assetHistory = response.data ?: emptyList())
+            } catch (_: CancellationException) {
+                throw CancellationException()
             } catch (_: Exception) {
                 _state.value = _state.value.copy(assetHistory = emptyList())
             }
@@ -672,6 +701,8 @@ class CustomerDetailViewModel @Inject constructor(
                                 try {
                                     val resp = customerApi.deleteNote(customerId, noteId)
                                     resp.success
+                                } catch (e: CancellationException) {
+                                    throw e
                                 } catch (e: Exception) {
                                     Timber.w(e, "Customer note undo: server delete failed")
                                     false
@@ -680,6 +711,9 @@ class CustomerDetailViewModel @Inject constructor(
                         },
                     )
                 )
+            } catch (e: CancellationException) {
+                _state.value = _state.value.copy(isPostingNote = false)
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isPostingNote = false,
@@ -843,6 +877,8 @@ class CustomerDetailViewModel @Inject constructor(
                                             buildSingleFieldRequest(fieldName, oldValue),
                                         )
                                         true
+                                    } catch (e: CancellationException) {
+                                        throw e
                                     } catch (e: Exception) {
                                         Timber.tag("CustomerUndo").e(e, "compensatingSync: $fieldName revert failed")
                                         false
@@ -883,6 +919,8 @@ class CustomerDetailViewModel @Inject constructor(
                                             UpdateCustomerRequest(customerTags = oldTags),
                                         )
                                         true
+                                    } catch (e: CancellationException) {
+                                        throw e
                                     } catch (e: Exception) {
                                         Timber.tag("CustomerUndo").e(e, "compensatingSync: tags revert failed")
                                         false
@@ -892,6 +930,9 @@ class CustomerDetailViewModel @Inject constructor(
                         )
                     }
                 }
+            } catch (e: CancellationException) {
+                _state.value = _state.value.copy(isSaving = false, savingChipVisible = false)
+                throw e
             } catch (e: Exception) {
                 val is409 = e is HttpException && e.code() == 409
                 if (is409) {
@@ -2572,6 +2613,8 @@ private fun MergeSearchSheet(
                             try {
                                 val resp = viewModel.searchCustomersForMerge(q)
                                 results = resp
+                            } catch (_: CancellationException) {
+                                throw CancellationException()
                             } catch (_: Exception) {
                                 results = emptyList()
                             }

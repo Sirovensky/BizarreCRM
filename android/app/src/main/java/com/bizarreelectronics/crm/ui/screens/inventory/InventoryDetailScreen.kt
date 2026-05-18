@@ -220,6 +220,8 @@ class InventoryDetailViewModel @Inject constructor(
                     serials = serials,
                     movementsOfflineMessage = null,
                 )
+            } catch (_: CancellationException) {
+                throw CancellationException()
             } catch (_: Exception) {
                 _state.value = _state.value.copy(
                     movements = emptyList(),
@@ -255,6 +257,9 @@ class InventoryDetailViewModel @Inject constructor(
                     movementHistoryHasMore = page?.hasMore ?: false,
                     isLoadingMoreMovements = false,
                 )
+            } catch (_: CancellationException) {
+                _state.value = _state.value.copy(isLoadingMoreMovements = false)
+                throw CancellationException()
             } catch (_: Exception) {
                 _state.value = _state.value.copy(isLoadingMoreMovements = false)
             }
@@ -277,6 +282,9 @@ class InventoryDetailViewModel @Inject constructor(
                     movementHistoryHasMore = page?.hasMore ?: false,
                     isLoadingMoreMovements = false,
                 )
+            } catch (_: CancellationException) {
+                _state.value = _state.value.copy(isLoadingMoreMovements = false)
+                throw CancellationException()
             } catch (_: Exception) {
                 _state.value = _state.value.copy(isLoadingMoreMovements = false)
             }
@@ -301,6 +309,8 @@ class InventoryDetailViewModel @Inject constructor(
                     )
                 } ?: emptyList()
                 _state.value = _state.value.copy(priceHistory = points)
+            } catch (_: CancellationException) {
+                throw CancellationException()
             } catch (_: Exception) {
                 _state.value = _state.value.copy(priceHistory = emptyList())
             }
@@ -314,6 +324,8 @@ class InventoryDetailViewModel @Inject constructor(
                 val resp = inventoryApi.getSalesHistory(itemId, days = 30)
                 val data = resp.data
                 _state.value = _state.value.copy(soldLast30d = data?.sold)
+            } catch (_: CancellationException) {
+                throw CancellationException()
             } catch (_: Exception) {
                 // 404 tolerated — show stub
             }
@@ -326,6 +338,8 @@ class InventoryDetailViewModel @Inject constructor(
             try {
                 val resp = inventoryApi.getBins()
                 _state.value = _state.value.copy(availableBins = resp.data?.bins ?: emptyList())
+            } catch (_: CancellationException) {
+                throw CancellationException()
             } catch (_: Exception) {
                 // Non-critical — autocomplete just shows no suggestions
             }
@@ -338,6 +352,8 @@ class InventoryDetailViewModel @Inject constructor(
             try {
                 val resp = inventoryApi.getUsageInTickets(itemId, limit = 10)
                 _state.value = _state.value.copy(ticketUsage = resp.data?.tickets ?: emptyList())
+            } catch (_: CancellationException) {
+                throw CancellationException()
             } catch (_: Exception) {
                 // 404 tolerated
             }
@@ -351,6 +367,8 @@ class InventoryDetailViewModel @Inject constructor(
                 val resp = inventoryApi.getPhotos(itemId)
                 val urls = resp.data?.photos?.map { it.url } ?: emptyList()
                 _state.value = _state.value.copy(photoUrls = urls)
+            } catch (_: CancellationException) {
+                throw CancellationException()
             } catch (_: Exception) {
                 // 404 tolerated
             }

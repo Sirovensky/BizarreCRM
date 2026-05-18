@@ -311,6 +311,8 @@ class TicketDetailViewModel @Inject constructor(
                         error = null,
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 android.util.Log.w("TicketDetail", "Failed to load detail from API: ${e.message}")
                 // L680 — detect 404: ticket was deleted while this screen was open
@@ -347,6 +349,8 @@ class TicketDetailViewModel @Inject constructor(
                 val response = settingsApi.getStatusList()
                 val statuses = response.data ?: emptyList()
                 _state.value = _state.value.copy(statuses = statuses)
+            } catch (_: CancellationException) {
+                throw CancellationException()
             } catch (_: Exception) {
                 // Non-critical; status dropdown will be empty
             }
@@ -428,6 +432,8 @@ class TicketDetailViewModel @Inject constructor(
                                         UpdateTicketRequest(statusId = oldStatusId),
                                     )
                                     true
+                                } catch (e: CancellationException) {
+                                    throw e
                                 } catch (e: Exception) {
                                     Timber.tag("TicketUndo").e(e, "compensatingSync: status revert failed")
                                     false
@@ -436,6 +442,8 @@ class TicketDetailViewModel @Inject constructor(
                         },
                     )
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
@@ -486,6 +494,8 @@ class TicketDetailViewModel @Inject constructor(
                                     try {
                                         val resp = ticketApi.deleteNote(noteId)
                                         resp.success
+                                    } catch (e: CancellationException) {
+                                        throw e
                                     } catch (e: Exception) {
                                         Timber.tag("TicketUndo").w(e, "compensatingSync: server delete of noteId=$noteId failed")
                                         false
@@ -495,6 +505,8 @@ class TicketDetailViewModel @Inject constructor(
                         )
                     )
                     return@launch
+                } catch (_: CancellationException) {
+                    throw CancellationException()
                 } catch (_: Exception) {
                     // Fall through to offline queue
                 }
@@ -547,10 +559,10 @@ class TicketDetailViewModel @Inject constructor(
             // Best-effort sequential calls — either may 404 on legacy DBs.
             val parts: List<com.bizarreelectronics.crm.data.remote.dto.InventoryListItem> = try {
                 inventoryApi.getItems(mapOf("q" to q, "limit" to "5")).data?.items.orEmpty()
-            } catch (_: Exception) { emptyList() }
+            } catch (_: CancellationException) { throw CancellationException() } catch (_: Exception) { emptyList() }
             val services: List<com.bizarreelectronics.crm.data.remote.dto.RepairServiceItem> = try {
                 repairPricingApi.getServices(query = q).data.orEmpty()
-            } catch (_: Exception) { emptyList() }
+            } catch (_: CancellationException) { throw CancellationException() } catch (_: Exception) { emptyList() }
 
             parts.take(5).forEach { p ->
                 merged += com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion(
@@ -752,6 +764,8 @@ class TicketDetailViewModel @Inject constructor(
                         isActionInProgress = false,
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
@@ -782,6 +796,8 @@ class TicketDetailViewModel @Inject constructor(
                 val response = settingsApi.getEmployees()
                 val list = response.data ?: emptyList()
                 _state.value = _state.value.copy(employees = list)
+            } catch (_: CancellationException) {
+                throw CancellationException()
             } catch (_: Exception) {
                 // Non-critical — mentions will have no suggestions
             }
@@ -818,6 +834,8 @@ class TicketDetailViewModel @Inject constructor(
                 } else {
                     _state.value.copy(warrantyLoading = false, warrantyError = "No warranty record found.")
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 val is404 = runCatching { (e as? retrofit2.HttpException)?.code() == 404 }.getOrDefault(false)
                 _state.value = _state.value.copy(
@@ -859,6 +877,8 @@ class TicketDetailViewModel @Inject constructor(
                     deviceHistoryEntries = entries,
                     deviceHistoryError = if (entries.isEmpty()) "No prior repairs found for this device." else null,
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     deviceHistoryLoading = false,
@@ -887,6 +907,8 @@ class TicketDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 ticketApi.pinToDashboard(ticketId)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 // 404 tolerated — pin is kept locally
                 Timber.tag("PinDashboard").w(e, "pinToDashboard: server returned error (local-only fallback)")
@@ -907,6 +929,8 @@ class TicketDetailViewModel @Inject constructor(
             _state.value = _state.value.copy(isBenchTimerRunning = true)
             try {
                 ticketApi.startBenchTimer(ticketId)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 // Stub fallback — timer runs locally even if server returns 404
                 Timber.tag("BenchTimer").w(e, "startBenchTimer: server returned error (stub fallback active)")
@@ -922,6 +946,8 @@ class TicketDetailViewModel @Inject constructor(
             _state.value = _state.value.copy(isBenchTimerRunning = false)
             try {
                 ticketApi.stopBenchTimer(ticketId)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Timber.tag("BenchTimer").w(e, "stopBenchTimer: server returned error (stub fallback active)")
             }
@@ -943,6 +969,10 @@ class TicketDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 ticketApi.deletePhoto(photoId)
+            } catch (e: CancellationException) {
+                // DOUBLE-ACTION RISK: deletePhoto is non-idempotent if a second photo with same ID
+                // is uploaded between the cancellation and a user re-tap. Rethrow to avoid that.
+                throw e
             } catch (e: Exception) {
                 Timber.tag("TicketPhoto").w(e, "deletePhoto id=%d: server error (already removed?)", photoId)
             }
@@ -989,6 +1019,9 @@ class TicketDetailViewModel @Inject constructor(
             } catch (e: HttpException) {
                 // 404 = feature not available — hide the action silently
                 _state.value = _state.value.copy(waiverFeatureEnabled = false, waiverCheckInProgress = false)
+            } catch (e: CancellationException) {
+                _state.value = _state.value.copy(waiverCheckInProgress = false)
+                throw e
             } catch (e: Exception) {
                 // Network error treated the same as not-available for safety
                 _state.value = _state.value.copy(waiverFeatureEnabled = false, waiverCheckInProgress = false)
@@ -1046,6 +1079,12 @@ class TicketDetailViewModel @Inject constructor(
                 try {
                     ticketApi.qcSignOff(ticketId, sigPart, commentsPart)
                     withStateOnMain { copy(isActionInProgress = false, actionMessage = "QC sign-off recorded") }
+                } catch (e: CancellationException) {
+                    // DOUBLE-ACTION RISK: qcSignOff is a signature/PDF upload. Rethrow so
+                    // back-nav doesn't paint a false "QC sign-off failed" and tempt a re-tap
+                    // that would upload the same signature a second time.
+                    withStateOnMain { copy(isActionInProgress = false) }
+                    throw e
                 } catch (e: Exception) {
                     val is404 = runCatching { (e as? retrofit2.HttpException)?.code() == 404 }.getOrDefault(false)
                     if (is404) {
@@ -1070,6 +1109,8 @@ class TicketDetailViewModel @Inject constructor(
                                 ticketId,
                                 mapOf("type" to "internal", "content" to noteText, "is_qc_sign_off" to true),
                             )
+                        } catch (e: CancellationException) {
+                            throw e  // BUGHUNT-2026-05-17: don't swallow nav-cancel after signature upload
                         } catch (_: Exception) {}
                         withStateOnMain { copy(isActionInProgress = false, actionMessage = "QC sign-off saved (signature attached)") }
                     } else {
@@ -1077,6 +1118,9 @@ class TicketDetailViewModel @Inject constructor(
                         withStateOnMain { copy(isActionInProgress = false, actionMessage = "QC sign-off failed: ${e.message}") }
                     }
                 }
+            } catch (e: CancellationException) {
+                withStateOnMain { copy(isActionInProgress = false) }
+                throw e
             } catch (e: Exception) {
                 Timber.tag("QcSignOff").e(e, "bitmap save failed")
                 withStateOnMain { copy(isActionInProgress = false, actionMessage = "Failed to save signature") }
@@ -1150,6 +1194,8 @@ class TicketDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 smsApi.sendSms(mapOf("to" to phone, "message" to smsBody))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Timber.tag("StatusNotify").w(e, "SMS send after status change failed")
             }
@@ -1271,6 +1317,9 @@ class TicketDetailViewModel @Inject constructor(
                             actionMessage = "Status rolled back (audit endpoint pending deployment)",
                         )
                         loadTicketDetail()
+                    } catch (ex: CancellationException) {
+                        _state.value = _state.value.copy(isActionInProgress = false)
+                        throw ex
                     } catch (ex: Exception) {
                         _state.value = _state.value.copy(
                             isActionInProgress = false,
@@ -1283,6 +1332,9 @@ class TicketDetailViewModel @Inject constructor(
                         actionMessage = "Rollback failed: HTTP ${e.code()}",
                     )
                 }
+            } catch (e: CancellationException) {
+                _state.value = _state.value.copy(isActionInProgress = false)
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
@@ -1386,6 +1438,9 @@ class TicketDetailViewModel @Inject constructor(
                         actionMessage = "Delay notification sent",
                     )
                 }
+            } catch (e: CancellationException) {
+                withStateOnMain { copy(showNotifyDelayDialog = false, isDelaySendInProgress = false) }
+                throw e
             } catch (e: Exception) {
                 Timber.tag("NotifyDelay").w(e, "Delay SMS send failed")
                 withStateOnMain {
