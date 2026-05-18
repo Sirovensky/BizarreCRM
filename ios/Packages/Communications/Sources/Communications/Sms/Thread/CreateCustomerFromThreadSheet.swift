@@ -174,6 +174,11 @@ public final class CreateCustomerFromThreadViewModel {
                 email: email.trimmingCharacters(in: .whitespaces).isEmpty ? nil : email.trimmingCharacters(in: .whitespaces)
             )
             return result
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: customer create POST may have committed;
+            // retap on banner would create a duplicate customer row
+            // attached to the same SMS thread. Silent return.
+            return nil
         } catch {
             errorMessage = error.localizedDescription
             AppLog.ui.error("Create customer from thread failed: \(error.localizedDescription, privacy: .public)")
