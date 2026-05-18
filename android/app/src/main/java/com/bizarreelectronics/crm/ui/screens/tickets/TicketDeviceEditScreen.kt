@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -28,6 +29,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -647,6 +649,9 @@ private fun DeviceEditContent(
                 label = { Text("Device name *") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Words,
+                ),
             )
         }
         item {
@@ -656,6 +661,10 @@ private fun DeviceEditContent(
                 label = { Text("IMEI") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Characters,
+                    autoCorrect = false,
+                ),
             )
         }
         item {
@@ -665,6 +674,10 @@ private fun DeviceEditContent(
                 label = { Text("Serial") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Characters,
+                    autoCorrect = false,
+                ),
             )
         }
         item {
@@ -674,15 +687,25 @@ private fun DeviceEditContent(
                 label = { Text("Color") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Words,
+                ),
             )
         }
         item {
+            // BUGHUNT-2026-05-18: passcode field — no autocorrect or autocaps;
+            // a typo or surprise capitalization on a written-down passcode would
+            // lock the device on the workshop attempt.
             OutlinedTextField(
                 value = state.securityCode,
                 onValueChange = onSecurityCodeChange,
                 label = { Text("Security code / passcode") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.None,
+                    autoCorrect = false,
+                ),
             )
         }
 
@@ -697,6 +720,9 @@ private fun DeviceEditContent(
                 minLines = 2,
                 maxLines = 5,
                 modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Sentences,
+                ),
             )
         }
         item {
@@ -707,6 +733,9 @@ private fun DeviceEditContent(
                 minLines = 2,
                 maxLines = 5,
                 modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Sentences,
+                ),
             )
         }
 
@@ -856,6 +885,10 @@ private fun PartSearchDialog(
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.None,
+                        autoCorrect = false,
+                    ),
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 Box(

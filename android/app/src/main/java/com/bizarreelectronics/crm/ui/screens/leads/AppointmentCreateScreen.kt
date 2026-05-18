@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -527,7 +528,10 @@ fun AppointmentCreateScreen(
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Title *") },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Next,
+                    capitalization = KeyboardCapitalization.Sentences,
+                ),
                 keyboardActions = KeyboardActions(
                     onNext = { focusManager.moveFocus(FocusDirection.Down) },
                 ),
@@ -644,7 +648,10 @@ fun AppointmentCreateScreen(
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Location") },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Next,
+                    capitalization = KeyboardCapitalization.Words,
+                ),
                 keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
             )
 
@@ -774,7 +781,10 @@ fun AppointmentCreateScreen(
                 label = { Text("Notes") },
                 minLines = 3,
                 maxLines = 6,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Default,
+                    capitalization = KeyboardCapitalization.Sentences,
+                ),
             )
         }
     }

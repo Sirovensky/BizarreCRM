@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -151,6 +152,9 @@ fun PurchaseOrderCreateScreen(
                     label = { Text("Notes (optional)") },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 2,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                    ),
                 )
             }
 
@@ -282,12 +286,19 @@ private fun AddLineItemDialog(
                     onValueChange = { itemName = it },
                     label = { Text("Item Name") },
                     modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words,
+                    ),
                 )
                 OutlinedTextField(
                     value = sku,
                     onValueChange = { sku = it },
                     label = { Text("SKU (optional)") },
                     modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Characters,
+                        autoCorrect = false,
+                    ),
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(

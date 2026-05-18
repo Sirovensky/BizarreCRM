@@ -15,6 +15,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.R
 import java.util.Calendar
@@ -159,7 +160,10 @@ fun AppointmentQuickCreateSheet(
                     .semantics { contentDescription = "Appointment title" },
                 label = { Text(stringResource(R.string.appt_quick_create_title_label)) },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Done,
+                    capitalization = KeyboardCapitalization.Sentences,
+                ),
                 keyboardActions = KeyboardActions(onDone = {
                     if (isValid) onSave(QuickAppointmentDraft(title.trim(), startMillis, endMillis))
                 }),
