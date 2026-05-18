@@ -25,6 +25,7 @@ import com.bizarreelectronics.crm.data.remote.dto.RmaCreateRequest
 import com.bizarreelectronics.crm.data.remote.dto.RmaItemRequest
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -152,6 +153,13 @@ class RmaCreateViewModel @Inject constructor(
                         submitError = response.message ?: "Failed to create return.",
                     )
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: bare catch (e: Exception) below would
+                // paint "Failed to create return" on back-nav. RMA creation
+                // has no client-side idempotency key — a re-tap after the
+                // false-failure message would create a duplicate RMA in the
+                // supplier's queue. Re-throw so the launch dies cleanly.
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "submit failed: ${e.message}")
                 _state.value = _state.value.copy(

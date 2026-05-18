@@ -123,6 +123,21 @@ public final class SyncManager {
 
         AppLog.sync.info("syncNow — drain loop start")
 
+        // BUGHUNT-2026-05-17: sweep stale `inFlight` rows every syncNow rather
+        // than only on `autoStart` cold start. Previously the only recovery
+        // path for a row left at `inFlight` (cancellation between server-
+        // confirm and `markFailed`/`forceDeadLetter`, or any DB IO error
+        // mid-drain) was the next app launch. That meant a long-lived session
+        // could accumulate orphaned rows that never re-drain, leaving the
+        // user's mutations silently abandoned even though the app is open
+        // and online. The 60s freshness window still prevents racing a
+        // legitimately in-flight drain on the same syncNow.
+        do {
+            _ = try await SyncQueueStore.shared.resetStaleInFlight()
+        } catch {
+            AppLog.sync.error("syncNow resetStaleInFlight failed: \(error, privacy: .public)")
+        }
+
         do {
             let ops = try await SyncQueueStore.shared.due(limit: Self.drainBatchSize)
             AppLog.sync.info("Drain: \(ops.count, privacy: .public) ops ready")
