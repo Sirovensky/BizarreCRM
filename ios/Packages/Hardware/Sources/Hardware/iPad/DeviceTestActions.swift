@@ -1,5 +1,6 @@
 #if canImport(SwiftUI)
 import SwiftUI
+import Core
 
 // MARK: - TestActionState
 
@@ -47,6 +48,8 @@ public final class DeviceTestActionsViewModel {
         do {
             try await (onPrintTestPage ?? { try await Task.sleep(nanoseconds: 500_000_000) })()
             printerTestState = .success("Test page sent")
+        } catch let e where AppError.isCancellation(e) {
+            printerTestState = .idle  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             printerTestState = .failure(error.localizedDescription)
         }
@@ -60,6 +63,8 @@ public final class DeviceTestActionsViewModel {
         do {
             try await (onOpenDrawer ?? { try await Task.sleep(nanoseconds: 300_000_000) })()
             drawerTestState = .success("Drawer opened")
+        } catch let e where AppError.isCancellation(e) {
+            drawerTestState = .idle  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             drawerTestState = .failure(error.localizedDescription)
         }
@@ -76,6 +81,8 @@ public final class DeviceTestActionsViewModel {
                 return "0 g (no scale paired)"
             })()
             scaleTestState = .success(reading)
+        } catch let e where AppError.isCancellation(e) {
+            scaleTestState = .idle  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             scaleTestState = .failure(error.localizedDescription)
         }
@@ -89,6 +96,8 @@ public final class DeviceTestActionsViewModel {
         do {
             try await (onTestScanner ?? { try await Task.sleep(nanoseconds: 300_000_000) })()
             scannerTestState = .success("Scanner triggered")
+        } catch let e where AppError.isCancellation(e) {
+            scannerTestState = .idle  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             scannerTestState = .failure(error.localizedDescription)
         }
@@ -105,6 +114,8 @@ public final class DeviceTestActionsViewModel {
                 return "No terminal paired"
             })()
             terminalTestState = .success(result)
+        } catch let e where AppError.isCancellation(e) {
+            terminalTestState = .idle  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             terminalTestState = .failure(error.localizedDescription)
         }
