@@ -96,6 +96,10 @@ final class DeviceTemplatesViewModel {
                     )
                 }
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: step nav cancelled the matrix preview; keep
+            // any prior rows visible rather than painting a misleading error.
+            return
         } catch {
             spreadsheetLoadError = error.localizedDescription
         }
