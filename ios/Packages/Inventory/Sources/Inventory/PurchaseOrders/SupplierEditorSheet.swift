@@ -93,8 +93,15 @@ public struct SupplierEditorSheet: View {
                 Form {
                     Section("Basic Info") {
                         TextField("Company name", text: $vm.name)
+                            #if canImport(UIKit)
+                            .textInputAutocapitalization(.words)
+                            #endif
                             .accessibilityLabel("Company name")
                         TextField("Contact name", text: $vm.contactName)
+                            #if canImport(UIKit)
+                            .textInputAutocapitalization(.words)
+                            .textContentType(.name)
+                            #endif
                             .accessibilityLabel("Contact name")
                     }
                     // BUGHUNT-2026-05-18: missing textContentType across the
@@ -106,8 +113,8 @@ public struct SupplierEditorSheet: View {
                             #if canImport(UIKit)
                             .textContentType(.emailAddress)
                             .keyboardType(.emailAddress)
+                            .textInputAutocapitalization(.never)
                             #endif
-                            .autocapitalization(.none)
                             .disableAutocorrection(true)
                             .accessibilityLabel("Email address")
                         TextField("Phone", text: $vm.phone)
@@ -119,12 +126,16 @@ public struct SupplierEditorSheet: View {
                         TextField("Address", text: $vm.address, axis: .vertical)
                             #if canImport(UIKit)
                             .textContentType(.fullStreetAddress)
+                            .textInputAutocapitalization(.words)
                             #endif
                             .lineLimit(2...4)
                             .accessibilityLabel("Address")
                     }
                     Section("Terms") {
                         TextField("Payment terms (e.g. Net 30)", text: $vm.paymentTerms)
+                            #if canImport(UIKit)
+                            .textInputAutocapitalization(.words)
+                            #endif
                             .accessibilityLabel("Payment terms")
                         TextField("Lead time (days)", text: $vm.leadTimeDaysText)
                             .keyboardType(.numberPad)

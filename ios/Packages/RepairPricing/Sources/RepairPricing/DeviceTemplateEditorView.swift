@@ -61,6 +61,9 @@ public struct DeviceTemplateEditorView: View {
             // Model name
             Section {
                 TextField("Model name (required)", text: $vm.name)
+                    #if canImport(UIKit)
+                    .textInputAutocapitalization(.words)
+                    #endif
                     .font(.brandBodyMedium())
                     .foregroundStyle(.bizarreOnSurface)
                     .accessibilityLabel("Device model name")
@@ -94,6 +97,9 @@ public struct DeviceTemplateEditorView: View {
 
                 if vm.isCustomFamily {
                     TextField("Custom family", text: $vm.customFamily)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.words)
+                        #endif
                         .font(.brandBodyMedium())
                         .foregroundStyle(.bizarreOnSurface)
                         .accessibilityLabel("Custom device family name")
