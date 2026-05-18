@@ -121,10 +121,22 @@ public struct LoyaltyRepositoryLive: LoyaltyRepository {
 
         // Derive subscription id — needed for the /membership/:id/points/redeem endpoint.
         // We do a lightweight subscription fetch to get the subscription id.
-        let sub: CustomerSubscriptionDTO? = try? await api.get(
-            "/membership/customer/\(customerId)",
-            as: CustomerSubscriptionDTO?.self
-        )
+        let sub: CustomerSubscriptionDTO?
+        do {
+            sub = try await api.get(
+                "/membership/customer/\(customerId)",
+                as: CustomerSubscriptionDTO?.self
+            )
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: previous `try?` swallowed cancellation into
+            // sub=nil, then the guard below threw LoyaltyRedemptionError
+            // .invalidPointsAmount — the caller's catch then painted
+            // "Invalid points amount." instead of treating it as a torn-down
+            // Task. Re-throw the cancellation so the caller can branch.
+            throw e
+        } catch {
+            sub = nil
+        }
 
         guard let subscriptionId = sub?.id else {
             AppLog.pos.error("LoyaltyRepository: no active subscription for customer \(customerId)")
