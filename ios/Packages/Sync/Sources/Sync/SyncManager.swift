@@ -128,11 +128,26 @@ public final class SyncManager {
             AppLog.sync.info("Drain: \(ops.count, privacy: .public) ops ready")
 
             for op in ops {
+                // BUGHUNT-2026-05-17: bail out of the drain when the parent
+                // Task is cancelled (app backgrounded, user toggled airplane
+                // mode, RetryNowButton's view disappeared). Mirrors the early-
+                // exit pattern in `SyncFlusher.flush`. Without it, the loop
+                // iterates every remaining op marking each as cancelled —
+                // correct but wasteful, and gives us no clean place to stop
+                // mutating `lastSyncedAt`.
+                if Task.isCancelled { break }
                 guard let id = op.id else { continue }
                 await drainSingle(id: id, op: op)
             }
 
-            lastSyncedAt = Date()
+            // BUGHUNT-2026-05-17: only advance the "last synced" watermark
+            // when the drain actually completed. Bumping `lastSyncedAt = Date()`
+            // after a cancelled run makes every status badge ("Synced just now")
+            // lie to the user — the queue still has unsynced work but the UI
+            // shows fresh-as-can-be.
+            if !Task.isCancelled {
+                lastSyncedAt = Date()
+            }
             await refreshPendingCount()
             await refreshDeadLetterCount()
         } catch {
