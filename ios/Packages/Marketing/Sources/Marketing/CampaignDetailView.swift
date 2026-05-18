@@ -39,11 +39,19 @@ final class CampaignDetailViewModel {
     }
 
     func send() async {
+        guard !isSending else { return }
         isSending = true
         sendError = nil
         defer { isSending = false }
         do {
             campaign = try await api.sendCampaign(id: campaignId)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sendCampaign triggers customer-facing
+            // fan-out (SMS/email to every customer in the segment). TCPA
+            // hazard: cancellation banner tempts retap that fan-outs AGAIN
+            // to the entire segment — every customer gets the campaign
+            // twice. Stay silent; admin checks the analytics tab to verify.
+            return
         } catch {
             AppLog.ui.error("Campaign send failed: \(error.localizedDescription, privacy: .public)")
             sendError = error.localizedDescription
