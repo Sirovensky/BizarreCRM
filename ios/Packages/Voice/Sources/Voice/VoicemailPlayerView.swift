@@ -55,10 +55,20 @@ public struct VoicemailPlayerView: View {
                         Text(entry.customerName ?? entry.phoneNumber)
                             .font(.title2)
                             .fontWeight(.semibold)
+                            .textSelection(.enabled)
                         if entry.customerName != nil {
-                            Text(entry.phoneNumber)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                            // BUGHUNT-2026-05-18: phone in voicemail player
+                            // header was plain text — make it tappable to dial
+                            // back, mirroring the SMS / call-back affordances.
+                            Button {
+                                CallQuickAction.placeCall(to: entry.phoneNumber)
+                            } label: {
+                                Text(entry.phoneNumber)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.bizarrePrimary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Call \(entry.phoneNumber)")
                         }
                     }
                     .padding(.top, DesignTokens.Spacing.lg)

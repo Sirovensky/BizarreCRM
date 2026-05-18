@@ -166,11 +166,23 @@ public struct EmployeeDetailView: View {
             }
 
             if let email = vm.detail?.email, !email.isEmpty {
-                Label(email, systemImage: "envelope")
-                    .font(.brandBodyMedium())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .textSelection(.enabled)
-                    .accessibilityLabel("Email: \(email)")
+                // BUGHUNT-2026-05-18: employee email was plain text;
+                // managers regularly need to send compliance/policy email
+                // from the detail screen. Wire as mailto: link.
+                if let mailURL = URL(string: "mailto:\(email)") {
+                    Link(destination: mailURL) {
+                        Label(email, systemImage: "envelope")
+                            .font(.brandBodyMedium())
+                            .foregroundStyle(.bizarrePrimary)
+                    }
+                    .accessibilityLabel("Email \(email)")
+                } else {
+                    Label(email, systemImage: "envelope")
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .textSelection(.enabled)
+                        .accessibilityLabel("Email: \(email)")
+                }
             }
         }
         .padding(BrandSpacing.md)

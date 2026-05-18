@@ -354,10 +354,21 @@ private struct CallDetailView: View {
                             Text(entry.customerName ?? entry.phoneNumber)
                                 .font(.title2)
                                 .fontWeight(.semibold)
+                                .textSelection(.enabled)
                             if entry.customerName != nil {
-                                Text(entry.phoneNumber)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
+                                // BUGHUNT-2026-05-18: phone in detail header was
+                                // plain text; long-press copy was the only path.
+                                // Make it a tel: button so quick-dial works from
+                                // the header too, not just the bottom button.
+                                Button {
+                                    CallQuickAction.placeCall(to: entry.phoneNumber)
+                                } label: {
+                                    Text(entry.phoneNumber)
+                                        .font(.subheadline)
+                                        .foregroundStyle(.bizarrePrimary)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Call \(entry.phoneNumber)")
                             }
                         }
                     }
