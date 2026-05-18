@@ -36,6 +36,7 @@ public final class CampaignAnalyticsViewModel {
     }
 
     public func runNow() async {
+        guard !isRunning else { return }
         isRunning = true
         runError = nil
         runResult = nil
@@ -44,6 +45,11 @@ public final class CampaignAnalyticsViewModel {
             runResult = try await api.runCampaignNow(id: campaignId)
             // Reload stats after running
             await load()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: runCampaignNow fan-outs SMS/email to the
+            // entire campaign segment. Cancellation banner tempted retap
+            // that triggered a SECOND fan-out — TCPA double-text liability.
+            return
         } catch {
             AppLog.ui.error("Campaign run-now failed: \(error.localizedDescription, privacy: .public)")
             runError = error.localizedDescription
