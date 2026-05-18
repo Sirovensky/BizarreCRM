@@ -30,7 +30,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -1257,7 +1259,8 @@ fun CustomerDetailScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(padding),
+                        .padding(padding)
+                        .semantics { liveRegion = LiveRegionMode.Assertive },
                     contentAlignment = Alignment.Center,
                 ) {
                     ErrorState(
