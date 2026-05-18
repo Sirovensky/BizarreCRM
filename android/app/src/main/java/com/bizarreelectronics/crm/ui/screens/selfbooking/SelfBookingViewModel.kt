@@ -8,6 +8,7 @@ import com.bizarreelectronics.crm.data.remote.api.BookingReserveRequest
 import com.bizarreelectronics.crm.data.remote.api.BookingSlot
 import com.bizarreelectronics.crm.data.remote.api.SelfBookingApi
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -87,12 +88,13 @@ class SelfBookingViewModel @Inject constructor(
     fun loadSlots(date: LocalDate = LocalDate.now()) {
         _state.value = SelfBookingUiState.LoadingSlots
         viewModelScope.launch {
-            runCatching {
-                selfBookingApi.getAvailableSlots(
+            // BUGHUNT-2026-05-17: runCatching swallowed CancellationException;
+            // date-pick cancel painted a fake error state.
+            try {
+                val response = selfBookingApi.getAvailableSlots(
                     locationId = locationId,
                     date = date.format(DateTimeFormatter.ISO_LOCAL_DATE),
                 )
-            }.onSuccess { response ->
                 val slots = response.data
                 if (slots == null) {
                     _state.value = SelfBookingUiState.NotAvailable
@@ -103,7 +105,9 @@ class SelfBookingViewModel @Inject constructor(
                         selectedSlot = null,
                     )
                 }
-            }.onFailure { e ->
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
                 Timber.tag("SelfBooking").e(e, "loadSlots failed locationId=%s", locationId)
                 _state.value = when {
                     e is HttpException && e.code() == 404 -> SelfBookingUiState.NotAvailable
@@ -193,8 +197,14 @@ class SelfBookingViewModel @Inject constructor(
         if (current.name.isBlank() || current.phone.isBlank()) return
         _state.value = SelfBookingUiState.Confirming
         viewModelScope.launch {
-            runCatching {
-                selfBookingApi.reserveSlot(
+            // BUGHUNT-2026-05-17: runCatching swallowed CancellationException
+            // on the reserve POST. Customer-facing flow: nav cancel after
+            // server reservation committed (slot held, confirmation SMS/
+            // email dispatched), retap dispatches a SECOND confirmation
+            // (TCPA double-text) OR returns 409 (slot taken — by the
+            // same customer) which looks like a real conflict.
+            try {
+                val response = selfBookingApi.reserveSlot(
                     BookingReserveRequest(
                         slotId = current.slot.slotId,
                         locationId = locationId,
@@ -205,14 +215,15 @@ class SelfBookingViewModel @Inject constructor(
                         notes = current.notes.trim().takeIf { it.isNotEmpty() },
                     )
                 )
-            }.onSuccess { response ->
                 val confirmation = response.data
                 if (confirmation == null) {
                     _state.value = SelfBookingUiState.Error("Reservation failed. Please try again.")
                 } else {
                     _state.value = SelfBookingUiState.Confirmed(confirmation)
                 }
-            }.onFailure { e ->
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
                 Timber.tag("SelfBooking").e(e, "reserveSlot failed slotId=%s", current.slot.slotId)
                 _state.value = when {
                     e is HttpException && e.code() == 404 ->
