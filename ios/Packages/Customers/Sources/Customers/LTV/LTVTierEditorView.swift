@@ -278,6 +278,11 @@ final class LTVTierEditorViewModel {
             )
             allPerks = updated.perks ?? allPerks
             syncTextFields()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: LTV policy update PUT may have committed
+            // server-side. Retap on banner double-PUT same values (audit
+            // row noise + LTV-tier-changed downstream cron noise).
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
