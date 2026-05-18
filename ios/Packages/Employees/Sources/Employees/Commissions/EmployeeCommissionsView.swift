@@ -144,7 +144,25 @@ public struct EmployeeCommissionsView: View {
 private struct CommissionRow: View {
     let commission: EmployeeCommission
 
-    private static let isoFormatter = ISO8601DateFormatter()
+    // BUGHUNT-2026-05-18: was a bare `ISO8601DateFormatter()` whose default
+    // options reject Node Date.toISOString() millisecond strings. Every
+    // commission row fell back to printing `String(createdAt.prefix(10))` —
+    // a raw "2026-05-18" instead of the localized "May 18, 2026" — and the
+    // VoiceOver label said "Earned $X on 2026-05-18". Same fractional → plain
+    // chain as the rest of the package.
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+    fileprivate static func parseIso(_ raw: String) -> Date? {
+        isoFractional.date(from: raw) ?? isoPlain.date(from: raw)
+    }
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateStyle = .medium
@@ -186,7 +204,7 @@ private struct CommissionRow: View {
     }
 
     private var dateLabel: String {
-        guard let date = Self.isoFormatter.date(from: commission.createdAt) else {
+        guard let date = Self.parseIso(commission.createdAt) else {
             return String(commission.createdAt.prefix(10))
         }
         return Self.dateFormatter.string(from: date)
@@ -206,7 +224,23 @@ private struct CommissionRow: View {
 private struct CommissionDetailPanel: View {
     let commission: EmployeeCommission
 
-    private static let isoFormatter = ISO8601DateFormatter()
+    // BUGHUNT-2026-05-18: same fix as CommissionRow above — default
+    // ISO8601DateFormatter() rejects fractional-seconds strings the server
+    // emits, leaving the Date row showing the raw "2026-05-18T17:00:00.000Z"
+    // instead of the long-form "May 18, 2026 at 5:00 PM".
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+    fileprivate static func parseIso(_ raw: String) -> Date? {
+        isoFractional.date(from: raw) ?? isoPlain.date(from: raw)
+    }
     private static let dateTimeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateStyle = .long
@@ -288,7 +322,7 @@ private struct CommissionDetailPanel: View {
     }
 
     private var dateTimeLabel: String {
-        guard let date = Self.isoFormatter.date(from: commission.createdAt) else {
+        guard let date = Self.parseIso(commission.createdAt) else {
             return commission.createdAt
         }
         return Self.dateTimeFormatter.string(from: date)
