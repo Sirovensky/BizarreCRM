@@ -13,6 +13,7 @@ import com.bizarreelectronics.crm.ui.screens.invoices.components.InvoiceSort
 import com.bizarreelectronics.crm.ui.screens.invoices.components.applyInvoiceSortOrder
 import com.bizarreelectronics.crm.util.toDollars
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -210,11 +211,31 @@ class InvoiceListViewModel @Inject constructor(
     fun bulkDelete() {
         val ids = _state.value.selectedIds
         viewModelScope.launch {
-            ids.forEach { id ->
-                runCatching { invoiceApi.voidInvoice(id) }
+            // BUGHUNT-2026-05-17: runCatching swallowed CancellationException,
+            // and the loop continued reporting "Voided N invoice(s)" even when
+            // viewModelScope was cancelled mid-iteration — masking partial
+            // success on a financial action (void invoice). Track actual
+            // outcomes and re-throw cancellation so structured concurrency
+            // unwinds cleanly.
+            var voided = 0
+            var failed = 0
+            for (id in ids) {
+                try {
+                    invoiceApi.voidInvoice(id)
+                    voided++
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    failed++
+                }
+            }
+            val message = when {
+                failed == 0 -> "Voided $voided invoice(s)."
+                voided == 0 -> "Failed to void $failed invoice(s)."
+                else -> "Voided $voided invoice(s); $failed failed."
             }
             _state.value = _state.value.copy(
-                actionMessage = "Voided ${ids.size} invoice(s).",
+                actionMessage = message,
                 isBulkMode = false,
                 selectedIds = emptySet(),
             )
