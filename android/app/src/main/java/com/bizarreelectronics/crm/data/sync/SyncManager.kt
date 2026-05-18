@@ -263,6 +263,12 @@ class SyncManager @Inject constructor(
             }
             notificationDao.insertAll(entities)
             Log.d(TAG, "Synced ${entities.size} notifications")
+        } catch (e: CancellationException) {
+            // BUGHUNT-2026-05-17: re-throw cancellation so runIsolated above
+            // sees it and aborts the whole sync loop. Catching Exception was
+            // swallowing the cancel and letting subsequent sync steps run
+            // on a coroutine that was already being torn down.
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Notification sync failed [${e.javaClass.simpleName}]: ${e.message}")
         }
