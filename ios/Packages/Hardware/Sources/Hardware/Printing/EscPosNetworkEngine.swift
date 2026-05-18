@@ -38,6 +38,14 @@ public final class EscPosNetworkEngine: PrintEngine {
     /// Returns a single Printer if reachable, empty array otherwise.
     public func discover() async throws -> [Printer] {
         let reachable = await pingOnce()
+        // BUGHUNT-2026-05-17: when the surrounding Task was cancelled during
+        // the ping (e.g. user navigated away from Settings → Printers),
+        // `pingOnce` swallowed the CancellationError and returned `false`.
+        // The empty array then painted "no printers found" — making a perfectly
+        // healthy printer look broken on the next reopen. Re-check Task state
+        // and re-throw CancellationError so callers can distinguish "user
+        // cancelled" from "actually unreachable".
+        try Task.checkCancellation()
         guard reachable else { return [] }
         let id = "\(config.host):\(config.port)"
         let printer = Printer(
@@ -160,6 +168,9 @@ public final class EscPosNetworkEngine: PrintEngine {
             try await send(Data(), to: config.host, port: config.port)
             return true
         } catch {
+            // Cancellation is collapsed to `false` here; `discover()` does the
+            // explicit Task.checkCancellation() so a cancelled discovery is
+            // distinguishable from a real ping failure.
             return false
         }
     }
