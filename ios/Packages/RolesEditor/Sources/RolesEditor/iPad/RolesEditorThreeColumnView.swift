@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import DesignSystem
 
 // MARK: - RolesEditorThreeColumnView
@@ -214,6 +215,12 @@ extension RolesMatrixViewModel {
     func renameRole(_ role: Role, newName: String) async {
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed != role.name else { return }
+        // BUGHUNT-2026-05-17: re-entry guard — rename is a two-step write
+        // (create new, delete old). A fast double-tap on the Rename alert
+        // would fire two parallel runs: both would create a fresh role
+        // under the new name → duplicate role row, and both would try
+        // to DELETE the already-deleted original → 404 audit noise.
+        guard !isLoading else { return }
         // Optimistic local update
         if let idx = roles.firstIndex(where: { $0.id == role.id }) {
             roles[idx] = Role(id: role.id, name: trimmed, preset: role.preset, capabilities: role.capabilities)
@@ -231,6 +238,19 @@ extension RolesMatrixViewModel {
             // Replace stub entry with the real server-assigned one
             roles.removeAll { $0.id == role.id || $0.id == created.id }
             roles.append(created)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: rename is two writes; cancellation can
+            // happen between them — create may have landed but delete
+            // didn't, leaving BOTH the old and the new role row on the
+            // server. Surfacing an error would tempt the user to rename
+            // again, creating a THIRD copy. Roll back the optimistic
+            // overlay so the user sees the original; the next refresh
+            // exposes any orphan new role for explicit cleanup.
+            if let idx = roles.firstIndex(where: { $0.id == role.id }) {
+                roles[idx] = role
+            }
+            isLoading = false
+            return
         } catch {
             // Rollback optimistic update
             if let idx = roles.firstIndex(where: { $0.id == role.id }) {
