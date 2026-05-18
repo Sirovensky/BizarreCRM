@@ -29,6 +29,7 @@ import com.bizarreelectronics.crm.data.remote.dto.CreateLeadRequest
 import com.bizarreelectronics.crm.data.remote.dto.EmployeeListItem
 import com.bizarreelectronics.crm.data.repository.LeadRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -96,6 +97,8 @@ class LeadCreateViewModel @Inject constructor(
                 val response = settingsApi.getEmployees()
                 val list = response.data ?: emptyList()
                 _state.value = _state.value.copy(employees = list)
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (_: Exception) { /* offline or auth — leave employees empty */ }
         }
     }
@@ -211,6 +214,8 @@ class LeadCreateViewModel @Inject constructor(
                     createdId = createdId,
                     savedOffline = wasOffline,
                 )
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSubmitting = false,

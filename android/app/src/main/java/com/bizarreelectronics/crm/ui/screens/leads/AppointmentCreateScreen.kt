@@ -32,6 +32,7 @@ import com.bizarreelectronics.crm.data.remote.dto.CreateAppointmentRequest
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -371,6 +372,8 @@ class AppointmentCreateViewModel @Inject constructor(
                     isSubmitting = false,
                     createdId = detail.id,
                 )
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSubmitting = false,

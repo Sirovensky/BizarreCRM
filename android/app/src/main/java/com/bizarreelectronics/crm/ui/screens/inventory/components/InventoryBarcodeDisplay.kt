@@ -22,6 +22,7 @@ import com.bizarreelectronics.crm.util.QrCodeGenerator
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.oned.Code128Writer
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -74,6 +75,8 @@ fun InventoryBarcodeDisplay(
                 code128Bitmap = bmp
                 qrBitmap = QrCodeGenerator.generateQrBitmap(sku, sizePx = 256)
                 error = null
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 error = "Failed to generate barcode: ${e.message}"
             }

@@ -96,6 +96,7 @@ import com.bizarreelectronics.crm.ui.screens.dashboard.components.TeamInboxTile
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.UnreadSmsPill
 import com.bizarreelectronics.crm.util.LocalScrollToTopBus
 import com.bizarreelectronics.crm.util.rememberReduceMotion
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -215,7 +216,7 @@ class DashboardViewModel @Inject constructor(
 
     fun forceSync() {
         viewModelScope.launch {
-            try { syncManagerRef.syncAll() } catch (_: Exception) {}
+            try { syncManagerRef.syncAll() } catch (e: CancellationException) { throw e } catch (_: Exception) {}
         }
     }
 
@@ -325,6 +326,8 @@ class DashboardViewModel @Inject constructor(
                         )
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 android.util.Log.w("Dashboard", "loadCashTrapped failed: ${e.message}")
                 // Leave null — card degrades to stub state
@@ -521,6 +524,8 @@ class DashboardViewModel @Inject constructor(
                     android.util.Log.w("Dashboard", "dismissAttention failed (${e.code()}): ${e.message}")
                     _needsAttentionItems.value = previous
                 }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 android.util.Log.w("Dashboard", "dismissAttention offline fallback for $id: ${e.message}")
                 appPreferences.addDismissedAttentionId(id)
@@ -599,6 +604,8 @@ class DashboardViewModel @Inject constructor(
                 } else {
                     android.util.Log.w("Dashboard", "getUnreadCount failed (${e.code()}): ${e.message}")
                 }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 android.util.Log.w("Dashboard", "getUnreadCount offline: ${e.message}")
             }
@@ -626,6 +633,8 @@ class DashboardViewModel @Inject constructor(
                 } else {
                     android.util.Log.w("Dashboard", "getInbox failed (${e.code()}): ${e.message}")
                 }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 android.util.Log.w("Dashboard", "getInbox offline: ${e.message}")
             }
@@ -694,6 +703,8 @@ class DashboardViewModel @Inject constructor(
                     val defaults = defaultTilesFor(role)
                     Pair(defaults, defaults.toSet())
                 }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 android.util.Log.w("Dashboard", "getRoleTemplate offline: ${e.message}")
                 val defaults = defaultTilesFor(role)
@@ -837,6 +848,8 @@ class DashboardViewModel @Inject constructor(
                 val cfg = settingsApi.getConfig().data ?: return@launch
                 val enabled = cfg["ticket_all_employees_view_all"] == "0"
                 _state.value = _state.value.copy(assignmentEnabled = enabled)
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (_: Exception) {
                 // Offline / server error — leave at default (off).
             }
@@ -880,6 +893,8 @@ class DashboardViewModel @Inject constructor(
                     openTickets = stats.openTickets,
                     revenueToday = stats.revenueToday,
                 )
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 android.util.Log.w("Dashboard", "Failed to load stats: ${e.message}")
                 _state.value = _state.value.copy(
@@ -942,6 +957,8 @@ class DashboardViewModel @Inject constructor(
                     needsAttention = attentionItems,
                     attentionError = null,
                 )
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 android.util.Log.w("Dashboard", "Failed to load needs-attention: ${e.message}")
                 _state.value = _state.value.copy(
@@ -953,6 +970,8 @@ class DashboardViewModel @Inject constructor(
             try {
                 dashboardRepository.refreshMyQueue()
                 _state.value = _state.value.copy(queueError = null)
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 android.util.Log.w("Dashboard", "Failed to refresh queue: ${e.message}")
                 _state.value = _state.value.copy(
@@ -967,6 +986,8 @@ class DashboardViewModel @Inject constructor(
             try {
                 val (count, _) = dashboardRepository.getChurnRisk()
                 _churnAtRisk.value = count
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 android.util.Log.w("Dashboard", "getChurnRisk failed: ${e.message}")
                 // Leave _churnAtRisk null — ChurnAlertCard shows "Data unavailable"
@@ -1026,6 +1047,8 @@ class DashboardViewModel @Inject constructor(
                 } else {
                     android.util.Log.w("Dashboard", "recentActivity failed (${e.code()}): ${e.message}")
                 }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 android.util.Log.w("Dashboard", "recentActivity offline fallback: ${e.message}")
                 _recentActivity.value = emptyList()
@@ -1051,6 +1074,8 @@ class DashboardViewModel @Inject constructor(
                 } else {
                     android.util.Log.w("Dashboard", "currentAnnouncement failed (${e.code()}): ${e.message}")
                 }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 android.util.Log.w("Dashboard", "currentAnnouncement offline fallback: ${e.message}")
                 _announcement.value = null

@@ -50,6 +50,7 @@ import com.bizarreelectronics.crm.ui.screens.expenses.components.ExpenseFilterSt
 import com.bizarreelectronics.crm.ui.screens.expenses.components.ExpenseSort
 import com.bizarreelectronics.crm.ui.screens.expenses.components.ExpenseSortDropdown
 import com.bizarreelectronics.crm.util.formatAsMoney
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 val EXPENSE_CATEGORIES = listOf(
@@ -179,6 +180,8 @@ fun ExpenseListScreen(
                             os.write(csv.toByteArray(Charsets.UTF_8))
                         }
                         snackbarHostState.showSnackbar("CSV exported")
+                    } catch (e: CancellationException) {
+                        throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
                     } catch (e: Exception) {
                         snackbarHostState.showSnackbar("Export failed: ${e.message}")
                     }

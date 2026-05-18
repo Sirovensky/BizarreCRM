@@ -40,6 +40,7 @@ import com.bizarreelectronics.crm.data.remote.dto.CustomerListItem
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.util.BarcodeAnalyzer
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -92,6 +93,8 @@ class CustomerBarcodeLookupViewModel @Inject constructor(
                             _state.value = _state.value.copy(isLoading = false, navigateToId = asId)
                             return@launch
                         }
+                    } catch (e: CancellationException) {
+                        throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
                     } catch (_: Exception) {
                         // Not a valid id — fall through to search
                     }
@@ -104,6 +107,8 @@ class CustomerBarcodeLookupViewModel @Inject constructor(
                     hits.size == 1 -> _state.value = _state.value.copy(isLoading = false, navigateToId = hits[0].id)
                     else           -> _state.value = _state.value.copy(isLoading = false, results = hits)
                 }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,

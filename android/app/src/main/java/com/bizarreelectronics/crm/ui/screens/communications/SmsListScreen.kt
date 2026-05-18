@@ -54,6 +54,7 @@ import com.bizarreelectronics.crm.util.LocalScrollToTopBus
 import com.bizarreelectronics.crm.util.rememberSaveableLazyListState
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -107,6 +108,8 @@ class SmsListViewModel @Inject constructor(
                         smsRepository.getThread(conv.convPhone)
                     }
                     return@launch
+                } catch (e: CancellationException) {
+                    throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
                 } catch (e: Exception) {
                     // Fall through to offline mode
                 }
@@ -177,6 +180,8 @@ class SmsListViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 smsApi.pinThread(phone)
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (_: Exception) { /* 404-tolerated */ }
         }
     }
@@ -192,6 +197,8 @@ class SmsListViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 smsApi.archiveThread(phone)
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (_: Exception) { /* 404-tolerated */ }
         }
     }

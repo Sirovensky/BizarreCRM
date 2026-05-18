@@ -39,6 +39,7 @@ import com.bizarreelectronics.crm.util.HapticEvent
 import com.bizarreelectronics.crm.util.ImageUploadPolicy
 import com.bizarreelectronics.crm.util.LocalAppHapticController
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -114,6 +115,8 @@ class PhotoCaptureViewModel @Inject constructor(
                     isUploading = false,
                     uploadedCount = _state.value.uploadedCount + 1,
                 )
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isUploading = false,

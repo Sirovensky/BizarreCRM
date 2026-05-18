@@ -32,6 +32,7 @@ import com.bizarreelectronics.crm.util.PhoneFormatter
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.bizarreelectronics.crm.util.UndoStack
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -253,6 +254,8 @@ class LeadDetailViewModel @Inject constructor(
                         },
                     )
                 )
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
@@ -305,6 +308,8 @@ class LeadDetailViewModel @Inject constructor(
                         },
                     )
                 )
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
@@ -377,6 +382,8 @@ class LeadDetailViewModel @Inject constructor(
                         },
                     )
                 )
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
@@ -442,6 +449,8 @@ class LeadDetailViewModel @Inject constructor(
                         },
                     )
                 )
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
@@ -468,6 +477,8 @@ class LeadDetailViewModel @Inject constructor(
                         actionMessage = "Convert failed: no ticket returned",
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
@@ -491,6 +502,8 @@ class LeadDetailViewModel @Inject constructor(
                     isActionInProgress = false,
                     actionMessage = "Lead marked as lost",
                 )
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
@@ -542,6 +555,8 @@ class LeadDetailViewModel @Inject constructor(
                         },
                     )
                 )
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
@@ -578,6 +593,8 @@ class LeadDetailViewModel @Inject constructor(
                 val msg = if (e.code() == 404) "Convert to customer not yet available on this server"
                           else "Failed to convert: ${e.message}"
                 _state.value = _state.value.copy(isActionInProgress = false, actionMessage = msg)
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
@@ -622,6 +639,8 @@ class LeadDetailViewModel @Inject constructor(
                         actionMessage = "Failed to convert: ${e.message}",
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
@@ -637,6 +656,8 @@ class LeadDetailViewModel @Inject constructor(
                 val response = leadApi.getLead(leadId)
                 // toEntity is defined in LeadRepository file
                 response.data?.let { }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (_: Exception) { }
         }
     }
