@@ -63,6 +63,11 @@ public final class FinancialDashboardViewModel {
     public var isAccessDenied: Bool = false
 
     @ObservationIgnored private let api: APIClient
+    /// BUGHUNT-2026-05-17: track the in-flight load so a rapid period swap
+    /// (`.thisMonth` → `.thisQuarter` while still loading) cancels the older
+    /// 6-call fan-out. Otherwise the older response set lands second and
+    /// the user sees thisMonth data labelled as thisQuarter.
+    @ObservationIgnored private var loadTask: Task<Void, Never>?
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -75,6 +80,18 @@ public final class FinancialDashboardViewModel {
     }
 
     public func load(roleCapabilities: Set<String> = []) async {
+        // BUGHUNT-2026-05-17: cancel any prior load. Wrap the real work in a
+        // tracked Task so callers from `.onChange` / `.refreshable` (which
+        // already wrap us in their own Task) still get a cancellable handle.
+        loadTask?.cancel()
+        let task = Task<Void, Never> { [weak self] in
+            await self?.performLoad(roleCapabilities: roleCapabilities)
+        }
+        loadTask = task
+        await task.value
+    }
+
+    private func performLoad(roleCapabilities: Set<String>) async {
         guard FinancialDashboardAccessControl.canAccess(roleCapabilities: roleCapabilities) ||
               roleCapabilities.isEmpty  // allow when no role context is provided (offline)
         else {
@@ -98,6 +115,8 @@ public final class FinancialDashboardViewModel {
 
             let (pnlResp, flowResp, agingResp, custResp, skuResp, expCatResp) =
                 try await (pnlTask, flowTask, agingTask, custTask, skuTask, expCatTask)
+            // If a newer load cancelled us mid-flight, don't paint stale data.
+            if Task.isCancelled { return }
 
             let pnl = PnLSnapshot(
                 revenueCents: pnlResp.revenueCents,
@@ -144,6 +163,10 @@ public final class FinancialDashboardViewModel {
                 topSkus: topSkus,
                 expenseCategoryRows: expenseRows
             ))
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: superseded by a newer load; leave loadState
+            // alone so the newer task can take it from .loading to .loaded.
+            return
         } catch {
             AppLog.ui.error("FinancialDashboard load failed: \(error.localizedDescription, privacy: .public)")
             loadState = .failed(error.localizedDescription)
