@@ -48,6 +48,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
@@ -2712,7 +2713,12 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
                     Icon(Icons.Default.CheckCircle, "Connected", tint = extColors.success)
                 }
             },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, keyboardType = KeyboardType.Uri),
+            keyboardOptions = KeyboardOptions(
+                imeAction = ImeAction.Done,
+                keyboardType = KeyboardType.Uri,
+                capitalization = KeyboardCapitalization.None,
+                autoCorrect = false,
+            ),
             keyboardActions = KeyboardActions(onDone = { viewModel.connectToServer() }),
         )
     } else {
@@ -2741,7 +2747,12 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
                     Icon(Icons.Default.CheckCircle, "Connected", tint = extColors.success)
                 }
             },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, keyboardType = KeyboardType.Uri),
+            keyboardOptions = KeyboardOptions(
+                imeAction = ImeAction.Done,
+                keyboardType = KeyboardType.Uri,
+                capitalization = KeyboardCapitalization.None,
+                autoCorrect = false,
+            ),
             keyboardActions = KeyboardActions(onDone = { viewModel.connectToServer() }),
         )
     }
@@ -2870,7 +2881,11 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
             if (shopSlugError) Text("Lowercase letters, numbers, hyphens only")
             else Text("3-30 characters: letters, numbers, hyphens")
         },
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+        keyboardOptions = KeyboardOptions(
+            imeAction = ImeAction.Next,
+            capitalization = KeyboardCapitalization.None,
+            autoCorrect = false,
+        ),
         keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
     )
     // LOGIN-MOCK-273: M3 supportingText already renders ~16dp bottom clearance; adding
@@ -2886,7 +2901,10 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         singleLine = true,
         modifier = Modifier.fillMaxWidth().textFieldHover(),
         leadingIcon = { Icon(Icons.Default.Store, contentDescription = null) },
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+        keyboardOptions = KeyboardOptions(
+            imeAction = ImeAction.Next,
+            capitalization = KeyboardCapitalization.Words,
+        ),
         keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
     )
     Spacer(Modifier.height(20.dp))
@@ -2902,7 +2920,12 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
         // LOGIN-MOCK-176: inline email validation
         supportingText = { if (emailError) Text("Enter a valid email address") },
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Email,
+            imeAction = ImeAction.Next,
+            capitalization = KeyboardCapitalization.None,
+            autoCorrect = false,
+        ),
         keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
     )
     Spacer(Modifier.height(20.dp))
