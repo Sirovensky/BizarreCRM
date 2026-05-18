@@ -47,6 +47,11 @@ final class TicketStatusChangeViewModel {
         do {
             _ = try await api.changeTicketStatus(id: ticketId, statusId: statusId)
             committedStatusId = statusId
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: status change PUT may have committed
+            // server-side AND fired status-change SMS/email hooks. Retap
+            // on banner would double-fire the customer notification.
+            return
         } catch {
             AppLog.ui.error("Status change failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
