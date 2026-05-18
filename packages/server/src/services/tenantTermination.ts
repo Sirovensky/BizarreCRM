@@ -285,12 +285,30 @@ async function executeTermination(opts: {
   const masterDb = getMasterDb();
   if (!masterDb) return { ok: false, error: 'Master database unavailable' };
 
+  // BUGHUNT-2026-05-17: SELECT also brings back stripe_subscription_id and
+  // stripe_customer_id so we can cancel the Stripe sub immediately at
+  // termination time. The previous flow only flipped status to
+  // 'pending_deletion' and relied on archiveDueTenants() (in
+  // tenant-provisioning.ts) to call deleteStripeCustomer at the END of the
+  // 30-day grace window — but archiveDueTenants skips rows where
+  // archived_db_path is already set (which this function sets immediately).
+  // Net result: a self-terminated tenant kept being billed for at least 30
+  // days AND deleteStripeCustomer was never reached, so the subscription
+  // continued forever. Cancel the active subscription here (best-effort) so
+  // billing stops on the same day the tenant requested termination.
   const row = masterDb
     .prepare(
-      "SELECT id, slug, db_path, cloudflare_record_id FROM tenants WHERE id = ? AND status NOT IN ('deleted', 'pending_deletion')",
+      "SELECT id, slug, db_path, cloudflare_record_id, stripe_subscription_id, stripe_customer_id FROM tenants WHERE id = ? AND status NOT IN ('deleted', 'pending_deletion')",
     )
     .get(opts.tenantId) as
-    | { id: number; slug: string; db_path: string; cloudflare_record_id: string | null }
+    | {
+        id: number;
+        slug: string;
+        db_path: string;
+        cloudflare_record_id: string | null;
+        stripe_subscription_id: string | null;
+        stripe_customer_id: string | null;
+      }
     | undefined;
 
   if (!row) return { ok: false, error: 'Tenant not found or already terminated' };
@@ -407,6 +425,34 @@ async function executeTermination(opts: {
       logger.error('Cloudflare DNS delete failed during termination', {
         slug: row.slug,
         cloudflareRecordId: row.cloudflare_record_id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  // BUGHUNT-2026-05-17: cancel the active Stripe subscription RIGHT NOW so
+  // the tenant isn't billed for the 30-day grace window. Without this, the
+  // tenant has typed the kill phrase, lost access, and is still being
+  // charged. archiveDueTenants() will not pick this row up later because we
+  // already populated archived_db_path above, so this is the ONLY hook
+  // where billing actually stops. Import inline to keep stripe.ts as an
+  // optional dependency in single-tenant builds. Best-effort — a Stripe
+  // outage must not block the rest of the termination flow; the operator
+  // can reconcile via the Stripe dashboard if this call fails.
+  if (row.stripe_subscription_id) {
+    try {
+      const stripeModule = await import('./stripe.js');
+      await stripeModule.updateSubscription(row.id, 'free');
+      logger.info('Stripe subscription cancelled at tenant termination', {
+        slug: row.slug,
+        tenantId: row.id,
+        subscriptionId: row.stripe_subscription_id,
+      });
+    } catch (err) {
+      logger.error('Stripe subscription cancel failed during termination (continuing)', {
+        slug: row.slug,
+        tenantId: row.id,
+        subscriptionId: row.stripe_subscription_id,
         error: err instanceof Error ? err.message : String(err),
       });
     }
