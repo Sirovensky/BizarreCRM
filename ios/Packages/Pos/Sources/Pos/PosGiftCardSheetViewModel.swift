@@ -202,8 +202,18 @@ final class PosGiftCardSheetViewModel {
 
     /// Format the server's ISO-ish timestamp ("YYYY-MM-DD HH:MM:SS") as a
     /// short date. Fallback to the raw string when parsing fails.
+    ///
+    /// BUGHUNT-2026-05-18: gift_cards.expires_at can be either SQL-style
+    /// (DEFAULT datetime('now')) OR fractional ISO (Node Date.toISOString()
+    /// from the recent issue endpoint). Plain ISO worked but fractional was
+    /// rejected and fell through to SQL, then to raw — so cards expiring on
+    /// `2027-01-01T00:00:00.000Z` rendered the raw 24-char string instead of
+    /// "Jan 1, 2027." Add fractional in front of plain.
     static func formattedExpiry(_ raw: String?) -> String? {
         guard let raw, !raw.isEmpty else { return nil }
+        let isoFractional = ISO8601DateFormatter()
+        isoFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = isoFractional.date(from: raw) { return dateOnly.string(from: d) }
         let iso = ISO8601DateFormatter()
         iso.formatOptions = [.withInternetDateTime]
         if let d = iso.date(from: raw) { return dateOnly.string(from: d) }
