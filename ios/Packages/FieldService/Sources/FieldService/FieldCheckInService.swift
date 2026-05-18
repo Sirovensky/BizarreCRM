@@ -110,6 +110,11 @@ public actor FieldCheckInService: FieldCheckInServiceProtocol {
         let placemarks: [CLPlacemark]
         do {
             placemarks = try await geocoder.geocodeAddressString(customerAddress)
+        } catch is CancellationError {
+            // BUGHUNT-2026-05-17: re-throw cancellation so callers don't see
+            // a spurious "address can't be geocoded" banner when the user
+            // simply dismissed the sheet.
+            throw CancellationError()
         } catch {
             AppLog.ui.error("FieldCheckIn geocoding failed: \(error.localizedDescription, privacy: .public)")
             throw FieldCheckInError.geocodingFailed
@@ -137,6 +142,13 @@ public actor FieldCheckInService: FieldCheckInServiceProtocol {
                 body: body,
                 as: EmptyResponse.self
             )
+        } catch is CancellationError {
+            // BUGHUNT-2026-05-17: server may have already accepted the POST.
+            // Don't paint "Check-in failed: cancelled" — that tempts a retry
+            // that registers a second check-in row.
+            throw CancellationError()
+        } catch let urlErr as URLError where urlErr.code == .cancelled {
+            throw CancellationError()
         } catch {
             AppLog.ui.error("FieldCheckIn POST failed: \(error.localizedDescription, privacy: .public)")
             throw FieldCheckInError.networkError(error.localizedDescription)
@@ -161,6 +173,10 @@ public actor FieldCheckInService: FieldCheckInServiceProtocol {
                 body: body,
                 as: EmptyResponse.self
             )
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let urlErr as URLError where urlErr.code == .cancelled {
+            throw CancellationError()
         } catch {
             AppLog.ui.error("FieldCheckOut POST failed: \(error.localizedDescription, privacy: .public)")
             throw FieldCheckInError.networkError(error.localizedDescription)
