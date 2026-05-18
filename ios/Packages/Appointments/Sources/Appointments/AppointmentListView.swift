@@ -56,13 +56,27 @@ public final class AppointmentListViewModel {
     }
 
     /// Quick status update from context menu (mark complete / no-show).
+    /// BUGHUNT-2026-05-17: tracks per-id in-flight write so a context-menu
+    /// double-tap on the same row can't double-PUT — which would, for
+    /// `status=confirmed` PUTs, double-fire the customer SMS hook.
+    @ObservationIgnored private var inFlightStatusUpdates: Set<Int64> = []
+
     public func updateStatus(for id: Int64, status: AppointmentStatus) async {
+        guard !inFlightStatusUpdates.contains(id) else { return }
+        inFlightStatusUpdates.insert(id)
+        defer { inFlightStatusUpdates.remove(id) }
         let req = UpdateAppointmentRequest(status: status.rawValue)
         do {
             let updated = try await api.updateAppointment(id: id, req)
             if let idx = items.firstIndex(where: { $0.id == id }) {
                 items[idx] = updated
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PUT status update. If the user navigated
+            // away mid-flight (list scrolled, view rebuilt), painting an
+            // error tempts a context-menu retap that double-PUTs. For
+            // `confirmed` status that means double SMS. Stay silent.
+            return
         } catch {
             AppLog.ui.error("Appt status update failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
