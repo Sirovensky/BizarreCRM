@@ -87,7 +87,15 @@ public actor TenantStore {
             throw AppError.notFound(entity: "Tenant \(tenantId)")
         }
 
-        let (accessToken, _) = try await repository.switchTenant(tenantId: tenantId)
+        // BUGHUNT-2026-05-17: was `let (accessToken, _) = …` — the new
+        // refresh token from the server was being discarded. Pair that with
+        // the direct `KeychainStore.shared.set(accessToken, for: .accessToken)`
+        // below and TokenStore's in-memory cache stayed stale (load() only
+        // hits Keychain once per process), so any subsequent AuthRefresher
+        // run would post the OLD tenant's refresh token to /auth/refresh and
+        // be force-signed-out. Capture both tokens and route through
+        // TokenStore.save so the cache + Keychain stay in lock-step.
+        let (accessToken, refreshToken) = try await repository.switchTenant(tenantId: tenantId)
 
         // Update APIClient — token first, then base URL if tenant has its own.
         await api.setAuthToken(accessToken)
@@ -102,11 +110,12 @@ public actor TenantStore {
             AppLog.auth.error("TenantStore: failed to persist activeTenantId: \(error.localizedDescription)")
         }
 
-        // Mirror access token to Keychain so process restarts pick it up.
-        do {
-            try KeychainStore.shared.set(accessToken, for: .accessToken)
-        } catch {
-            AppLog.auth.error("TenantStore: failed to persist accessToken: \(error.localizedDescription)")
+        // Persist new token pair atomically through TokenStore so the in-
+        // memory cache + Keychain stay consistent. Writing Keychain directly
+        // here would leave TokenStore's `_access` / `_refresh` pointing at
+        // the previous tenant's pair until the next process restart.
+        await MainActor.run {
+            TokenStore.shared.save(access: accessToken, refresh: refreshToken)
         }
 
         active = tenant
