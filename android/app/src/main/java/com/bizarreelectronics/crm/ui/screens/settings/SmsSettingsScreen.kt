@@ -2,6 +2,7 @@ package com.bizarreelectronics.crm.ui.screens.settings
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -10,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -214,6 +216,9 @@ fun SmsSettingsScreen(
                                     placeholder = { Text("Reply STOP to opt out.") },
                                     modifier = Modifier.fillMaxWidth(),
                                     minLines = 2,
+                                    keyboardOptions = KeyboardOptions(
+                                        capitalization = KeyboardCapitalization.Sentences,
+                                    ),
                                 )
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     TextButton(onClick = { editingFooter = false }) { Text("Cancel") }
@@ -251,6 +256,9 @@ fun SmsSettingsScreen(
                                     placeholder = { Text("We're closed right now, we'll reply soon.") },
                                     modifier = Modifier.fillMaxWidth(),
                                     minLines = 3,
+                                    keyboardOptions = KeyboardOptions(
+                                        capitalization = KeyboardCapitalization.Sentences,
+                                    ),
                                 )
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     TextButton(onClick = { editingReply = false }) { Text("Cancel") }
