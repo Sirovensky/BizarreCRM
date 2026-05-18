@@ -76,21 +76,29 @@ public struct AppointmentsTodayWidget: View {
     }
 
     public var body: some View {
-        switch vm.state {
-        case .loading, .hidden:
-            EmptyView()
-        case .loaded(let appts):
-            AppointmentsTodayCard(appointments: appts) {
-                if let handler = onTapAppointments {
-                    BrandHaptics.selection()
-                    handler()
-                } else if let url = URL(string: "bizarrecrm://appointments") {
-                    BrandHaptics.selection()
-                    openURL(url)
+        // BUGHUNT-2026-05-17: `.task` previously sat on the `.loaded` branch
+        // of this switch, which is unreachable until `load()` has already
+        // run. With no other caller of `vm.load()`, the widget stayed
+        // permanently in `.loading` and rendered EmptyView for the entire
+        // dashboard session. Move the loader to the root container so it
+        // fires when the widget mounts.
+        Group {
+            switch vm.state {
+            case .loading, .hidden:
+                EmptyView()
+            case .loaded(let appts):
+                AppointmentsTodayCard(appointments: appts) {
+                    if let handler = onTapAppointments {
+                        BrandHaptics.selection()
+                        handler()
+                    } else if let url = URL(string: "bizarrecrm://appointments") {
+                        BrandHaptics.selection()
+                        openURL(url)
+                    }
                 }
             }
-            .task { /* already loaded */ }
         }
+        .task { await vm.load() }
     }
 }
 
