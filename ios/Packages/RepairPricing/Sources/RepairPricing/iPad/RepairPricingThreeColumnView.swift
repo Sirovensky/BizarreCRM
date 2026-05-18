@@ -371,6 +371,12 @@ public final class RepairPricingThreeColumnViewModel {
             try await api.deleteDeviceTemplate(id: template.id)
             templates = templates.filter { $0.id != template.id }
             if selectedTemplate?.id == template.id { selectedTemplate = nil }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: DELETE can succeed server-side even when
+            // the task is cancelled (column switch or pull-to-refresh
+            // tears down the in-flight task). The local templates array
+            // would then be inconsistent until next load — but logging
+            // an error implies a real failure. Stay silent.
         } catch {
             AppLog.ui.error("ThreeColumnVM delete: \(error.localizedDescription, privacy: .public)")
         }
@@ -397,6 +403,14 @@ public final class RepairPricingThreeColumnViewModel {
         do {
             let created = try await api.createDeviceTemplate(body: req)
             templates = templates + [created]
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: createDeviceTemplate is POST without an
+            // idempotency key — when the task is cancelled mid-flight the
+            // server may have already created the duplicate. Logging an
+            // error tempts the user to tap "Duplicate" again and we'd
+            // create a second copy. Stay silent; next load() shows the
+            // duplicate if it landed.
+            return
         } catch {
             AppLog.ui.error("ThreeColumnVM duplicate: \(error.localizedDescription, privacy: .public)")
         }
