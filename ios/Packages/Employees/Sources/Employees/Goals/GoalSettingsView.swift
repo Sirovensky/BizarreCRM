@@ -38,10 +38,21 @@ public final class GoalSettingsViewModel {
     }
 
     public func save() async {
+        // BUGHUNT-2026-05-17: re-entry guard. save() is called by the
+        // Toggle's .onChange — rapid toggle taps fire two PATCHes that
+        // race for the final state. Without a guard the second PATCH may
+        // land first and the first overrides it, ending with the wrong
+        // state.
+        guard !isSaving else { return }
         isSaving = true
         defer { isSaving = false }
         do {
             try await api.updateGoalSettings(enabled: goalsEnabled)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PATCH may have landed before cancellation.
+            // Suppress so the user doesn't see "cancelled" under a setting
+            // they may have just toggled successfully on the server.
+            errorMessage = nil
         } catch {
             AppLog.ui.error("GoalSettings save failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
