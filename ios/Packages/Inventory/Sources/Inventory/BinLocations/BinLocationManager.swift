@@ -181,6 +181,7 @@ public struct BinLocationManagerView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarItems }
             .task { await vm.load() }
+            .refreshable { await vm.load() }
             .sheet(isPresented: $vm.showCreateSheet) { createSheet }
         }
     }

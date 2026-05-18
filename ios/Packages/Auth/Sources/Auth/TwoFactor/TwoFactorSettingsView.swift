@@ -38,6 +38,7 @@ public struct TwoFactorSettingsView: View {
         .navigationTitle("Two-Factor Auth")
         .navigationBarTitleDisplayMode(.inline)
         .task { await vm.loadStatus() }
+        .refreshable { await vm.loadStatus() }
         .alert("Regenerate Codes", isPresented: $vm.showRegenerateAlert) {
             regenerateAlertContent
         }

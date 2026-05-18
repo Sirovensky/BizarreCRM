@@ -334,7 +334,7 @@ private struct LegRow: View {
                 }
 
                 if showRemove {
-                    Button(action: onRemove) {
+                    Button(role: .destructive, action: onRemove) {
                         Image(systemName: "minus.circle.fill")
                             .foregroundStyle(.bizarreError)
                     }

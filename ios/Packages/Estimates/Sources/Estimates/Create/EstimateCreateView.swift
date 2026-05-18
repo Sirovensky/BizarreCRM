@@ -403,7 +403,7 @@ private struct LineItemRow: View {
                     .accessibilityLabel("Line item description")
                     .onChange(of: item.description) { _, _ in onChange() }
                 Spacer()
-                Button(action: onDelete) {
+                Button(role: .destructive, action: onDelete) {
                     Image(systemName: "trash")
                         .foregroundStyle(.bizarreError)
                 }

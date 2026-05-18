@@ -88,6 +88,7 @@ public struct EstimateVersionsView: View {
             if Platform.isCompact { compactLayout } else { regularLayout }
         }
         .task { await vm.load() }
+        .refreshable { await vm.load() }
         // §8 — Version diff sheet
         .sheet(isPresented: $showingDiff) {
             if let diff = activeDiff {

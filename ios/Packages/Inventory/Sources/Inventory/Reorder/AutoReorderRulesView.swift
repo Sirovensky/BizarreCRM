@@ -132,6 +132,7 @@ public struct AutoReorderRulesView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbarItems }
         .task { await vm.load() }
+        .refreshable { await vm.load() }
         .sheet(isPresented: $vm.showEditSheet) { editSheet }
         .overlay(alignment: .bottom) { feedbackBanner }
     }

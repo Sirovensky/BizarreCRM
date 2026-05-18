@@ -73,7 +73,7 @@ public struct AppointmentRepeatRuleSheetDeep: View {
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Remove") { onSave(nil); dismiss() }
+                    Button("Remove", role: .destructive) { onSave(nil); dismiss() }
                         .foregroundStyle(.bizarreError)
                         .accessibilityLabel("Remove recurrence")
                 }
