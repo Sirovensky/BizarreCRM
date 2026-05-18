@@ -26,6 +26,9 @@ public final class SupplierListViewModel {
         defer { isLoading = false }
         do {
             suppliers = try await repo.list()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: list load cancelled on nav-away; keep existing suppliers visible.
+            return
         } catch {
             AppLog.ui.error("Supplier list load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -36,6 +39,9 @@ public final class SupplierListViewModel {
         do {
             try await repo.delete(id: supplier.id)
             suppliers = suppliers.filter { $0.id != supplier.id }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: supplier delete may have committed when cancelled; retry hits 404. Silent return — list refreshes next load.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

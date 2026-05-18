@@ -49,6 +49,9 @@ public final class PurchaseOrderListViewModel {
         defer { isLoading = false }
         do {
             orders = try await repo.list(status: filter.apiValue)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: filter-change cancels prior PO list fetch; silent return prevents "Failed" flicker between filter taps.
+            return
         } catch {
             AppLog.ui.error("PO list load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription

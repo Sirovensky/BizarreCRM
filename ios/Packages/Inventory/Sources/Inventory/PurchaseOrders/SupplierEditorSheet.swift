@@ -60,6 +60,9 @@ public final class SupplierEditorViewModel {
                 _ = try await repo.create(body)
             }
             return true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: supplier create/update may have committed server-side when the sheet was dismissed. A "Failed" banner tempts a retry → duplicate supplier row (create) or repeat update. Return false silently — sheet stays open if dismiss is intentional; caller refreshes the list.
+            return false
         } catch {
             AppLog.ui.error("Supplier save failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
