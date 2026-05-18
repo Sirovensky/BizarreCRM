@@ -57,6 +57,9 @@ public struct SettingsSearchResultsPane: View {
             TextField("Search settings…", text: $vm.query)
                 .textFieldStyle(.plain)
                 .autocorrectionDisabled()
+                #if canImport(UIKit)
+                .textInputAutocapitalization(.never)
+                #endif
                 .accessibilityLabel("Search settings")
                 .accessibilityIdentifier("settings.searchPane.field")
                 .focused($isFieldFocused)

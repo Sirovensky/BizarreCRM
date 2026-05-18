@@ -75,6 +75,9 @@ public struct FeatureFlagsView: View {
                     .accessibilityHidden(true)
                 TextField("Filter flags", text: $searchQuery)
                     .autocorrectionDisabled()
+                    #if canImport(UIKit)
+                    .textInputAutocapitalization(.never)
+                    #endif
                     .accessibilityLabel("Filter feature flags")
                     .accessibilityIdentifier("featureFlags.search")
             }
