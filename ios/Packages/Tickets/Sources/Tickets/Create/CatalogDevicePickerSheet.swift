@@ -78,6 +78,10 @@ final class CatalogDevicePickerViewModel {
                 keyword: keyword,
                 manufacturer: manufacturer
             )
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: keystroke debounce cancels prior search;
+            // keep last-loaded devices visible.
+            return
         } catch {
             devicesError = error.localizedDescription
         }
