@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -984,13 +985,20 @@ fun CustomerCreateScreen(
             }
 
             // ── Name ──────────────────────────────────────────────────
+            // BUGHUNT-2026-05-18: name + organization fields didn't request
+            // word-case capitalization, so users typed "jane smith" and it
+            // stored as "jane smith" rather than "Jane Smith". Match the
+            // iOS .words convention and ask Compose to hint the IME.
             OutlinedTextField(
                 value = state.firstName,
                 onValueChange = viewModel::updateFirstName,
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("First Name *") },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Next,
+                    capitalization = KeyboardCapitalization.Words,
+                ),
                 keyboardActions = onNext,
             )
 
@@ -1000,7 +1008,10 @@ fun CustomerCreateScreen(
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Last Name") },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Next,
+                    capitalization = KeyboardCapitalization.Words,
+                ),
                 keyboardActions = onNext,
             )
 
@@ -1010,7 +1021,10 @@ fun CustomerCreateScreen(
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Organization") },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Next,
+                    capitalization = KeyboardCapitalization.Words,
+                ),
                 keyboardActions = onNext,
             )
 
