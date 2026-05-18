@@ -76,6 +76,8 @@ public final class ExpenseListViewModel {
             }
             items = resp.expenses
             summary = resp.summary
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: filter swap cancel
         } catch {
             AppLog.ui.error("Expenses load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -102,6 +104,8 @@ public final class ExpenseListViewModel {
             }
             items = resp.expenses
             summary = resp.summary
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: pull-refresh cancel
         } catch {
             AppLog.ui.error("Expenses force-refresh failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -216,6 +220,11 @@ public struct ExpenseListView: View {
         do {
             try await api.deleteExpense(id: id)
             vm.removeItem(id: id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels DELETE; server may have
+            // committed. Optimistically remove locally to match.
+            vm.removeItem(id: id)
+            return
         } catch {
             AppLog.ui.error("Expense delete from list failed: \(error.localizedDescription, privacy: .public)")
         }

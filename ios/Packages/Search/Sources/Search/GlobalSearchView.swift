@@ -162,6 +162,10 @@ public final class GlobalSearchViewModel {
             // Merge scope counts with remote results.
             scopeCounts = scopeCounts.merged(with: remote)
             updateMergedRows()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: debounce / query change cancels prior
+            // remote fetch; leave prior results visible.
+            return
         } catch {
             AppLog.ui.error("Search remote failed: \(error.localizedDescription, privacy: .public)")
             if results == nil {

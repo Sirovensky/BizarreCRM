@@ -30,6 +30,8 @@ public final class RecurringExpenseListViewModel {
         do {
             let rules = try await runner.fetchRules()
             state = .loaded(rules)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: refresh cancel
         } catch {
             state = .failed(error.localizedDescription)
         }
@@ -39,6 +41,10 @@ public final class RecurringExpenseListViewModel {
         do {
             try await runner.deleteRule(id: rule.id)
             await load()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels DELETE; server may have
+            // committed. Stay silent.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

@@ -42,6 +42,8 @@ public final class SettingsExportViewModel {
         do {
             exportedPayload = try await repository.fetchSettingsExport()
             successMessage = "Settings exported — \(exportedPayload?.settings.count ?? 0) keys"
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancels export fetch
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -95,6 +97,11 @@ public final class SettingsExportViewModel {
             importResult = try await repository.importSettings(payload: payload)
             successMessage = "Imported \(importResult?.imported ?? 0) settings (\(importResult?.skipped.count ?? 0) skipped)"
             importText = ""
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels import POST; server may have
+            // committed partial settings overwrite. Stay silent — manager
+            // can verify via export-roundtrip.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -107,6 +114,8 @@ public final class SettingsExportViewModel {
         defer { isLoadingTemplates = false }
         do {
             templates = try await repository.fetchShopTemplates()
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancels template fetch
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -119,6 +128,10 @@ public final class SettingsExportViewModel {
         do {
             try await repository.applyShopTemplate(id: id)
             successMessage = "Template applied"
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels template apply; server may
+            // have committed wholesale settings overwrite. Stay silent.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

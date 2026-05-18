@@ -91,6 +91,10 @@ public final class ExpenseApprovalViewModel {
                 as: ExpensesListResponse.self
             )
             state = .loaded(resp.expenses)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav/filter swap cancels load; keep prior
+            // list visible.
+            return
         } catch {
             state = .failed(error.localizedDescription)
         }
@@ -114,6 +118,11 @@ public final class ExpenseApprovalViewModel {
             auditLog = auditLog + [entry]
             checkBudget(expense: expense)
             await loadPending()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels approve POST, but server may
+            // have committed (expense approved + reimbursement triggered).
+            // Retap 409s (already approved) — misleading. Stay silent.
+            return
         } catch {
             AppLog.ui.error("Approve expense \(expense.id) failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -141,6 +150,9 @@ public final class ExpenseApprovalViewModel {
             auditLog = auditLog + [entry]
             denyReason = ""
             await loadPending()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: see approve(). Stay silent.
+            return
         } catch {
             AppLog.ui.error("Deny expense \(expense.id) failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
