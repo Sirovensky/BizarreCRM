@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import DesignSystem
 import Networking
 
@@ -46,11 +47,26 @@ public final class ReferralRuleEditorViewModel {
 
     public func save() async {
         guard let rule = currentRule else { return }
+        // BUGHUNT-2026-05-17: synchronous re-entry guard. `canSave` is the
+        // UI-level gate but it's evaluated on the next SwiftUI render — a
+        // fast double-tap on Save (or a CMD+Return + tap) before the first
+        // task awaits can pass the in-method `isSaving` flip and PATCH the
+        // referral rule twice. The endpoint is an upsert so a duplicate
+        // landing isn't catastrophic, but it bumps audit log noise and
+        // tempts admins to "press harder" when round-trip is slow.
+        guard !isSaving else { return }
         isSaving = true
         errorMessage = nil
         do {
             _ = try await api.saveReferralRule(rule)
             didSave = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: editor has a Cancel toolbar item that calls
+            // `dismiss()` mid-save. The generic catch was painting cancelled
+            // as `localizedDescription = "cancelled"` and re-enabling the
+            // Save button, inviting a duplicate PATCH of the referral rule
+            // — a money-config write — if the original had already landed.
+            errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
         }
