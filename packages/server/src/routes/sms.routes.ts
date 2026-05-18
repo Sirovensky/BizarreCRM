@@ -648,7 +648,7 @@ router.patch('/conversations/:phone/read', asyncHandler(async (req, res) => {
 router.post('/upload-media', enforceUploadQuota, mmsUpload.single('file'), fileUploadValidator({ allowedMimes: ALLOWED_MEDIA_TYPES, getTenantDir: (r) => {
   const slug = (r as any).tenantSlug;
   return slug ? path.join(config.uploadsPath, slug, 'mms') : mmsDir;
-} }), async (req, res, next) => {
+} }), asyncHandler(async (req, res, next) => {
   try {
     if (!req.file) throw new AppError('No file uploaded', 400);
     // BUGHUNT-2026-05-17: rate-limit per user. Image compression is
@@ -693,7 +693,7 @@ router.post('/upload-media', enforceUploadQuota, mmsUpload.single('file'), fileU
   } catch (err) {
     next(err);
   }
-});
+}));
 
 // ---------------------------------------------------------------------------
 // SMS send rate limiter (5 per minute per user) — SQLite-backed
@@ -743,7 +743,7 @@ async function resolveDailyTenantSmsCap(req: Request, adb: AsyncDb): Promise<num
   return 50;
 }
 
-router.post('/send', async (req, res, next) => {
+router.post('/send', asyncHandler(async (req, res, next) => {
   try {
     const adb = req.asyncDb;
     const userId = req.user!.id;
@@ -1089,7 +1089,7 @@ router.post('/send', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+}));
 
 // ---------------------------------------------------------------------------
 // Templates CRUD
