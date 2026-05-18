@@ -62,7 +62,12 @@ public extension APIClient {
 
     /// `DELETE /membership/tiers/:id` — soft-delete a membership tier.
     func deleteMembershipTier(id: String) async throws {
-        try await delete("/membership/tiers/\(id)")
+        // BUGHUNT-2026-05-17: server mounts membership.routes at /api/v1/membership
+        // (index.ts:1775). Was missing the /api/v1 prefix → every call 404'd.
+        // The same applies to updateMembershipTier and createMembershipTier
+        // below. Both leave the `/settings/loyalty/rule` endpoints above
+        // untouched because no `/api/v1/loyalty` mount exists on the server.
+        try await delete("/api/v1/membership/tiers/\(id)")
     }
 
     /// `PUT /membership/tiers/:id` — update an existing membership tier.
@@ -70,7 +75,7 @@ public extension APIClient {
     /// Maps the Networking `MembershipTierDTO` response into a `MembershipPlan`.
     func updateMembershipTier(id: String, plan: MembershipPlan) async throws -> MembershipPlan {
         let dto: MembershipTierDTO = try await put(
-            "/membership/tiers/\(id)",
+            "/api/v1/membership/tiers/\(id)",
             body: LoyaltyTierCreateOrUpdateRequest(plan),
             as: MembershipTierDTO.self
         )
@@ -89,7 +94,7 @@ public extension APIClient {
     /// Maps the Networking `MembershipTierDTO` response into a `MembershipPlan`.
     func createMembershipTier(_ plan: MembershipPlan) async throws -> MembershipPlan {
         let dto: MembershipTierDTO = try await post(
-            "/membership/tiers",
+            "/api/v1/membership/tiers",
             body: LoyaltyTierCreateOrUpdateRequest(plan),
             as: MembershipTierDTO.self
         )
