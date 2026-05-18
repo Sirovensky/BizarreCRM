@@ -121,6 +121,11 @@ public final class SendShoutoutViewModel {
             errorMessage = "Please select a recipient and write a message."
             return
         }
+        // BUGHUNT-2026-05-17: re-entry guard. The toolbar Send button is
+        // .disabled while isSaving, but a quick double-tap before SwiftUI
+        // re-renders fires two POSTs, producing two shoutout rows on the
+        // recipient's feed.
+        guard !isSaving else { return }
         isSaving = true
         defer { isSaving = false }
         errorMessage = nil
@@ -133,6 +138,12 @@ public final class SendShoutoutViewModel {
                 ticketId: ticketId,
                 isTeamVisible: isTeamVisible
             )
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sendShoutout POST may have already landed.
+            // Painting "cancelled" tempts a re-tap that creates a duplicate
+            // shoutout row on the recipient's profile feed. Suppress so the
+            // list refresh after dismiss reveals the actual state.
+            errorMessage = nil
         } catch {
             AppLog.ui.error("Shoutout send failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
