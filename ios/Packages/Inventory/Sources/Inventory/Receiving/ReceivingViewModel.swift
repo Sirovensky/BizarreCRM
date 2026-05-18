@@ -146,6 +146,11 @@ public final class ReceivingDetailViewModel {
                 )
             }
             showReconciliation = true
+        } catch let e where AppError.isCancellation(e) {
+            // Receiving finalize bumps inventory counts. A re-tap after a
+            // mid-flight cancel would double the delta. Stay silent so the
+            // warehouse user re-reads the PO state on next refresh.
+            return
         } catch {
             if InventoryOfflineQueue.isNetworkError(error) {
                 // Optimistic completion for offline path
