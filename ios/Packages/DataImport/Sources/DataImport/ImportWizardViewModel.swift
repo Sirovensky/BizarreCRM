@@ -320,6 +320,15 @@ public final class ImportWizardViewModel {
                 )
             }
             isRollingBack = false
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: rollback is a destructive bulk-undo of
+            // imported rows. If the POST committed before nav-cancel, the
+            // server has already deleted the rows + advanced status to
+            // .rolledBack. A "Rollback failed" message tempts retap that
+            // returns 410 (rollback-window-closed or already-rolled-back)
+            // which the user reads as a real failure.
+            isRollingBack = false
+            return
         } catch {
             isRollingBack = false
             rollbackMessage = "Rollback failed: \(error.localizedDescription)"
@@ -336,6 +345,11 @@ public final class ImportWizardViewModel {
             rowErrors = errs
             isLoading = false
             transition(to: .errors)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: wizard dismiss mid-error-fetch — don't
+            // paint errorMessage on a screen the user already left.
+            isLoading = false
+            return
         } catch {
             isLoading = false
             errorMessage = error.localizedDescription
