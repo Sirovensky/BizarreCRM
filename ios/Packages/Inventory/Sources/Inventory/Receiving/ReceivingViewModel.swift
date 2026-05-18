@@ -25,6 +25,9 @@ public final class ReceivingListViewModel {
         defer { isLoading = false }
         do {
             orders = try await api.listReceivingOrders(status: statusFilter)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: filter-change cancels prior list fetch; silent return prevents stale "Failed" banner that confuses warehouse user mid-filter.
+            return
         } catch {
             AppLog.ui.error("ReceivingList load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -70,6 +73,9 @@ public final class ReceivingDetailViewModel {
                     receivedQty[line.id] = String(line.receivedQty)
                 }
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: detail load cancelled (nav back or refresh interrupt); silent return — receivedQty stays at last good state for the next reload.
+            return
         } catch {
             AppLog.ui.error("ReceivingDetail load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
