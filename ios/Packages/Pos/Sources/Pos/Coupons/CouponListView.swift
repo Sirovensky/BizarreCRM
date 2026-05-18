@@ -53,6 +53,11 @@ public final class CouponListViewModel {
     }
 
     public func generateBatch() async {
+        // BUGHUNT-2026-05-17: re-entry guard. Without this, two rapid taps on
+        // Generate before the first POST returns would issue TWO bulk batches
+        // — and the endpoint has no idempotency key, so the admin gets 2N
+        // coupons created.
+        guard !isGenerating else { return }
         guard let count = Int(generateCount), count > 0 else { return }
         isGenerating = true
         defer { isGenerating = false }
@@ -65,6 +70,12 @@ public final class CouponListViewModel {
             let new = try await repository.batchGenerate(request: req)
             coupons = new + coupons
             showGenerateSheet = false
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: generate sheet dismissed mid-POST. Server
+            // may have already minted the batch. Painting an error invites
+            // a retry that would double-mint. Leave the sheet open so a
+            // tap on Generate is intentional; the next load() reflects truth.
+            return
         } catch {
             // Surface error via view-level alert
         }
