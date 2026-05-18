@@ -1021,7 +1021,7 @@ router.get('/kits/:id', asyncHandler(async (req, res) => {
 // DELETE /inventory/kits/:id — delete kit
 // SEC-H25: deleting a kit is an inventory delete — gate behind inventory.delete.
 // The inline role check below is kept as defence-in-depth.
-router.delete('/kits/:id', requirePermission('inventory.delete'), asyncHandler(async (req: Request<{ id: string }>, res) => {
+router.delete('/kits/:id', requirePermission('inventory.delete'), asyncHandler(async (req, res) => {
   // Defence-in-depth: requirePermission above is authoritative.
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager')
     throw new AppError('Admin or manager access required', 403);
@@ -1316,7 +1316,7 @@ router.post('/', requirePermission('inventory.create'), asyncHandler(async (req,
 
 // PUT /inventory/:id
 // SEC-H25: updating an inventory item is a write — gate behind inventory.edit.
-router.put('/:id', requirePermission('inventory.edit'), asyncHandler(async (req: Request<{ id: string }>, res, next) => {
+router.put('/:id', requirePermission('inventory.edit'), asyncHandler(async (req, res, next) => {
   const adb: AsyncDb = req.asyncDb;
   if (!/^\d+$/.test(String(req.params.id))) return next();
   const existing = await adb.get<any>('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1', req.params.id);

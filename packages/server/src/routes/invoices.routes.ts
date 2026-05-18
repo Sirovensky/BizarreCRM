@@ -746,7 +746,7 @@ router.post('/', idempotent, requirePermission('invoices.create'), asyncHandler(
 
 // PUT /invoices/:id
 // SEC-H25: updating an invoice is a financial write — gate behind invoices.edit.
-router.put('/:id', requirePermission('invoices.edit'), asyncHandler(async (req: Request<{ id: string }>, res) => {
+router.put('/:id', requirePermission('invoices.edit'), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const existing = await adb.get<any>('SELECT * FROM invoices WHERE id = ?', req.params.id);
   if (!existing) throw new AppError('Invoice not found', 404);
@@ -850,7 +850,7 @@ router.put('/:id', requirePermission('invoices.edit'), asyncHandler(async (req: 
     throw new AppError('Invoice was voided or refunded; refresh and retry', 409);
   }
 
-  const invoice = await getInvoiceDetail(adb, req.params.id);
+  const invoice = await getInvoiceDetail(adb, String(req.params.id));
   broadcast(WS_EVENTS.INVOICE_UPDATED, invoice, req.tenantSlug || null);
   res.json({ success: true, data: invoice });
 }));
@@ -1225,13 +1225,13 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
 // remaining positive payment rows after marking the row voided. Refunds /
 // credit-notes recorded as separate payment rows are intentionally NOT
 // reversible via this route — they have their own lifecycle.
-router.patch('/payments/:paymentId/reverse', asyncHandler(async (req: Request<{ paymentId: string }>, res) => {
+router.patch('/payments/:paymentId/reverse', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const role = (req as any)?.user?.role;
   if (role !== 'admin' && role !== 'manager') {
     throw new AppError('Admin or manager required to reverse a payment', 403);
   }
-  const paymentId = parseInt(req.params.paymentId, 10);
+  const paymentId = parseInt(String(req.params.paymentId), 10);
   if (!Number.isFinite(paymentId) || paymentId <= 0) {
     throw new AppError('Invalid payment id', 400);
   }
@@ -1634,12 +1634,12 @@ router.post('/bulk-action', requirePermission('invoices.bulk_action'), asyncHand
 // SEC-H25: credit notes modify the invoice ledger — gate behind invoices.credit_note.
 // WEB-UIUX-1294: idempotent middleware coalesces duplicate POSTs (slow-network
 // double-click) onto a single CRN row + audit entry + broadcast.
-router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_note'), asyncHandler(async (req: Request<{ id: string }>, res) => {
+router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_note'), asyncHandler(async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
   // @audit-fixed: validate id and use radix 10. Previously parseInt("abc") = NaN
   // hit the SELECT and silently returned no row → 404 (which masked the bad input).
-  const invoiceId = parseInt(req.params.id, 10);
+  const invoiceId = parseInt(String(req.params.id), 10);
   if (!Number.isInteger(invoiceId) || invoiceId <= 0) throw new AppError('Invalid invoice ID', 400);
 
   const original = await adb.get<any>('SELECT * FROM invoices WHERE id = ?', invoiceId);
