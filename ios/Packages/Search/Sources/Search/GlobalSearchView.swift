@@ -64,20 +64,28 @@ public final class GlobalSearchViewModel {
             showTypeAhead = false
             return
         }
-        searchTask = Task { @MainActor in
+        // BUGHUNT-2026-05-17: previously both tasks were stored into
+        // `searchTask`, so the first assignment was immediately overwritten
+        // and the type-ahead task became un-cancellable. A slow type-ahead
+        // FTS query from keystroke N could then land *after* the
+        // type-ahead from keystroke N+1, stomping `typeAheadHits` with
+        // stale data. Track type-ahead in `typeAheadTask` separately so
+        // both can be cancelled on the next keystroke.
+        typeAheadTask = Task { @MainActor [weak self] in
             // §18.1 250ms debounce — cancel prior request on each keystroke.
             try? await Task.sleep(nanoseconds: 250_000_000)
             if Task.isCancelled { return }
-            await fetchTypeAhead(new)
+            await self?.fetchTypeAhead(new)
         }
-        searchTask = Task { @MainActor in
+        searchTask = Task { @MainActor [weak self] in
             // §18.1 250ms debounce — cancel prior request on each keystroke.
             try? await Task.sleep(nanoseconds: 250_000_000)
             if Task.isCancelled { return }
             // Full search hides type-ahead once results are ready.
-            showTypeAhead = false
-            await fetchLocal()
-            await fetchRemote()
+            self?.showTypeAhead = false
+            await self?.fetchLocal()
+            if Task.isCancelled { return }
+            await self?.fetchRemote()
         }
     }
 
