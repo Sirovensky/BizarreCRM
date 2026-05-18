@@ -195,6 +195,9 @@ public final class CustomerTagSegmentViewModel {
                 segments.append(saved)
             }
             isEditing = false
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: segment save may have committed.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -206,6 +209,9 @@ public final class CustomerTagSegmentViewModel {
         do {
             try await api.deleteCustomerSegment(id: segment.id)
             segments.removeAll { $0.id == segment.id }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: segment DELETE may have committed.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
