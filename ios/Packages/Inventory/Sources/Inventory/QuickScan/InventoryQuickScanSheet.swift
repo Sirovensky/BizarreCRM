@@ -41,6 +41,9 @@ public final class InventoryQuickScanViewModel {
         do {
             let item = try await api.inventoryItemByBarcode(code)
             state = .found(item)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: rapid sequential scans cancel the prior lookup; preserve `.loading` so caller's task-cancel + new handleScan triggers fresh lookup, not a misleading `.error` state.
+            return
         } catch {
             // 404 → not found; anything else → error
             let msg = error.localizedDescription
