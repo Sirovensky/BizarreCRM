@@ -79,6 +79,13 @@ public final class TicketNoteComposeViewModel {
         do {
             _ = try await api.addTicketNote(ticketId: ticketId, req)
             didPost = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: addTicketNote is POST without an idempotency
+            // key. A `.failed("cancelled")` toast tempted a re-tap that, if
+            // the server had already accepted the first POST, would persist a
+            // duplicate note. Stay silent and let the cashier reopen the
+            // sheet if the timeline doesn't show their note.
+            return
         } catch {
             AppLog.ui.error("Note post failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = AppError.from(error).errorDescription ?? error.localizedDescription

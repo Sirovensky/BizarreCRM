@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import Core
 import Networking
 
 // MARK: - Request / Response
@@ -84,6 +85,13 @@ public final class TicketSignOffViewModel: Sendable {
             state = .failed("Please sign before submitting.")
             return
         }
+        // BUGHUNT-2026-05-17: sign-off persists a receipt + (often) a PDF
+        // server-side. Re-tap during `.submitting` or after `.success` —
+        // both possible because the view's button only disables on the
+        // VM's state but not necessarily atomically — could create
+        // duplicate receipts. Self-guard.
+        if case .submitting = state { return }
+        if case .success = state { return }
         state = .submitting
         do {
             let b64 = data.base64EncodedString()
@@ -102,6 +110,13 @@ public final class TicketSignOffViewModel: Sendable {
             )
             let pdfURL = response.pdfUrl.flatMap { URL(string: $0) }
             state = .success(receiptId: response.receiptId, pdfURL: pdfURL)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: a `.failed("cancelled")` toast on an
+            // in-flight sign-off tempted a re-sign that would create a
+            // second receipt if the server had already accepted the
+            // first POST. Reset to `.idle` and let the caller decide
+            // whether to re-fetch the ticket detail before re-prompting.
+            state = .idle
         } catch {
             state = .failed(error.localizedDescription)
         }
