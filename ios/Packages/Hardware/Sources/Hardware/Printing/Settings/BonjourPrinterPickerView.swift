@@ -187,6 +187,15 @@ final class BonjourPrinterPickerViewModel {
     // MARK: - Lifecycle
 
     func start() async {
+        // BUGHUNT-2026-05-18: cancel prior tasks before overwriting. SwiftUI's
+        // .task re-fires when the printer-picker view re-appears (e.g., after
+        // a child sheet dismisses), which called start() a second time. The
+        // prior streamTask was leaked because browser.continuation is single-
+        // slot — start()'s new discoveryStream() call overwrote it, and the
+        // prior Task's `for await` blocked forever on yields that no longer
+        // arrived. Same hazard for refreshTimerTask.
+        streamTask?.cancel()
+        refreshTimerTask?.cancel()
         isSearching = true
         streamTask = Task { [weak self] in
             guard let self else { return }
