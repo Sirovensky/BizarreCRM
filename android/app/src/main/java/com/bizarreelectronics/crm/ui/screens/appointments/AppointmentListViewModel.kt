@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.dto.AppointmentItem
 import com.bizarreelectronics.crm.ui.screens.appointments.components.QuickAppointmentDraft
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -85,13 +86,19 @@ class AppointmentListViewModel @Inject constructor(
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
-            runCatching { appointmentRepository.getAppointments() }
-                .onSuccess { list ->
-                    _state.update { it.copy(appointments = list, isLoading = false) }
-                }
-                .onFailure { e ->
-                    _state.update { it.copy(isLoading = false, error = e.message ?: "Failed to load appointments") }
-                }
+            // BUGHUNT-2026-05-17: runCatching silently catches
+            // CancellationException, so the previous-load cancellation
+            // briefly flashed "cancelled" into the error field before the
+            // new load finished. try/catch with explicit re-throw keeps
+            // structured concurrency intact.
+            try {
+                val list = appointmentRepository.getAppointments()
+                _state.update { it.copy(appointments = list, isLoading = false) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(isLoading = false, error = e.message ?: "Failed to load appointments") }
+            }
         }
     }
 
