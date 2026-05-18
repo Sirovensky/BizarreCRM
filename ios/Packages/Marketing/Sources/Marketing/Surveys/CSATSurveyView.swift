@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import DesignSystem
 import Networking
 
@@ -41,6 +42,13 @@ public final class CSATSurveyViewModel {
             errorMessage = "Please select a rating before submitting."
             return
         }
+        // BUGHUNT-2026-05-17: synchronous re-entry guard. A double-tap on
+        // Submit Rating could race past the `.disabled(vm.isSubmitting)` UI
+        // gate (SwiftUI re-renders after the in-method flip), letting two
+        // Tasks both POST `/surveys/csat` and creating two response rows
+        // tied to the same `ticketId` — skewing per-tech CSAT averages and
+        // double-firing the low-score manager push (§37.3).
+        guard !isSubmitting else { return }
         isSubmitting = true
         errorMessage = nil
         let body = CSATSubmitRequest(
@@ -52,6 +60,14 @@ public final class CSATSurveyViewModel {
         do {
             _ = try await api.submitCSAT(body)
             didSubmit = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: the sheet has a "Not Now" cancellation
+            // action that calls `dismiss()` mid-submit. Without this branch
+            // the catch-all painted "cancelled" as a customer-facing error
+            // toast and reset `isSubmitting`, inviting a re-tap that could
+            // double-record the response if the original POST had already
+            // landed server-side.
+            errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
         }
