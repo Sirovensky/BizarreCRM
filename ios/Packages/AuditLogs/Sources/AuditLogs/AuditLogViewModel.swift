@@ -111,6 +111,15 @@ public final class AuditLogViewModel {
             entries = page.entries
             nextCursor = page.nextCursor
             hasMore = page.nextCursor != nil
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: read-only load. Cancellation here is the
+            // search debounce stomping a stale request, the user tabbing
+            // away, or `.task` re-firing on a sheet redisplay — not a
+            // server failure. Painting `errorMessage` here makes the UI
+            // surface a banner the user never triggered, and the retry
+            // button below the banner would issue a fresh GET that the
+            // debounce machinery is already about to fire. Stay silent.
+            return
         } catch {
             AppLog.ui.error("AuditLogs load error: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -127,6 +136,12 @@ public final class AuditLogViewModel {
             entries += page.entries
             nextCursor = page.nextCursor
             hasMore = page.nextCursor != nil
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: read-only pagination. View detach mid-scroll
+            // cancels the fetch — we log nothing because the next visible
+            // row that crosses the threshold will refire `loadMoreIfNeeded`
+            // with the same cursor.
+            return
         } catch {
             AppLog.ui.error("AuditLogs loadMore error: \(error.localizedDescription, privacy: .public)")
         }
