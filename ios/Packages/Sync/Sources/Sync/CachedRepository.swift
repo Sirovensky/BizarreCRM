@@ -212,8 +212,15 @@ public actor AbstractCachedRepository<Entity: Sendable, ListFilter: Sendable> {
         // 1. Delete locally (optimistic).
         try await localDelete(id)
         // 2. Enqueue sync op with a minimal sentinel entity.
-        // We build a tombstone payload directly since we can't reconstruct the entity.
-        let payloadData = try JSONEncoder().encode(["id": id, "deleted": "true"])
+        // BUGHUNT-2026-05-17: build the payload via the canonical Tombstone
+        // type so it matches the §20.5 wire format. The previous hand-rolled
+        // `["id": id, "deleted": "true"]` literal stringified the boolean and
+        // never set `deleted_at`, so `Tombstone.isTombstone(payload:)` /
+        // `Tombstone.decode(payload:)` both returned false/nil for our own
+        // outgoing deletes — meaning fan-out paths (WS rebroadcast, cross-
+        // device delta sync) couldn't recognise the row as a delete and would
+        // re-insert it on the next pull.
+        let payloadData = try Tombstone(id: id).encode()
         let tombstoneOp = SyncOp(
             op: "delete",
             entity: entityName,
