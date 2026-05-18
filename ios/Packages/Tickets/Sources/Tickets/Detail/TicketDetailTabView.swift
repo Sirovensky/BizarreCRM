@@ -183,9 +183,22 @@ private struct PaymentRow: View {
     }
 
     private func formatDate(_ iso: String) -> String {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = f.date(from: iso) {
+        // BUGHUNT-2026-05-18: was fractional-only; plain ISO strings (no
+        // millisecond component — server hand-built timestamps that bypass
+        // `Date.toISOString()`) fell through to the raw display path, leaking
+        // "2026-05-18T10:30:45Z" into the ticket detail's note/event timestamps
+        // instead of "May 18, 2026 at 10:30 AM."
+        let frac = ISO8601DateFormatter()
+        frac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = frac.date(from: iso) {
+            let df = DateFormatter()
+            df.dateStyle = .medium
+            df.timeStyle = .short
+            return df.string(from: date)
+        }
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        if let date = plain.date(from: iso) {
             let df = DateFormatter()
             df.dateStyle = .medium
             df.timeStyle = .short
