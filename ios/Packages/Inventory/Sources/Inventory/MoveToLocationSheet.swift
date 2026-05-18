@@ -98,6 +98,15 @@ public final class MoveToLocationViewModel {
             _ = try await repo.dispatch(id: transfer.id)
             didSucceed = true
             BrandHaptics.success()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: this is a two-step write (create + dispatch).
+            // A cancellation between the two leaves a pending transfer row
+            // server-side; an errorMessage = "cancelled" toast tempted a
+            // re-tap that would create a SECOND transfer (also dispatched)
+            // for the same qty — net effect: stock leaves the source TWICE
+            // and arrives at the destination twice. Stay silent on
+            // cancellation; the transfers list shows what's pending.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
