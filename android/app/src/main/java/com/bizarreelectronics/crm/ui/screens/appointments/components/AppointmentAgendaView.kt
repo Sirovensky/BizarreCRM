@@ -9,6 +9,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.data.remote.dto.AppointmentItem
@@ -40,7 +43,13 @@ fun AppointmentAgendaView(
                 .height(400.dp)
                 .padding(16.dp),
         )
-        error != null -> ErrorState(message = error)
+        error != null -> Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics { liveRegion = LiveRegionMode.Assertive },
+        ) {
+            ErrorState(message = error)
+        }
         appointments.isEmpty() -> EmptyState(
             title = "No upcoming appointments",
             subtitle = "Tap + to schedule one",

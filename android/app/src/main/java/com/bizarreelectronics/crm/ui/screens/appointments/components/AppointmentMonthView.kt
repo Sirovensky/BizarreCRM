@@ -12,7 +12,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -68,7 +70,13 @@ fun AppointmentMonthView(
                     .height(320.dp)
                     .padding(16.dp),
             )
-            error != null -> ErrorState(message = error)
+            error != null -> Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { liveRegion = LiveRegionMode.Assertive },
+            ) {
+                ErrorState(message = error)
+            }
             else -> {
                 // Build date → count map for the displayed month
                 val countByDate = buildApptCountMap(appointments)
