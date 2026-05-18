@@ -31,6 +31,7 @@ import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.util.isMediumOrExpandedWidth
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -185,22 +186,28 @@ class PermissionMatrixViewModel @Inject constructor(
         val updates = pending.map { (k, v) -> PermissionEntryDto(key = k, allowed = v) }
         viewModelScope.launch {
             _state.value = _state.value.copy(isSaving = true, error = null)
-            runCatching {
+            try {
                 rolesApi.updateRolePermissions(roleId, UpdatePermissionsBody(updates = updates))
+                _state.value = _state.value.copy(
+                    isSaving = false,
+                    isDirty = false,
+                    snackMessage = "Permissions saved",
+                )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: runCatching swallowed CancellationException
+                // and painted "Failed to save permissions" on back-nav. The
+                // permission update is idempotent server-side, but the false
+                // error message is confusing — admin may think the save was
+                // lost and re-try, when in reality the server already applied
+                // the changes. Re-throw lets the launch die cleanly; on next
+                // load() the matrix reflects the persisted state.
+                throw e
+            } catch (t: Throwable) {
+                _state.value = _state.value.copy(
+                    isSaving = false,
+                    snackMessage = t.message ?: "Failed to save permissions",
+                )
             }
-                .onSuccess {
-                    _state.value = _state.value.copy(
-                        isSaving = false,
-                        isDirty = false,
-                        snackMessage = "Permissions saved",
-                    )
-                }
-                .onFailure { t ->
-                    _state.value = _state.value.copy(
-                        isSaving = false,
-                        snackMessage = t.message ?: "Failed to save permissions",
-                    )
-                }
         }
     }
 
