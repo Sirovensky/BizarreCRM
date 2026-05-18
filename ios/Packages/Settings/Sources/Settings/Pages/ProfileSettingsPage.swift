@@ -351,9 +351,17 @@ public struct ProfileSettingsPage: View {
                     .accessibilityLabel("Last name")
                     .accessibilityIdentifier("profile.lastName")
                 TextField("Display name", text: $vm.displayName)
+                    #if canImport(UIKit)
+                    .textContentType(.nickname)
+                    .textInputAutocapitalization(.words)
+                    #endif
                     .accessibilityLabel("Display name")
                     .accessibilityIdentifier("profile.displayName")
                 TextField("Job title", text: $vm.jobTitle)
+                    #if canImport(UIKit)
+                    .textContentType(.jobTitle)
+                    .textInputAutocapitalization(.words)
+                    #endif
                     .accessibilityLabel("Job title")
                     .accessibilityIdentifier("profile.jobTitle")
 
@@ -368,6 +376,11 @@ public struct ProfileSettingsPage: View {
                             TextField("Username", text: $vm.username)
                                 .multilineTextAlignment(.trailing)
                                 .foregroundStyle(.bizarreOnSurface)
+                                #if canImport(UIKit)
+                                .textContentType(.username)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                #endif
                                 .accessibilityLabel("Username, editable (admin)")
                                 .accessibilityIdentifier("profile.username")
                         } else {
