@@ -72,6 +72,8 @@ public final class MoveToLocationViewModel {
         do {
             locations = try await api.inventoryTransferLocations()
                 .filter(\.active)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-18: sheet dismiss mid-load
         } catch {
             errorMessage = error.localizedDescription
         }

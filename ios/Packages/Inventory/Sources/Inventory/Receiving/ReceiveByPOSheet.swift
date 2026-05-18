@@ -33,6 +33,8 @@ public final class ReceiveByPOViewModel {
         defer { isLoading = false }
         do {
             openPOs = try await poRepo.list(status: "open")
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-18: sheet dismiss mid-load
         } catch {
             errorMessage = error.localizedDescription
         }

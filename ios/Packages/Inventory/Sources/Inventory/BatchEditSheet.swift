@@ -83,6 +83,12 @@ public final class BatchEditViewModel {
         do {
             let items = try await api.inventoryItemsForLabels(ids: selectedIds)
             itemsForLabels = items
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: don't blank label data on a cancel — the
+            // next .task re-fires the fetch. Blanking would render the
+            // label sheet's empty state for an instant before the
+            // refetch resolves.
+            return
         } catch {
             AppLog.ui.debug("Label data fetch failed: \(error.localizedDescription, privacy: .public)")
             itemsForLabels = []
