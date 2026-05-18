@@ -189,6 +189,14 @@ class PinPreferences @Inject constructor(
      * Records a wrong-PIN attempt. Escalates into timed lockouts at 3/4
      * wrong, and a hard lockout requiring full re-auth at 5 wrong.
      * Returns the current attempt count after incrementing.
+     *
+     * BUGHUNT-2026-05-17: use `commit()` (synchronous, durable) rather than
+     * `apply()` (async). With `apply()`, an attacker with physical access
+     * could force-quit the app between each wrong attempt and the disk
+     * flush, never landing the increment on disk — bypassing the 5-strike
+     * hard lockout. The performance hit of a synchronous SharedPreferences
+     * write on the failed-PIN code path is negligible (one short write per
+     * wrong attempt) and the security guarantee is worth it.
      */
     fun recordFailure(now: Long = System.currentTimeMillis()): Int {
         val next = failedAttempts + 1
@@ -202,7 +210,7 @@ class PinPreferences @Inject constructor(
                 editor.putLong(KEY_LOCKOUT_UNTIL, now + LOCKOUT_5X_MS)
             }
         }
-        editor.apply()
+        editor.commit()
         return next
     }
 
