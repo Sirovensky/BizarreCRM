@@ -204,6 +204,14 @@ class SmsThreadViewModel @Inject constructor(
                 actionMessage = "Customer created",
             )
             true
+        } catch (e: CancellationException) {
+            // BUGHUNT-2026-05-17: re-throw cancellation. POST /customers may
+            // have already created the customer server-side. If we returned
+            // false here, the dialog stays open (the caller dismisses only on
+            // ok=true) and the user, seeing a "Failed to create customer"
+            // toast, re-taps Create -> duplicate customer record (same name,
+            // same phone, but two rows in the customers table).
+            throw e
         } catch (e: Exception) {
             _state.value = _state.value.copy(
                 actionMessage = "Failed to create customer: ${e.message}",
