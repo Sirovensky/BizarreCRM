@@ -49,6 +49,13 @@ public extension APIClient {
         // existing TicketsListResponse shape when next_cursor is absent.
         do {
             return try await get("/api/v1/tickets", query: items, as: TicketsCursorPage.self)
+        } catch is CancellationError {
+            // BUGHUNT-2026-05-17: parent task cancelled — propagate rather than
+            // firing the legacy fallback request, which would race against an
+            // already-superseded list load.
+            throw CancellationError()
+        } catch let urlErr as URLError where urlErr.code == .cancelled {
+            throw CancellationError()
         } catch {
             // Fallback: decode from TicketsListResponse (no cursor) — treat as last page.
             let legacy = try await get("/api/v1/tickets", query: items, as: TicketsListResponse.self)
