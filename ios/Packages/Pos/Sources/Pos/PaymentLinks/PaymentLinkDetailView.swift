@@ -429,6 +429,12 @@ public final class PaymentLinkDetailViewModel {
                 clickCount = row.clickCount ?? 0
                 lastClickedAt = row.lastClickedAt
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: reload cancelled by view lifecycle (sheet
+            // dismissed during pull-to-refresh). Don't paint a fake "Could
+            // not load" banner — next .task will refresh.
+            isLoading = false
+            return
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription
                 ?? "Could not load payment link."
@@ -443,6 +449,13 @@ public final class PaymentLinkDetailViewModel {
         do {
             try await api.cancelPaymentLink(id: link.id)
             await reload()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: cancel-link POST cancelled mid-flight. The
+            // server cancellation may have already committed; surfacing
+            // "Could not cancel payment link." tempts a retry. Stay silent
+            // and let the next reload reflect the actual status.
+            isCancelling = false
+            return
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription
                 ?? "Could not cancel payment link."
