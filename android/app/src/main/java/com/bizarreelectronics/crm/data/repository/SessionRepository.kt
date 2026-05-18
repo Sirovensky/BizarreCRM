@@ -64,6 +64,14 @@ class SessionRepository @Inject constructor(
     private suspend fun runBootstrap() {
         val response = try {
             authApi.getMe()
+        } catch (e: CancellationException) {
+            // BUGHUNT-2026-05-17: a cancelled bootstrap (process death, scope
+            // shutdown, etc.) was previously transitioning state to Failed,
+            // which would surface in the UI as a stale "session bootstrap
+            // failed" signal even though the call was simply aborted. Let CE
+            // propagate so the scope unwinds and state stays Bootstrapping
+            // until the next legitimate bootstrap() call.
+            throw e
         } catch (t: Throwable) {
             _state.value = State.Failed
             return
