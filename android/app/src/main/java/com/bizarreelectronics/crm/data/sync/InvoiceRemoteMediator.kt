@@ -11,6 +11,7 @@ import com.bizarreelectronics.crm.data.local.db.entities.InvoiceEntity
 import com.bizarreelectronics.crm.data.local.db.entities.SyncStateEntity
 import com.bizarreelectronics.crm.data.remote.api.InvoiceApi
 import com.bizarreelectronics.crm.data.repository.toEntity
+import kotlinx.coroutines.CancellationException
 
 /**
  * Paging3 [RemoteMediator] for the invoices list (§7.1).
@@ -98,6 +99,16 @@ class InvoiceRemoteMediator(
 
                 LoadType.APPEND -> loadAppend(state)
             }
+        } catch (e: CancellationException) {
+            // BUGHUNT-2026-05-17: don't convert coroutine cancellation into a
+            // MediatorResult.Error. Paging3 cancels the load coroutine on
+            // navigate-away, filter change, or refresh; the previous
+            // `catch (e: Exception)` caught CancellationException and
+            // surfaced LoadState.Error to observers — painting a fake
+            // "Couldn't load invoices" banner on a torn-down screen and
+            // corrupting retry state. Re-throw so Paging's own cancellation
+            // handling runs cleanly.
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "load($loadType) error [${e.javaClass.simpleName}]: ${e.message}")
             MediatorResult.Error(e)
