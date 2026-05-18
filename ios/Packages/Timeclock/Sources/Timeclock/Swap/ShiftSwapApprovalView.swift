@@ -1,6 +1,7 @@
 import SwiftUI
 import DesignSystem
 import Networking
+import Core
 
 // MARK: - ShiftSwapApprovalViewModel
 
@@ -37,10 +38,21 @@ public final class ShiftSwapApprovalViewModel {
     }
 
     public func approve(requestId: Int64) async {
+        // BUGHUNT-2026-05-17: re-entry guard. Without this a rapid double-tap
+        // on the Approve button enqueues two approveSwap PATCHes; the second
+        // either 409s or (on tolerant servers) double-stamps the audit log.
+        if case .processing = actionState { return }
         actionState = .processing
         do {
             _ = try await api.approveSwap(requestId: requestId, approved: true)
             actionState = .done
+            await loadPendingApprovals()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PATCH may have already landed. Painting
+            // "Failed: cancelled" tempts a retap that double-approves. Roll
+            // back to idle and refresh the list so the manager sees the
+            // server's actual state.
+            actionState = .idle
             await loadPendingApprovals()
         } catch {
             actionState = .failed(error.localizedDescription)
@@ -48,10 +60,16 @@ public final class ShiftSwapApprovalViewModel {
     }
 
     public func deny(requestId: Int64) async {
+        // BUGHUNT-2026-05-17: matching re-entry guard for deny.
+        if case .processing = actionState { return }
         actionState = .processing
         do {
             _ = try await api.approveSwap(requestId: requestId, approved: false)
             actionState = .done
+            await loadPendingApprovals()
+        } catch let e where AppError.isCancellation(e) {
+            // Reconcile against the server instead of painting failure.
+            actionState = .idle
             await loadPendingApprovals()
         } catch {
             actionState = .failed(error.localizedDescription)
