@@ -80,11 +80,16 @@ public final class LeaderboardSettingsViewModel {
     }
 
     public func save() async {
+        // BUGHUNT-2026-05-17: re-entry guard.
+        guard !isSaving else { return }
         isSaving = true
         defer { isSaving = false }
         errorMessage = nil
         do {
             settings = try await api.updateLeaderboardSettings(settings)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PATCH may have landed; suppress.
+            errorMessage = nil
         } catch {
             AppLog.ui.error("LeaderboardSettings save failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -192,11 +197,16 @@ public final class LeaderboardOptOutViewModel {
     }
 
     public func save() async {
+        // BUGHUNT-2026-05-17: matching re-entry guard for opt-out save.
+        guard !isSaving else { return }
         isSaving = true
         defer { isSaving = false }
         errorMessage = nil
         do {
             optOut = try await api.setLeaderboardOptOut(employeeId: employeeId, optOut: optOut)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PATCH may have landed; suppress.
+            errorMessage = nil
         } catch {
             AppLog.ui.error("LeaderboardOptOut save failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
