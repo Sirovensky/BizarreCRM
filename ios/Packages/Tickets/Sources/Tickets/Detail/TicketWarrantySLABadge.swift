@@ -81,6 +81,16 @@ public final class TicketWarrantySLAViewModel {
             } else {
                 warrantyState = .noWarranty
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: load() runs on .task during detail view
+            // appear. When the user pops back before the warranty GET
+            // completes the broad catch was pinning warrantyState to
+            // .error — and since the badge is read once on appear and
+            // rendered into the header chrome, the next visit to the
+            // same detail (cached VM in some host paths) shows a stale
+            // "warranty error" badge with no recourse to refresh. Reset
+            // to .loading so the next load attempt is clean.
+            warrantyState = .loading
         } catch {
             AppLog.ui.error("Warranty lookup failed: \(error.localizedDescription, privacy: .public)")
             warrantyState = .error
