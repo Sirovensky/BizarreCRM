@@ -270,10 +270,21 @@ class CustomerListViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 customerApi.bulkDelete(BulkDeleteRequest(ids))
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: catch (_: Exception) used to swallow
+                // CancellationException and trigger the serial-delete fallback
+                // on viewModelScope cancellation, hammering each customer with
+                // a delete call we couldn't deliver and leaving the list state
+                // inconsistent if the original bulkDelete had partially
+                // succeeded server-side. Re-throw so structured concurrency
+                // unwinds cleanly.
+                throw e
             } catch (_: Exception) {
                 // bulk-delete endpoint may not exist — fall back to serial deletes
                 ids.forEach { id ->
-                    try { customerApi.deleteCustomer(id) } catch (_: Exception) {}
+                    try { customerApi.deleteCustomer(id) }
+                    catch (e: CancellationException) { throw e }
+                    catch (_: Exception) {}
                 }
             }
             // Signal undo window to the screen via pendingUndoDeleteIds
@@ -290,6 +301,8 @@ class CustomerListViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 customerApi.bulkRestore(BulkRestoreRequest(ids))
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) { /* bulk-restore endpoint not yet on server — no-op */ }
             clearPendingUndoDelete()
             loadCustomers()
@@ -307,6 +320,8 @@ class CustomerListViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 customerApi.bulkTag(BulkTagRequest(ids = ids, tag = tag))
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // fall back to serial updates if bulk endpoint not available
                 ids.forEach { id ->
@@ -315,7 +330,8 @@ class CustomerListViewModel @Inject constructor(
                             id,
                             com.bizarreelectronics.crm.data.remote.dto.UpdateCustomerRequest(customerTags = tag),
                         )
-                    } catch (_: Exception) {}
+                    } catch (e: CancellationException) { throw e }
+                    catch (_: Exception) {}
                 }
             }
             _state.value = _state.value.copy(snackbarMessage = "Tagged ${ids.size} customer(s) as $tag")
