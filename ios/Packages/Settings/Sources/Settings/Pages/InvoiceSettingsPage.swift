@@ -202,6 +202,9 @@ public struct InvoiceSettingsPage: View {
             VStack(alignment: .leading, spacing: BrandSpacing.xs) {
                 TextField("e.g. INV-{year}-{seq:04}", text: $vm.settings.numberFormat)
                     .autocorrectionDisabled()
+                    #if canImport(UIKit)
+                    .textInputAutocapitalization(.characters)
+                    #endif
                     .font(.brandBodyMedium().monospaced())
                     .listRowBackground(Color.bizarreSurface1)
                     .accessibilityIdentifier("invoice.numberFormat")

@@ -296,6 +296,9 @@ struct TaxRateFormSheet: View {
             Form {
                 Section("Rate") {
                     TextField("Name (e.g. State Tax)", text: $vm.draftName)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.words)
+                        #endif
                         .accessibilityLabel("Tax rate name")
                         .accessibilityIdentifier("tax.draftName")
                     TextField("Rate %", text: $vm.draftRate)

@@ -87,11 +87,20 @@ public struct OrganizationSettingsView: View {
     private var identitySection: some View {
         Section {
             brandField("Trading Name", text: nameBinding)
+                #if canImport(UIKit)
+                .textContentType(.organizationName)
+                .textInputAutocapitalization(.words)
+                #endif
             brandField("Legal Name", text: legalNameBinding)
+                #if canImport(UIKit)
+                .textContentType(.organizationName)
+                .textInputAutocapitalization(.words)
+                #endif
             brandField("Tax / EIN", text: taxIdBinding)
                 .autocorrectionDisabled()
                 #if canImport(UIKit)
                 .keyboardType(.asciiCapable)
+                .textInputAutocapitalization(.never)
                 #endif
             brandField("Logo URL", text: logoUrlBinding)
                 .autocorrectionDisabled()
@@ -107,14 +116,20 @@ public struct OrganizationSettingsView: View {
     private var contactSection: some View {
         Section {
             brandField("Address", text: addressBinding)
+                #if canImport(UIKit)
+                .textContentType(.fullStreetAddress)
+                .textInputAutocapitalization(.words)
+                #endif
             brandField("Phone", text: phoneBinding)
                 #if canImport(UIKit)
                 .keyboardType(.phonePad)
+                .textContentType(.telephoneNumber)
                 #endif
             brandField("Email", text: emailBinding)
                 .autocorrectionDisabled()
                 #if canImport(UIKit)
                 .keyboardType(.emailAddress)
+                .textContentType(.emailAddress)
                 .textInputAutocapitalization(.never)
                 #endif
         } header: {
@@ -147,6 +162,9 @@ public struct OrganizationSettingsView: View {
                     .foregroundStyle(.bizarreOnSurface)
                     .scrollContentBackground(.hidden)
                     .background(Color.bizarreSurface2, in: RoundedRectangle(cornerRadius: 8))
+                    #if canImport(UIKit)
+                    .textInputAutocapitalization(.sentences)
+                    #endif
                     .accessibilityIdentifier("org.receiptFooter")
                     .accessibilityLabel("Receipt footer text")
             }
@@ -163,6 +181,9 @@ public struct OrganizationSettingsView: View {
                     .foregroundStyle(.bizarreOnSurface)
                     .scrollContentBackground(.hidden)
                     .background(Color.bizarreSurface2, in: RoundedRectangle(cornerRadius: 8))
+                    #if canImport(UIKit)
+                    .textInputAutocapitalization(.sentences)
+                    #endif
                     .accessibilityIdentifier("org.invoiceFooter")
                     .accessibilityLabel("Invoice footer text")
             }
@@ -189,6 +210,9 @@ public struct OrganizationSettingsView: View {
                         .font(.brandBodyMedium())
                         .scrollContentBackground(.hidden)
                         .background(Color.bizarreSurface2, in: RoundedRectangle(cornerRadius: 8))
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.sentences)
+                        #endif
                         .accessibilityLabel("Receipt footer text")
                 }
                 VStack(alignment: .leading, spacing: BrandSpacing.xs) {
@@ -201,6 +225,9 @@ public struct OrganizationSettingsView: View {
                         .font(.brandBodyMedium())
                         .scrollContentBackground(.hidden)
                         .background(Color.bizarreSurface2, in: RoundedRectangle(cornerRadius: 8))
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.sentences)
+                        #endif
                         .accessibilityLabel("Invoice footer text")
                 }
             }

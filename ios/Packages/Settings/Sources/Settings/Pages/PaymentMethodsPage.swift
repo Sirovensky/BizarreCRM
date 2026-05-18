@@ -136,6 +136,9 @@ public struct PaymentMethodsPage: View {
             if vm.settings.cardEnabled {
                 Section {
                     TextField("Terminal name", text: $vm.settings.blockChypTerminalName)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.words)
+                        #endif
                         .accessibilityLabel("BlockChyp terminal name")
                         .accessibilityIdentifier("payment.terminalName")
 
