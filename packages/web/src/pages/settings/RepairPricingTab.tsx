@@ -354,10 +354,15 @@ function DeviceModelPicker({ value, onChange }: { value: number | null; onChange
       <div className="flex items-center">
         <Search className="absolute left-2.5 h-3.5 w-3.5 text-surface-400 pointer-events-none" />
         <input
+          type="search"
           value={query}
           onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
           placeholder="Search device model..."
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          aria-label="Search device model"
           className="w-full pl-8 pr-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
         />
       </div>
@@ -398,10 +403,15 @@ function InventoryPartPicker({ value, onChange }: { value: number | null; onChan
   return (
     <div className="relative">
       <input
+        type="search"
         value={query}
         onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         placeholder="Search inventory part..."
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
+        aria-label="Search inventory part"
         className="w-full px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
       />
       {open && items && items.length > 0 && (

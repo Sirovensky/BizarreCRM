@@ -630,11 +630,14 @@ function CreateCampaignModal({ segments, onClose, onCreated, initialCampaign }: 
         </h2>
 
         <div>
-          <label className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">Name</label>
+          <label htmlFor="campaign-name" className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">Name</label>
           <input
+            id="campaign-name"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             placeholder="e.g. Summer screen protector promo"
+            autoFocus={!isEdit}
+            autoCapitalize="sentences"
             className="w-full px-3 py-2 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-sm"
           />
         </div>

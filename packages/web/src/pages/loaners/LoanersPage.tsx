@@ -311,6 +311,7 @@ function AddLoanerDialog({ onClose }: { onClose: () => void }) {
               value={name}
               onChange={(e) => { setName(e.target.value); if (nameError) setNameError(''); }}
               placeholder="e.g. iPhone 11 Loaner"
+              autoCapitalize="words"
               aria-invalid={!!nameError}
               aria-describedby={nameError ? 'loaner-name-error' : undefined}
               className={cn('input w-full', nameError && 'border-red-500 dark:border-red-500')}
@@ -342,6 +343,9 @@ function AddLoanerDialog({ onClose }: { onClose: () => void }) {
               value={serial}
               onChange={(e) => setSerial(e.target.value)}
               placeholder="Serial number"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
               className="input w-full"
             />
           </div>
@@ -354,6 +358,11 @@ function AddLoanerDialog({ onClose }: { onClose: () => void }) {
               value={imei}
               onChange={(e) => setImei(e.target.value)}
               placeholder="IMEI"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={15}
+              autoCorrect="off"
+              spellCheck={false}
               className="input w-full"
             />
           </div>

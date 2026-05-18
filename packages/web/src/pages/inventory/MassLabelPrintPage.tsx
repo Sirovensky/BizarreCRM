@@ -123,9 +123,14 @@ export function MassLabelPrintPage() {
 
       <div className="flex items-center gap-3">
         <input
+          type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search inventory..."
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          aria-label="Search inventory"
           className="flex-1 rounded-md border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 dark:placeholder:text-surface-500"
         />
         <select
