@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import Core
 import Networking
 
 #if canImport(PassKit)
@@ -91,6 +92,14 @@ public final class LoyaltyWalletViewModel {
             try await service.addToWallet(from: url)
             state = .addedToWallet
             isPassInWallet = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: addToWallet is two POSTs (fetch pass + add).
+            // Cancellation between them could leave the pass downloaded but
+            // not registered with PKPassLibrary. .failed banner tempts retry
+            // that fetches AGAIN — server-side audit shows two pass downloads
+            // for one operator action. Reset to .idle.
+            state = .idle
+            return
         } catch {
             state = .failed(error.localizedDescription)
         }
@@ -106,6 +115,11 @@ public final class LoyaltyWalletViewModel {
         do {
             let url = try await service.refreshPass(passId: passId)
             state = .ready(url)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: pass refresh cancellation; reset to .idle
+            // so retry is intentional.
+            state = .idle
+            return
         } catch {
             state = .failed(error.localizedDescription)
         }
