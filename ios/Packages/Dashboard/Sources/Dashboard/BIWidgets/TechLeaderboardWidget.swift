@@ -1,5 +1,6 @@
 import SwiftUI
 import Observation
+import Core
 import DesignSystem
 
 // MARK: - TechLeaderboardWidget
@@ -15,11 +16,22 @@ import DesignSystem
 public final class TechLeaderboardViewModel {
     public let title = "Tech Leaderboard"
     public private(set) var state: BIWidgetState<TechLeaderboardPayload> = .idle
+    // BUGHUNT-2026-05-17: didSet spawned an untracked Task on every period
+    // change. Tapping rapidly through Week / Month / Quarter in the
+    // segmented picker started three concurrent fetches; whichever
+    // /tech-leaderboard response landed last won, so the visible period
+    // and the numbers could disagree.
     public var period: TechLeaderboardPeriod = .month {
-        didSet { Task { await reload() } }
+        didSet {
+            reloadTask?.cancel()
+            reloadTask = Task { @MainActor [weak self] in
+                await self?.reload()
+            }
+        }
     }
 
     private let repo: DashboardBIRepository
+    @ObservationIgnored private var reloadTask: Task<Void, Never>?
 
     public init(repo: DashboardBIRepository) {
         self.repo = repo
@@ -30,7 +42,11 @@ public final class TechLeaderboardViewModel {
         state = .loading
         do {
             let payload = try await repo.fetchTechLeaderboard(period: period)
+            if Task.isCancelled { return }
             state = .loaded(payload)
+        } catch let e where AppError.isCancellation(e) {
+            // Superseded by a newer period change — leave state alone.
+            return
         } catch {
             state = .failed(error.localizedDescription)
         }
