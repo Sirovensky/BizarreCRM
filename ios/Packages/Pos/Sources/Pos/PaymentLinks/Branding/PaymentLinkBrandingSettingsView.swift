@@ -269,6 +269,11 @@ public final class PaymentLinkBrandingViewModel {
             let updated = try await api.updatePaymentLinkBranding(patch)
             apply(updated)
             BrandHaptics.success()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: settings screen popped mid-save. The branding
+            // patch may have already committed; painting "Could not save"
+            // tempts a retry that spuriously rolls a fresh audit entry.
+            return
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? "Could not save branding."
             showError = true

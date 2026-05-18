@@ -123,6 +123,11 @@ public final class PaymentLinkExpiryEditorViewModel {
         do {
             _ = try await api.setExpiryPolicy(selected)
             BrandHaptics.success()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismissed mid-save. Don't paint a
+            // misleading "Could not save" banner — the policy may have
+            // already been written.
+            return
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription
                 ?? "Could not save expiry policy."

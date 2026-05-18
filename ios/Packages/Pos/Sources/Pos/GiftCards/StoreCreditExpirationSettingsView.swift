@@ -106,6 +106,12 @@ struct StoreCreditExpirationSettingsView: View {
                 StoreCreditPolicyRequest(expirationPeriod: period)
             )
             viewState = .saved
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: settings screen popped before save returned.
+            // Don't paint "Save failed" — the policy may have committed, and
+            // a retry just adds another audit log entry.
+            viewState = .saved
+            return
         } catch let APITransportError.httpStatus(code, message) {
             let msg = (message?.isEmpty == false) ? message! : "Save failed"
             viewState = .failure("Save failed (\(code)): \(msg)")
