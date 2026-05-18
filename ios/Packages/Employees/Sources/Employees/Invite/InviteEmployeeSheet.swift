@@ -137,12 +137,17 @@ public struct InviteEmployeeSheet: View {
 
     private var nameSection: some View {
         Section("Name") {
+            // BUGHUNT-2026-05-18: name/email/username fields lacked
+            // textContentType — admins re-typing employee details by
+            // hand instead of picking from Contacts Autofill.
             TextField("First name", text: $vm.firstName)
+                .textContentType(.givenName)
                 .textInputAutocapitalization(.words)
                 .autocorrectionDisabled()
                 .accessibilityLabel("First name")
                 .onChange(of: vm.firstName) { _, _ in vm.deriveUsername() }
             TextField("Last name", text: $vm.lastName)
+                .textContentType(.familyName)
                 .textInputAutocapitalization(.words)
                 .autocorrectionDisabled()
                 .accessibilityLabel("Last name")
@@ -153,10 +158,12 @@ public struct InviteEmployeeSheet: View {
     private var credentialsSection: some View {
         Section {
             TextField("Username (required)", text: $vm.username)
+                .textContentType(.username)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .accessibilityLabel("Username (required)")
             TextField("Email (optional)", text: $vm.email)
+                .textContentType(.emailAddress)
                 .keyboardType(.emailAddress)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)

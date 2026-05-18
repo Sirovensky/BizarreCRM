@@ -128,6 +128,10 @@ public struct TwoFactorSettingsView: View {
     private var regenerateAlertContent: some View {
         TextField("6-digit code", text: $vm.regenerateCode)
             .keyboardType(.numberPad)
+            // BUGHUNT-2026-05-18: missing .oneTimeCode suppressed the SMS
+            // "fill from messages" suggestion — user had to type 6 digits
+            // by hand while the code sat in their Messages app.
+            .textContentType(.oneTimeCode)
         Button("Regenerate") {
             Task { await vm.regenerateCodes() }
         }
