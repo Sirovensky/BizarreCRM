@@ -34,6 +34,9 @@ final class ScheduledReportsViewModel {
         errorMessage = nil
         do {
             schedules = try await repository.getScheduledReports()
+        } catch let e where AppError.isCancellation(e) {
+            isLoading = false
+            return  // BUGHUNT-2026-05-18: nav cancel — .task re-fires on reopen
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -69,6 +72,11 @@ final class ScheduledReportsViewModel {
         do {
             try await repository.deleteScheduledReport(id: id)
             schedules.removeAll { $0.id == id }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: row-swipe cancel mid-DELETE. Server may
+            // have deleted the row; retap returns 404 that the user reads
+            // as a real failure but is just the idempotent retry.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

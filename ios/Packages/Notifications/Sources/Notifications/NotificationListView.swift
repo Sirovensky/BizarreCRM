@@ -36,6 +36,8 @@ public final class NotificationListViewModel {
             } else {
                 items = try await api.listNotifications()
             }
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-18: nav cancel — .task re-fires on reopen
         } catch {
             AppLog.ui.error("Notifications load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -52,6 +54,8 @@ public final class NotificationListViewModel {
             } else {
                 items = try await api.listNotifications()
             }
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-18: pull-to-refresh cancel — next pull re-fires
         } catch {
             AppLog.ui.error("Notifications force-refresh failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription

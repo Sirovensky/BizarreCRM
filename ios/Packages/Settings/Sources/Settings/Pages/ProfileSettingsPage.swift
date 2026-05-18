@@ -113,6 +113,8 @@ public final class ProfileSettingsViewModel: Sendable {
             savedEmail = email
             savedPhone = phone
             savedJobTitle = jobTitle
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-18: nav cancel on profile load
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -209,6 +211,12 @@ public final class ProfileSettingsViewModel: Sendable {
             avatarURL = result.url
             successMessage = "Avatar updated."
             errorMessage = nil
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: photo-picker cancel mid-upload. Server
+            // may have stored the new avatar; retap could re-upload the
+            // same bytes, allocating a duplicate object on the CDN
+            // (orphaned until garbage collection).
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -224,6 +232,11 @@ public final class ProfileSettingsViewModel: Sendable {
             avatarImage = nil
             successMessage = "Avatar removed."
             errorMessage = nil
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: nav cancel — DELETE may have committed.
+            // Retap returns 404 ("avatar not found") that looks like a
+            // real failure but is just the idempotent second delete.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -238,6 +251,14 @@ public final class ProfileSettingsViewModel: Sendable {
             try await api.settingsRevokeAllSessions()
             successMessage = "Signed out from all devices."
             errorMessage = nil
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: bulk-revoke is destructive — server
+            // tears down every refresh-token row and audits each. If the
+            // POST committed before the cancel, a retap would AGAIN
+            // revoke any session created in the meantime (e.g., the
+            // user's freshly-issued one). Mirrors DangerZonePage's
+            // existing cancel guard on the same endpoint.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

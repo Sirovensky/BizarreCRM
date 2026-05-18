@@ -44,6 +44,8 @@ public final class TenantAdminViewModel: Sendable {
         defer { isLoadingTenant = false }
         do {
             tenantInfo = try await api.fetchTenantInfo()
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-18: nav cancel on tenant info load
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -76,6 +78,14 @@ public final class TenantAdminViewModel: Sendable {
         do {
             try await api.deleteOnboardingSampleData()
             sampleDataDeleted = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: bulk-delete is destructive — server
+            // removes every sample row in a single tx. If the DELETE
+            // committed before nav cancel, a retap on the toast would
+            // re-issue the DELETE (idempotent on already-gone rows but
+            // re-audits) and the user sees a confusing "failed" toast
+            // for an operation that actually succeeded.
+            return
         } catch {
             sampleDataError = error.localizedDescription
         }
