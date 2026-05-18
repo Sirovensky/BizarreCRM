@@ -38,7 +38,13 @@ public final class PurchaseOrderDetailViewModel {
         do {
             let fetched = try await repo.get(id: orderId)
             order = fetched
-            supplier = try? await supplierRepo.get(id: fetched.supplierId)
+            // BUGHUNT-2026-05-18: try? swallows cancellation as nil — without
+            // this guard a navigation race could blank a previously-loaded
+            // supplier even though the order detail above succeeded. Skip
+            // the supplier write on cancel; the next reopen re-fetches.
+            let resolvedSupplier = try? await supplierRepo.get(id: fetched.supplierId)
+            if Task.isCancelled { return }
+            supplier = resolvedSupplier
         } catch let e where AppError.isCancellation(e) {
             // BUGHUNT-2026-05-17: nav-away cancellation; keep last-loaded order visible.
             return
