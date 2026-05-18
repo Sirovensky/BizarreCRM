@@ -121,6 +121,13 @@ public struct ServiceBundleRepositoryLive: ServiceBundleRepository {
         let dto: BundleResponseDTO
         do {
             dto = try await api.get(path, as: BundleResponseDTO.self)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: preserve cancellation identity so the
+            // caller (Cart+addBundle) can distinguish a torn-down resolve
+            // from a real network failure. Previously cancellation was
+            // wrapped into .networkError and the cart row added an
+            // unmatched-device picker fallback.
+            throw e
         } catch {
             // Treat HTTP 404 as "no BOM defined" → empty bundle.
             if isNotFound(error) {
