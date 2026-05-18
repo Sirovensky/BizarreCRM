@@ -25,6 +25,7 @@ public struct ScheduledExportListView: View {
             }
         }
         .task { await viewModel.loadSchedules() }
+        .refreshable { await viewModel.loadSchedules() }
         .sheet(isPresented: $showEditor) {
             ScheduledExportEditorView(viewModel: viewModel, schedule: editingSchedule) {
                 showEditor = false

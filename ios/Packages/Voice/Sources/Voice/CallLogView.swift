@@ -36,6 +36,7 @@ public struct CallLogView: View {
             }
         }
         .task { await viewModel.load() }
+        .refreshable { await viewModel.load() }
     }
 
     // MARK: - iPhone layout

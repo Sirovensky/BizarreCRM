@@ -232,6 +232,7 @@ public struct TicketStatusSettingsPage: View {
             }
         }
         .task { await vm.load() }
+        .refreshable { await vm.load() }
         .sheet(isPresented: $vm.showAddSheet) { addSheet }
         .sheet(isPresented: $vm.showEditSheet) {
             if let status = vm.editingStatus {

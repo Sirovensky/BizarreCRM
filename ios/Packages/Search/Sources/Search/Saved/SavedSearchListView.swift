@@ -59,6 +59,7 @@ public struct SavedSearchListView: View {
             if let msg = errorMessage { Text(msg) }
         }
         .task { await loadSearches() }
+        .refreshable { await loadSearches() }
         .overlay {
             if searches.isEmpty {
                 ContentUnavailableView(

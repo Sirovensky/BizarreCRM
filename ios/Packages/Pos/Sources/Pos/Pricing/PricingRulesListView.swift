@@ -149,6 +149,7 @@ public struct PricingRulesListView: View {
             }
         }
         .task { await vm.load() }
+        .refreshable { await vm.load() }
         .sheet(isPresented: $showingCreate) {
             editorSheet(mode: .create)
         }

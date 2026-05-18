@@ -112,6 +112,7 @@ public struct ScheduledReportsSettingsView: View {
             }
         }
         .task { await vm.load() }
+        .refreshable { await vm.load() }
         .sheet(isPresented: $vm.showAddSheet) {
             addSheet
         }

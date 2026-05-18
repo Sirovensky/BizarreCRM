@@ -82,6 +82,7 @@ public struct HolidayListView: View {
             }
         }
         .task { await viewModel.load() }
+        .refreshable { await viewModel.load() }
         .sheet(isPresented: $showAddSheet) {
             HolidayEditorSheet(
                 viewModel: HolidayEditorViewModel(mode: .create, repository: viewModel.repository),

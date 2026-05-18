@@ -51,6 +51,7 @@ public struct SnoozedNotificationsListView: View {
         .navigationBarTitleDisplayMode(.large)
         #endif
         .task { await vm.load() }
+        .refreshable { await vm.load() }
     }
 
     @ViewBuilder

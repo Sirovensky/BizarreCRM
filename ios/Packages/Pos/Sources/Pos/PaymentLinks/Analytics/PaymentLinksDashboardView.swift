@@ -40,6 +40,7 @@ public struct PaymentLinksDashboardView: View {
             }
         }
         .task { await vm.load() }
+        .refreshable { await vm.load() }
     }
 
     // MARK: - iPhone

@@ -34,6 +34,7 @@ public struct NotificationMatrixView: View {
         }
         .background(Color.bizarreSurfaceBase.ignoresSafeArea())
         .task { await vm.load() }
+        .refreshable { await vm.load() }
         .overlay(alignment: .top) { savingPill }
         // SMS cost warning
         .alert("SMS Volume Warning", isPresented: $vm.showSMSCostWarning) {

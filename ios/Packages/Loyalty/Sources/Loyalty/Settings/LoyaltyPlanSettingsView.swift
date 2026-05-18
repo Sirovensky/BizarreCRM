@@ -205,6 +205,7 @@ public struct LoyaltyPlanSettingsView: View {
         }
         .navigationTitle("Loyalty & Memberships")
         .task { await vm.load() }
+        .refreshable { await vm.load() }
         .alert("Error", isPresented: $vm.showError) {
             Button("OK", role: .cancel) {}
         } message: {

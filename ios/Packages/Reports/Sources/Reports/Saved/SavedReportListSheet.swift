@@ -51,6 +51,7 @@ public struct SavedReportListSheet: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .task { await reload() }
+        .refreshable { await reload() }
         .alert("Delete Error", isPresented: Binding(
             get: { deleteError != nil },
             set: { if !$0 { deleteError = nil } }
