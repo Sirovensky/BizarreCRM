@@ -297,7 +297,18 @@ fun EmployeeListScreen(
                             EmptyState(
                                 icon = Icons.Default.Group,
                                 title = "No employees",
-                                subtitle = "No employee accounts found.",
+                                subtitle = "Add staff so they can log in and be assigned tickets.",
+                                action = {
+                                    FilledTonalButton(onClick = onCreateClick) {
+                                        Icon(
+                                            Icons.Default.PersonAdd,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                        Spacer(Modifier.size(8.dp))
+                                        Text("Add employee")
+                                    }
+                                },
                             )
                         }
                     } else if (state.filtered.isEmpty() && state.searchQuery.isNotBlank()) {
