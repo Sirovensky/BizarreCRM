@@ -186,6 +186,14 @@ public extension APIClient {
         // GET /api/v1/notifications/unread-count — the response is handled by
         // NotificationBadgeCounter (Notifications package), not here. We call
         // through so the HTTP response re-seeds the badge pipeline.
-        _ = try await get("notifications/unread-count", as: [String: Int].self)
+        // BUGHUNT-2026-05-18: was `notifications/unread-count` — no leading
+        // slash and no `/api/v1` prefix. APIClient.appendingPathComponent
+        // landed on `<baseURL>/notifications/unread-count`, which the server
+        // doesn't mount (notificationRoutes is at `/api/v1/notifications`,
+        // index.ts L1695). Every foreground re-activation threw + logged a
+        // 404, and the comment about "re-seeding the badge pipeline" was a
+        // lie — the SPA catchall returned HTML, JSON decode failed, the
+        // catch in handleDidBecomeActive just logged "badge refresh failed."
+        _ = try await get("/api/v1/notifications/unread-count", as: [String: Int].self)
     }
 }
