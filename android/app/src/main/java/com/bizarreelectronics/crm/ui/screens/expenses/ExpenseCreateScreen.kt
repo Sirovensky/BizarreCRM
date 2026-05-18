@@ -36,6 +36,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -345,6 +346,8 @@ class ExpenseCreateViewModel @Inject constructor(
                     createdId = createdId,
                     savedOffline = wasOffline,
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSubmitting = false,
@@ -391,6 +394,8 @@ class ExpenseCreateViewModel @Inject constructor(
                     createdId = createdId,
                     savedOffline = wasOffline,
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSubmitting = false,
@@ -436,6 +441,8 @@ class ExpenseCreateViewModel @Inject constructor(
                     createdId = createdId,
                     savedOffline = wasOffline,
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSubmitting = false,
