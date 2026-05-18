@@ -78,13 +78,34 @@ public struct TelemetryRecord: Codable, Sendable, Hashable {
         name         = try c.decode(String.self,            forKey: .name)
         properties   = try c.decode([String: String].self,  forKey: .properties)
         let iso      = try c.decode(String.self,            forKey: .timestamp)
-        guard let date = ISO8601DateFormatter().date(from: iso) else {
+        // BUGHUNT-2026-05-18: encode(to:) uses ISO8601DateFormatter() with
+        // default options for output, but the JSON we read back can include
+        // millisecond precision when round-tripped through another path
+        // (e.g., a server batch endpoint). Try fractional first, then plain
+        // so a round-tripped telemetry blob decodes cleanly.
+        guard let date = Self.parseIso(iso) else {
             throw DecodingError.dataCorruptedError(
                 forKey: .timestamp, in: c,
                 debugDescription: "Expected ISO-8601 date string"
             )
         }
         timestamp = date
+    }
+
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private static func parseIso(_ raw: String) -> Date? {
+        isoFractional.date(from: raw) ?? isoPlain.date(from: raw)
     }
 
     public func encode(to encoder: Encoder) throws {

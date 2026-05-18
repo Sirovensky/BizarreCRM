@@ -164,7 +164,11 @@ public struct SilentPushEnvelope: Sendable, Equatable {
 
         var expiresAt: Date?
         if let iso = userInfo["expiresAt"] as? String {
-            expiresAt = ISO8601DateFormatter().date(from: iso)
+            // BUGHUNT-2026-05-18: ISO8601DateFormatter() default options reject
+            // millisecond-precision strings; if the server set expiresAt via
+            // Date.toISOString() the parse silently returned nil and the
+            // payload was treated as never-expiring. Try fractional first.
+            expiresAt = Self.parsePushIso(iso)
         }
 
         var meta: [String: String] = [:]
@@ -204,5 +208,21 @@ public struct SilentPushEnvelope: Sendable, Equatable {
     public var isExpired: Bool {
         guard let expiresAt else { return false }
         return expiresAt < receivedAt
+    }
+
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    fileprivate static func parsePushIso(_ raw: String) -> Date? {
+        isoFractional.date(from: raw) ?? isoPlain.date(from: raw)
     }
 }
