@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import DesignSystem
 import Networking
 
@@ -45,6 +46,12 @@ public final class ShiftSwapOfferViewModel {
             _ = try await api.offerSwap(requestId: requestId, body: SwapOfferBody(targetShiftId: selectedOfferShiftId))
             actionState = .done
             await loadRequests()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: swap offer POST may have committed +
+            // notified the requesting employee. Retap doubles the
+            // notification.
+            actionState = .idle
+            return
         } catch {
             actionState = .failed(error.localizedDescription)
         }
@@ -56,6 +63,11 @@ public final class ShiftSwapOfferViewModel {
             _ = try await api.approveSwap(requestId: requestId, approved: false)
             actionState = .done
             await loadRequests()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: decline PUT may have committed +
+            // notified requesting employee. Retap doubles notification.
+            actionState = .idle
+            return
         } catch {
             actionState = .failed(error.localizedDescription)
         }
