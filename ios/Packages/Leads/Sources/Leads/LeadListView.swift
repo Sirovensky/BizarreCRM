@@ -208,12 +208,17 @@ public struct LeadListView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
+            // BUGHUNT-2026-05-18: iPhone lead rows had no swipe / context
+            // menu — every action required pushing into detail first. Wire
+            // the shared swipe (advance / drop / delete) + context menu so
+            // the iPhone matches the iPad three-column flow.
             List {
                 ForEach(vm.items) { lead in
                     NavigationLink(value: lead.id) {
                         Row(lead: lead)
                     }
                     .listRowBackground(Color.bizarreSurface1)
+                    .modifier(LeadRowActions(lead: lead, vm: vm))
                 }
             }
             .listStyle(.plain)
@@ -221,6 +226,63 @@ public struct LeadListView: View {
             .navigationDestination(for: Int64.self) { id in
                 LeadDetailView(api: api, id: id)
             }
+        }
+    }
+
+    /// Wraps the swipe + context menu actions in a single ViewModifier so
+    /// each call site stays compact.
+    private struct LeadRowActions: ViewModifier {
+        let lead: Lead
+        let vm: LeadListViewModel
+
+        func body(content: Content) -> some View {
+            content
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button(role: .destructive) {
+                        Task { await vm.deleteLead(lead) }
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                    Button {
+                        Task { await vm.advanceStage(for: lead) }
+                    } label: {
+                        Label("Advance", systemImage: "arrow.right.circle.fill")
+                    }
+                    .tint(.bizarreOrange)
+                }
+                .contextMenu {
+                    if let phone = lead.phone, !phone.isEmpty {
+                        let digits = phone.filter { $0.isNumber || $0 == "+" }
+                        if let url = URL(string: "tel:\(digits)") {
+                            Link(destination: url) {
+                                Label("Call", systemImage: "phone.fill")
+                            }
+                        }
+                        Button {
+                            SMSLauncher.open(phone: phone)
+                        } label: {
+                            Label("SMS", systemImage: "message.fill")
+                        }
+                    }
+                    if let email = lead.email, !email.isEmpty,
+                       let url = URL(string: "mailto:\(email)") {
+                        Link(destination: url) {
+                            Label("Email", systemImage: "envelope.fill")
+                        }
+                    }
+                    Divider()
+                    Button {
+                        Task { await vm.advanceStage(for: lead) }
+                    } label: {
+                        Label("Advance stage", systemImage: "arrow.right.circle")
+                    }
+                    Divider()
+                    Button(role: .destructive) {
+                        Task { await vm.deleteLead(lead) }
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                }
         }
     }
 
