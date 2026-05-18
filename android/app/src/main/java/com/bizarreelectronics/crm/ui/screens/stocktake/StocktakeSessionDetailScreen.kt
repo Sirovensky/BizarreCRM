@@ -244,7 +244,20 @@ fun StocktakeSessionDetailScreen(
                     EmptyState(
                         icon = Icons.Default.Inventory2,
                         title = if (isOpen) "No items counted yet" else "No counts recorded",
-                        subtitle = if (isOpen) "Tap + to scan a barcode or search items" else "",
+                        subtitle = if (isOpen) "Scan a barcode or look up an item to record an on-hand count." else "",
+                        action = if (isOpen) {
+                            {
+                                FilledTonalButton(onClick = onScanClick) {
+                                    Icon(
+                                        Icons.Default.QrCodeScanner,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Scan to count")
+                                }
+                            }
+                        } else null,
                     )
                 } else {
                     LazyColumn(
