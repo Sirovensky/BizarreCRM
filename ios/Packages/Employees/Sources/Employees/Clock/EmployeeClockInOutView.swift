@@ -242,8 +242,24 @@ public struct EmployeeClockInOutView: View {
         return f
     }()
 
+    /// BUGHUNT-2026-05-18: clock_entries.clock_in accumulates both ISO-with-
+    /// fractional (from `new Date().toISOString()`) AND SQL-style
+    /// `YYYY-MM-DD HH:MM:SS` (from `datetime('now')`). Server normalises with
+    /// parseSqliteTs (employees.routes.ts:22); the inline iOS display
+    /// formatter needs the same chain or older entries render as raw
+    /// `"2025-12-31 19:30:45"` in the clock-in card time field.
+    private static let sqlUTC: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f
+    }()
+
     private static func parseClockIso(_ raw: String) -> Date? {
-        isoFractional.date(from: raw) ?? isoPlain.date(from: raw)
+        isoFractional.date(from: raw)
+            ?? isoPlain.date(from: raw)
+            ?? sqlUTC.date(from: raw)
     }
 }
 
