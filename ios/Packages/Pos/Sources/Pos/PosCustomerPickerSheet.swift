@@ -185,6 +185,11 @@ struct PosCustomerPickerSheet: View {
         do {
             let kw = query.trimmingCharacters(in: .whitespacesAndNewlines)
             results = try await repo.list(keyword: kw.isEmpty ? nil : kw)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: search debounce cancelled prior fetch.
+            // Don't paint an error — the next call with the latest query
+            // will populate results normally.
+            return
         } catch {
             AppLog.ui.error("Customer picker load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
