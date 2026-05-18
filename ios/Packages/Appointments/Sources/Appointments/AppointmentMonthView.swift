@@ -60,6 +60,11 @@ public final class AppointmentMonthCalendarViewModel {
         let to   = df.string(from: monthEnd)
         do {
             appointments = try await api.listAppointments(fromDate: from, toDate: to)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: month nav (swipe to next month) cancels
+            // prior fetch; keep last-loaded appointments visible until new
+            // month's load lands.
+            return
         } catch {
             AppLog.ui.error("MonthView load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
