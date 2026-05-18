@@ -33,7 +33,18 @@ public final class FieldServiceDashboardTileViewModel {
     public func load() async {
         state = .loading
         do {
-            let today = ISO8601DateFormatter().string(from: Date())
+            // BUGHUNT-2026-05-18: was `ISO8601DateFormatter().string(from: Date())`,
+            // which emits a full `2026-05-18T10:30:45Z` timestamp for BOTH bounds.
+            // The server filter then evaluates `start_time >= now AND start_time
+            // <= now` — only appointments at that exact instant match, so the
+            // tile permanently showed "no jobs today" even for users with full
+            // calendars. Pass a date-only `YYYY-MM-DD`; the matching server fix
+            // (leads.routes.ts list-appointments) end-of-day-expands the bound.
+            let df = DateFormatter()
+            df.dateFormat = "yyyy-MM-dd"
+            df.locale = Locale(identifier: "en_US_POSIX")
+            df.timeZone = TimeZone(identifier: "UTC")
+            let today = df.string(from: Date())
             let appointments = try await api.listAppointments(fromDate: today, toDate: today)
             let pending = appointments.filter { $0.status != "completed" && $0.status != "cancelled" }
             guard let next = pending.sorted(by: { ($0.startTime ?? "") < ($1.startTime ?? "") }).first else {

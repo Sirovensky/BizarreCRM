@@ -512,7 +512,21 @@ router.get(
       params.push(fromDate);
     }
     if (toDate) {
-      conditions.push('a.start_time <= ?');
+      // BUGHUNT-2026-05-18: bare `a.start_time <= ?` does lexical string
+      // comparison. With `toDate='2026-05-31'` (date-only) and start_time
+      // stored as `'2026-05-31T08:00:00.000Z'`, T > "" so the full timestamp
+      // is lexically GREATER than the bare date — the appointment is excluded.
+      // iOS month-view / FieldService "today" tile lose the last day of the
+      // window. Mirror the fix in timesheet.routes.ts:99: when toDate is a
+      // bare YYYY-MM-DD, compare against datetime(?, '+1 day') so the entire
+      // toDate calendar day is included. Full timestamps fall through to the
+      // plain `<= ?` so callers that already pick a specific instant aren't
+      // shifted.
+      if (/^\d{4}-\d{2}-\d{2}$/.test(toDate)) {
+        conditions.push("a.start_time < datetime(?, '+1 day')");
+      } else {
+        conditions.push('a.start_time <= ?');
+      }
       params.push(toDate);
     }
     if (assignedTo) {
