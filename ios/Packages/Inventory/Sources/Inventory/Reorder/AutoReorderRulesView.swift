@@ -53,6 +53,10 @@ public final class AutoReorderRulesViewModel {
         isLoading = true; errorMessage = nil
         defer { isLoading = false }
         do { rules = try await api.listReorderRules() }
+        catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: rules list reload cancelled; keep last-loaded rules.
+            return
+        }
         catch { errorMessage = error.localizedDescription }
     }
 
@@ -81,6 +85,9 @@ public final class AutoReorderRulesViewModel {
                 rules[idx] = updated
             }
             showEditSheet = false
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: rule update is server-side overwrite; idempotent but retry-prompt is misleading. Silent return.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -98,6 +105,9 @@ public final class AutoReorderRulesViewModel {
             let draftCount = try await api.runAutoReorder(itemIds: triggeredIds)
             successMessage = "\(draftCount) draft PO\(draftCount == 1 ? "" : "s") created."
             BrandHaptics.success()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: runAutoReorder creates N draft POs (one per supplier). Server may have committed when nav cancelled; retry creates duplicate drafts that someone must hand-delete. Silent — user sees current draft count next refresh.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
