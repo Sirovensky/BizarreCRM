@@ -171,14 +171,14 @@ export function InventoryCreatePage() {
               <div className="space-y-4">
                 <div className="grid grid-cols-3 gap-4">
                   <div className="col-span-2">
-                    <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Name <span className="text-red-500">*</span></label>
-                    <input value={form.name} onChange={(e) => set('name', e.target.value)} required className="input w-full" placeholder="e.g. iPhone 14 Screen" />
+                    <label htmlFor="inv-name" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Name <span className="text-red-500">*</span></label>
+                    <input id="inv-name" value={form.name} onChange={(e) => set('name', e.target.value)} required autoFocus autoCapitalize="words" className="input w-full" placeholder="e.g. iPhone 14 Screen" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Type <span className="text-red-500">*</span></label>
+                    <label htmlFor="inv-item-type" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Type <span className="text-red-500">*</span></label>
                     {/* CROSS3: "service" option removed — services live in the
                         `repair_services` table, not inventory_items. */}
-                    <select value={form.item_type} onChange={(e) => set('item_type', e.target.value)} className="input w-full">
+                    <select id="inv-item-type" value={form.item_type} onChange={(e) => set('item_type', e.target.value)} className="input w-full">
                       <option value="product">Product</option>
                       <option value="part">Part</option>
                     </select>
@@ -187,30 +187,30 @@ export function InventoryCreatePage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">SKU</label>
-                    <input value={form.sku} onChange={(e) => set('sku', e.target.value)} className="input w-full" placeholder="e.g. IPH14-SCR-BLK" />
+                    <label htmlFor="inv-sku" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">SKU</label>
+                    <input id="inv-sku" value={form.sku} onChange={(e) => set('sku', e.target.value)} autoCapitalize="characters" autoCorrect="off" spellCheck={false} className="input w-full" placeholder="e.g. IPH14-SCR-BLK" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">UPC / Barcode</label>
-                    <input value={form.upc} onChange={(e) => set('upc', e.target.value)} className="input w-full" placeholder="Scan or enter barcode" />
+                    <label htmlFor="inv-upc" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">UPC / Barcode</label>
+                    <input id="inv-upc" value={form.upc} onChange={(e) => set('upc', e.target.value)} inputMode="numeric" autoCorrect="off" spellCheck={false} className="input w-full" placeholder="Scan or enter barcode" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Category</label>
-                    <input value={form.category} onChange={(e) => set('category', e.target.value)} className="input w-full" placeholder="e.g. Screens, Batteries" />
+                    <label htmlFor="inv-category" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Category</label>
+                    <input id="inv-category" value={form.category} onChange={(e) => set('category', e.target.value)} autoCapitalize="words" className="input w-full" placeholder="e.g. Screens, Batteries" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Manufacturer</label>
-                    <input value={form.manufacturer} onChange={(e) => set('manufacturer', e.target.value)} className="input w-full" placeholder="e.g. Apple" />
+                    <label htmlFor="inv-manufacturer" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Manufacturer</label>
+                    <input id="inv-manufacturer" value={form.manufacturer} onChange={(e) => set('manufacturer', e.target.value)} autoCapitalize="words" className="input w-full" placeholder="e.g. Apple" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Device Type</label>
-                    <input value={form.device_type} onChange={(e) => set('device_type', e.target.value)} className="input w-full" placeholder="e.g. Phone, Laptop" />
+                    <label htmlFor="inv-device-type" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Device Type</label>
+                    <input id="inv-device-type" value={form.device_type} onChange={(e) => set('device_type', e.target.value)} autoCapitalize="words" className="input w-full" placeholder="e.g. Phone, Laptop" />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Description</label>
-                  <textarea value={form.description} onChange={(e) => set('description', e.target.value)} rows={2} className="input w-full" placeholder="Optional description..." />
+                  <label htmlFor="inv-description" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Description</label>
+                  <textarea id="inv-description" value={form.description} onChange={(e) => set('description', e.target.value)} rows={2} autoCapitalize="sentences" className="input w-full" placeholder="Optional description..." />
                 </div>
               </div>
             </div>
@@ -220,17 +220,17 @@ export function InventoryCreatePage() {
               <h2 className="text-sm font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-4">Pricing</h2>
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Cost Price</label>
+                  <label htmlFor="inv-cost-price" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Cost Price</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400">{currencySymbol}</span>
-                    <input type="number" step="0.01" min="0" value={form.cost_price} onChange={(e) => set('cost_price', e.target.value)} className="input w-full pl-12" placeholder="0.00" />
+                    <input id="inv-cost-price" type="number" inputMode="decimal" step="0.01" min="0" value={form.cost_price} onChange={(e) => set('cost_price', e.target.value)} className="input w-full pl-12" placeholder="0.00" />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Retail Price <span className="text-red-500">*</span></label>
+                  <label htmlFor="inv-retail-price" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Retail Price <span className="text-red-500">*</span></label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400">{currencySymbol}</span>
-                    <input type="number" step="0.01" min="0" required value={form.retail_price} onChange={(e) => set('retail_price', e.target.value)} className="input w-full pl-12" placeholder="0.00" />
+                    <input id="inv-retail-price" type="number" inputMode="decimal" step="0.01" min="0" required value={form.retail_price} onChange={(e) => set('retail_price', e.target.value)} className="input w-full pl-12" placeholder="0.00" />
                   </div>
                 </div>
                 <div>
@@ -288,16 +288,16 @@ export function InventoryCreatePage() {
                 <h2 className="text-sm font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-4">Stock</h2>
                 <div className="grid grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Initial Stock</label>
-                    <input type="number" min="0" value={form.in_stock} onChange={(e) => set('in_stock', e.target.value)} className="input w-full" />
+                    <label htmlFor="inv-in-stock" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Initial Stock</label>
+                    <input id="inv-in-stock" type="number" inputMode="numeric" min="0" value={form.in_stock} onChange={(e) => set('in_stock', e.target.value)} className="input w-full" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Reorder Level</label>
-                    <input type="number" min="0" value={form.reorder_level} onChange={(e) => set('reorder_level', e.target.value)} className="input w-full" />
+                    <label htmlFor="inv-reorder-level" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Reorder Level</label>
+                    <input id="inv-reorder-level" type="number" inputMode="numeric" min="0" value={form.reorder_level} onChange={(e) => set('reorder_level', e.target.value)} className="input w-full" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Stock Warning</label>
-                    <input type="number" min="0" value={form.stock_warning} onChange={(e) => set('stock_warning', e.target.value)} className="input w-full" />
+                    <label htmlFor="inv-stock-warning" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Stock Warning</label>
+                    <input id="inv-stock-warning" type="number" inputMode="numeric" min="0" value={form.stock_warning} onChange={(e) => set('stock_warning', e.target.value)} className="input w-full" />
                   </div>
                 </div>
                 <div className="mt-3 flex items-center gap-2">
