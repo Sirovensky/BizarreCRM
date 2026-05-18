@@ -58,6 +58,8 @@ public final class TicketTransferLocationViewModel {
         do {
             let list = try await api.listTenantLocations()
             phase = .loaded(list)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: sheet dismiss cancel
         } catch {
             phase = .error(error.localizedDescription)
             AppLog.ui.error("Transfer load locations failed: \(error.localizedDescription, privacy: .public)")
@@ -70,6 +72,12 @@ public final class TicketTransferLocationViewModel {
         do {
             try await api.transferTicket(ticketId: ticketId, toLocationId: loc.id, reason: reason.isEmpty ? nil : reason)
             phase = .done
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancels transfer POST,
+            // but server may have committed (ticket re-routed + receiving
+            // location notified). Retap re-transfers AGAIN (could land
+            // ticket back at original location or a third). Stay silent.
+            return
         } catch {
             phase = .error(error.localizedDescription)
             AppLog.ui.error("Transfer submit failed: \(error.localizedDescription, privacy: .public)")

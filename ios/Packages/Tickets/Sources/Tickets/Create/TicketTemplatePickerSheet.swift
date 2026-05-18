@@ -68,6 +68,8 @@ final class TicketTemplatePickerViewModel {
         defer { isLoading = false }
         do {
             templates = try await api.listDeviceTemplates()
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: sheet dismiss cancel
         } catch {
             AppLog.ui.error(
                 "TicketTemplatePicker load failed: \(error.localizedDescription, privacy: .public)"

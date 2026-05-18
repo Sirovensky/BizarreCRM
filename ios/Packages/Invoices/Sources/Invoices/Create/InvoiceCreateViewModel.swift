@@ -134,6 +134,12 @@ public final class InvoiceCreateViewModel {
             let created = try await api.createInvoice(body)
             createdId = created.id
             await _draftAutoSaverValue.clear()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: form dismiss cancels create POST, but
+            // server may have committed. Idempotency key is preserved
+            // (not regenerated) so retap dedups server-side. Stay silent;
+            // draft remains for user retry.
+            return
         } catch {
             let appError = AppError.from(error)
             AppLog.ui.error("Invoice create failed: \(error.localizedDescription, privacy: .public)")

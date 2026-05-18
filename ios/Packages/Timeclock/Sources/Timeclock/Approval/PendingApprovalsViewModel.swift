@@ -61,6 +61,10 @@ public final class PendingApprovalsViewModel {
             )
             groups = buildGroups(from: entries)
             loadState = .loaded
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: date-range swap cancels load; leave
+            // prior groups visible.
+            return
         } catch {
             AppLog.ui.error(
                 "PendingApprovals load failed: \(error.localizedDescription, privacy: .public)"

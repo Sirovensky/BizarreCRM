@@ -251,6 +251,11 @@ public final class TicketCreateFlowViewModel {
             let created = try await api.createTicketFull(req)
             createdTicketId = created.id
             resetIdempotencyKey()  // New key for next create.
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels create POST; idempotency
+            // key is preserved (not reset on cancellation) so a retap
+            // with the same key dedups server-side. Stay silent.
+            return
         } catch {
             let appError = AppError.from(error)
             if case .offline = appError {

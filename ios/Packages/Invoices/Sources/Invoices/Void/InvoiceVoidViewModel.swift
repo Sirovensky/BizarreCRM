@@ -77,6 +77,13 @@ public final class InvoiceVoidViewModel {
             // Server response is { message } — we build VoidResult from the invoiceId.
             _ = try await api.voidInvoice(id: invoiceId, reason: reason)
             state = .success(VoidResult(id: invoiceId, status: "void"))
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancels void POST, but
+            // server may have committed (invoice voided + Stripe refund
+            // queued). Retap 409s (already void) or triggers DOUBLE refund.
+            // Stay silent.
+            state = .idle
+            return
         } catch {
             AppLog.ui.error("Void failed: \(error.localizedDescription, privacy: .public)")
             handleError(AppError.from(error))
