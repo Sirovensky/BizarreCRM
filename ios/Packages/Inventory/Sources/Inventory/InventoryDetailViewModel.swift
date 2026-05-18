@@ -26,6 +26,9 @@ public final class InventoryDetailViewModel {
         if case .loaded = state { /* soft */ } else { state = .loading }
         do {
             state = .loaded(try await repo.detail(id: itemId))
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: detail nav cancellation paints `.failed` over already-loaded state; keep last-good state so the operator doesn't see "Failed" after backing out of the screen.
+            return
         } catch {
             AppLog.ui.error("Inventory detail load failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)

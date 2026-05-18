@@ -122,6 +122,9 @@ public final class InventoryListViewModel {
                     keyword: keyword
                 )
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: list re-fetch is triggered by every search-keystroke/filter/sort change which cancels the prior in-flight fetch. Painting "Failed" on each cancel makes the list flicker red between keystrokes.
+            return
         } catch {
             AppLog.ui.error("Inventory list load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
