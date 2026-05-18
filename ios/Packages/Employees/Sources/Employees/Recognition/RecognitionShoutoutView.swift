@@ -292,11 +292,18 @@ public struct ShoutoutsListView: View {
             if vm.isLoading {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if vm.shoutouts.isEmpty {
-                ContentUnavailableView(
-                    "No Shoutouts Yet",
-                    systemImage: "hands.clap",
-                    description: Text("Recognize a teammate for great work!")
-                )
+                ContentUnavailableView {
+                    Label("No Shoutouts Yet", systemImage: "hands.clap")
+                } description: {
+                    Text("Recognize a teammate for great work!")
+                } actions: {
+                    Button {
+                        showSendSheet = true
+                    } label: {
+                        Label("Send shoutout", systemImage: "plus")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
             } else {
                 List(vm.shoutouts) { s in
                     ShoutoutRow(shoutout: s)

@@ -19,11 +19,24 @@ public struct HolidayListView: View {
     public var body: some View {
         List {
             if viewModel.upcoming.isEmpty {
-                ContentUnavailableView(
-                    "No holidays scheduled",
-                    systemImage: "calendar.badge.exclamationmark",
-                    description: Text("Add holidays or import US presets.")
-                )
+                ContentUnavailableView {
+                    Label("No holidays scheduled", systemImage: "calendar.badge.exclamationmark")
+                } description: {
+                    Text("Add holidays or import US presets.")
+                } actions: {
+                    Button {
+                        showAddSheet = true
+                    } label: {
+                        Label("Add holiday", systemImage: "plus")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    Button {
+                        showPresetsSheet = true
+                    } label: {
+                        Label("Import US presets", systemImage: "sparkles")
+                    }
+                    .buttonStyle(.bordered)
+                }
             } else {
                 ForEach(viewModel.upcoming) { holiday in
                     HolidayRow(holiday: holiday)

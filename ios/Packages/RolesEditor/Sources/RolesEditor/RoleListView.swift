@@ -26,11 +26,18 @@ public struct RoleListView: View {
                     ProgressView("Loading roles…")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if viewModel.roles.isEmpty {
-                    ContentUnavailableView(
-                        "No Roles",
-                        systemImage: "person.badge.key",
-                        description: Text("Add your first role using the + button.")
-                    )
+                    ContentUnavailableView {
+                        Label("No Roles", systemImage: "person.badge.key")
+                    } description: {
+                        Text("Define a role to manage permissions for your team.")
+                    } actions: {
+                        Button {
+                            showCreateSheet = true
+                        } label: {
+                            Label("Create role", systemImage: "plus")
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
                 } else {
                     rolesList
                 }

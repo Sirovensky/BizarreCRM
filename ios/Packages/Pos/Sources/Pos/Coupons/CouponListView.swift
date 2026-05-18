@@ -167,8 +167,22 @@ public struct CouponListView: View {
             ContentUnavailableView(msg, systemImage: "exclamationmark.triangle")
         default:
             if filteredCoupons.isEmpty {
-                ContentUnavailableView("No Coupons", systemImage: "tag.slash",
-                    description: Text("Generate coupons from the menu."))
+                if !searchText.isEmpty {
+                    ContentUnavailableView.search(text: searchText)
+                } else {
+                    ContentUnavailableView {
+                        Label("No Coupons", systemImage: "tag.slash")
+                    } description: {
+                        Text("Generate codes to share with customers as promotions.")
+                    } actions: {
+                        Button {
+                            vm.showGenerateSheet = true
+                        } label: {
+                            Label("Generate codes", systemImage: "plus")
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                }
             } else {
                 List(filteredCoupons) { coupon in
                     CouponRow(coupon: coupon)

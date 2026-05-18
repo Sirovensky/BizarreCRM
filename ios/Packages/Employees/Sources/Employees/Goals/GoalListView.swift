@@ -143,11 +143,18 @@ public struct GoalListView: View {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if vm.goals.isEmpty {
-            ContentUnavailableView(
-                "No Goals",
-                systemImage: "target",
-                description: Text("Add goals to track team performance.")
-            )
+            ContentUnavailableView {
+                Label("No Goals", systemImage: "target")
+            } description: {
+                Text("Add goals to track team performance.")
+            } actions: {
+                Button {
+                    vm.showEditor = true
+                } label: {
+                    Label("Add goal", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+            }
         } else {
             List {
                 ForEach(vm.goals) { goal in

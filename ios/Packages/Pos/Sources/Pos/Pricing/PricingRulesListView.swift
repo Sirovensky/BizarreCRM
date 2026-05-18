@@ -193,11 +193,18 @@ public struct PricingRulesListView: View {
 
         default:
             if vm.rules.isEmpty {
-                ContentUnavailableView(
-                    "No Pricing Rules",
-                    systemImage: "tag.slash",
-                    description: Text("Tap + to create your first rule.")
-                )
+                ContentUnavailableView {
+                    Label("No Pricing Rules", systemImage: "tag.slash")
+                } description: {
+                    Text("Create a rule to discount, mark up, or bundle products at checkout.")
+                } actions: {
+                    Button {
+                        showingCreate = true
+                    } label: {
+                        Label("New rule", systemImage: "plus")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
             } else {
                 List {
                     Section {
