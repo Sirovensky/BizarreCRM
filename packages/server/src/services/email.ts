@@ -250,7 +250,17 @@ export function isEmailConfigured(db: any): boolean {
   return getSmtpConfig(db) !== null;
 }
 
-/** Clear cached transporter (call after SMTP settings change) */
+/** Clear cached transporter (call after SMTP settings change). */
 export function clearEmailCache(): void {
+  // BUGHUNT-2026-05-17 [resource leak]: previously did transporterCache.clear()
+  // which orphans the live nodemailer.Transporter (and its SMTP socket pool
+  // in pool mode) inside V8 — no close() call means the underlying socket
+  // sits open until GC, which can take minutes on a quiet event loop and
+  // leaves the connection counted by the SMTP server's per-IP limit. Close
+  // each transporter best-effort before evicting so the pool releases its
+  // sockets immediately, mirroring evictOldestTransporter().
+  for (const entry of transporterCache.values()) {
+    try { entry.transporter.close(); } catch { /* best-effort */ }
+  }
   transporterCache.clear();
 }
