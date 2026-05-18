@@ -630,19 +630,43 @@ export async function archiveDueTenants(): Promise<string[]> {
   ensureTenantLifecycleColumns(masterDb);
 
   const nowIso = new Date().toISOString();
+  // BUGHUNT-2026-05-17: dropped the `(archived_db_path IS NULL OR ...)`
+  // filter. tenantTermination.executeTermination() ALREADY populates
+  // archived_db_path at termination time (it renames the DB into
+  // tenantDataDir/deleted/<slug>-<ts>.db right away). Previously those
+  // rows were silently excluded from this sweep, so the Stripe-customer
+  // deletion below was NEVER reached for self-terminated tenants — their
+  // PII (email, payment method hashes) sat on Stripe's side indefinitely.
+  // Now we pick up any pending_deletion row whose grace window has
+  // elapsed; if it's already been archived (archived_db_path set), we
+  // skip the rename step and proceed straight to the Stripe + status
+  // cleanup so this sweep is idempotent and self-terminated tenants
+  // finally get their PII purged from Stripe.
   const due = masterDb.prepare(`
-    SELECT id, slug, db_path, stripe_customer_id FROM tenants
+    SELECT id, slug, db_path, archived_db_path, stripe_customer_id FROM tenants
     WHERE status = 'pending_deletion'
       AND deletion_scheduled_at IS NOT NULL
       AND deletion_scheduled_at <= ?
-      AND (archived_db_path IS NULL OR archived_db_path = '')
-  `).all(nowIso) as Array<{ id: number; slug: string; db_path: string; stripe_customer_id: string | null }>;
+  `).all(nowIso) as Array<{
+    id: number;
+    slug: string;
+    db_path: string;
+    archived_db_path: string | null;
+    stripe_customer_id: string | null;
+  }>;
 
   const archived: string[] = [];
   for (const row of due) {
     try {
       closeTenantDb(row.slug);
-      const archivedPath = archiveTenantDb(row.slug, row.db_path);
+      // If archived_db_path is already populated, the file was renamed by
+      // the self-service termination flow (tenantTermination.ts); skip the
+      // archive step but still run the Stripe + status cleanup so this
+      // sweep idempotently completes the grace-period work.
+      const alreadyArchived = !!(row.archived_db_path && row.archived_db_path.trim());
+      const archivedPath = alreadyArchived
+        ? row.archived_db_path
+        : archiveTenantDb(row.slug, row.db_path);
       if (archivedPath) {
         // SEC-M46: best-effort delete Stripe customer when the tenant's
         // grace period elapses. PII stays on Stripe's side (email,

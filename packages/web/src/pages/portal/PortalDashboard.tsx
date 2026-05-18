@@ -256,10 +256,18 @@ function MembershipCard({ currency, locale }: MembershipCardProps) {
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
+    // BUGHUNT-2026-05-17: getPortalMembership had no unmount guard. The
+    // portal dashboard tabs unmount the card as the customer switches
+    // between Tickets / Invoices / Estimates, but the in-flight promise
+    // still resolves and pumps setMembership + setLoaded on the dead
+    // component — React warns + the closure pins state for GC. Track
+    // cancellation so post-unmount resolves are dropped.
+    let cancelled = false;
     api.getPortalMembership()
-      .then((m) => setMembership(m))
+      .then((m) => { if (!cancelled) setMembership(m); })
       .catch(() => { /* silently absent — non-fatal */ })
-      .finally(() => setLoaded(true));
+      .finally(() => { if (!cancelled) setLoaded(true); });
+    return () => { cancelled = true; };
   }, []);
 
   if (!loaded || !membership) return null;
