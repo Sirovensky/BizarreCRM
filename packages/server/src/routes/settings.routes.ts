@@ -2893,174 +2893,243 @@ router.delete('/checklist-templates/:id', adminOnly, async (req, res) => {
 
 // ==================== Logo Upload ====================
 
+// BUGHUNT-2026-05-17: wrap bare-async — AppError on missing file + the INSERT
+// can throw on store_config lock, leaving the uploaded file unreferenced on
+// disk and the server crashed.
 router.post('/logo', adminOnly, enforceUploadQuota, logoUpload.single('logo'), fileUploadValidator({ allowedMimes: LOGO_ALLOWED_MIMES }), async (req, res) => {
-  const adb = req.asyncDb;
-  if (!req.file) throw new AppError('No file uploaded', 400);
-
-  // Atomic storage reservation
-  const fileSize = req.file.size ?? 0;
-  if (!reserveStorage(req.tenantId, fileSize, req.tenantLimits?.storageLimitMb ?? null)) {
-    if (req.file.path) { try { fs.unlinkSync(req.file.path); } catch {} }
-    res.status(403).json({
-      success: false,
-      upgrade_required: true,
-      feature: 'storage_limit',
-      message: `Storage limit (${req.tenantLimits?.storageLimitMb} MB) reached. Upgrade to Pro for 30 GB storage.`,
-    });
-    return;
-  }
-
-  // Refund the previous logo's bytes if one exists (replacing logo shouldn't grow quota)
   try {
-    const prevRow = await adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'store_logo'");
-    if (prevRow?.value && prevRow.value.startsWith('/uploads/')) {
-      const prevAbs = path.join(config.uploadsPath, prevRow.value.replace(/^\/uploads\//, ''));
-      const stat = fs.statSync(prevAbs);
-      decrementStorageBytes(req.tenantId, stat.size);
-      try { fs.unlinkSync(prevAbs); } catch {}
-    }
-  } catch { /* previous logo missing or unreadable */ }
+    const adb = req.asyncDb;
+    if (!req.file) throw new AppError('No file uploaded', 400);
 
-  const logoPath = (req as any).tenantSlug
-    ? `/uploads/${(req as any).tenantSlug}/${req.file.filename}`
-    : `/uploads/${req.file.filename}`;
-  await adb.run('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)', 'store_logo', logoPath);
-  res.json({ success: true, data: { store_logo: logoPath } });
+    // Atomic storage reservation
+    const fileSize = req.file.size ?? 0;
+    if (!reserveStorage(req.tenantId, fileSize, req.tenantLimits?.storageLimitMb ?? null)) {
+      if (req.file.path) { try { fs.unlinkSync(req.file.path); } catch {} }
+      res.status(403).json({
+        success: false,
+        upgrade_required: true,
+        feature: 'storage_limit',
+        message: `Storage limit (${req.tenantLimits?.storageLimitMb} MB) reached. Upgrade to Pro for 30 GB storage.`,
+      });
+      return;
+    }
+
+    // Refund the previous logo's bytes if one exists (replacing logo shouldn't grow quota)
+    try {
+      const prevRow = await adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'store_logo'");
+      if (prevRow?.value && prevRow.value.startsWith('/uploads/')) {
+        const prevAbs = path.join(config.uploadsPath, prevRow.value.replace(/^\/uploads\//, ''));
+        const stat = fs.statSync(prevAbs);
+        decrementStorageBytes(req.tenantId, stat.size);
+        try { fs.unlinkSync(prevAbs); } catch {}
+      }
+    } catch { /* previous logo missing or unreadable */ }
+
+    const logoPath = (req as any).tenantSlug
+      ? `/uploads/${(req as any).tenantSlug}/${req.file.filename}`
+      : `/uploads/${req.file.filename}`;
+    await adb.run('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)', 'store_logo', logoPath);
+    res.json({ success: true, data: { store_logo: logoPath } });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Bad request' });
+      return;
+    }
+    logger.error('settings_logo_upload_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Logo upload failed' });
+    }
+  }
 });
 
 // ==================== Setup Hardware Tests ====================
 
+// BUGHUNT-2026-05-17: wrap bare-async — testConnectionWithCredentials makes
+// outbound HTTP to BlockChyp gateway and can throw on TLS/DNS issues. The
+// inner try around connectTcp only covers LAN. Without a top-level catch
+// gateway errors crash the server.
 router.post('/hardware/blockchyp/test', adminOnly, async (req, res) => {
-  const { api_key, bearer_token, signing_key, terminal_name, terminal_ip, test_mode } = req.body as Record<string, string | boolean | undefined>;
-  const terminalIp = String(terminal_ip || '').trim();
-  const gateway = await testConnectionWithCredentials({
-    apiKey: String(api_key || ''),
-    bearerToken: String(bearer_token || ''),
-    signingKey: String(signing_key || ''),
-    terminalName: String(terminal_name || 'Front Counter'),
-    testMode: test_mode === true || test_mode === 'true',
-  });
+  try {
+    const { api_key, bearer_token, signing_key, terminal_name, terminal_ip, test_mode } = req.body as Record<string, string | boolean | undefined>;
+    const terminalIp = String(terminal_ip || '').trim();
+    const gateway = await testConnectionWithCredentials({
+      apiKey: String(api_key || ''),
+      bearerToken: String(bearer_token || ''),
+      signingKey: String(signing_key || ''),
+      terminalName: String(terminal_name || 'Front Counter'),
+      testMode: test_mode === true || test_mode === 'true',
+    });
 
-  const lan: { attempted: boolean; success: boolean; host?: string; port?: number; error?: string } = {
-    attempted: false,
-    success: false,
-  };
-  if (terminalIp) {
-    const { host, port } = parseHostPort(terminalIp, 8443);
-    lan.attempted = true;
-    lan.host = host;
-    lan.port = port;
-    try {
-      await connectTcp(host, port, 3_000);
-      lan.success = true;
-    } catch (err) {
-      lan.error = err instanceof Error ? err.message : 'LAN reachability failed';
+    const lan: { attempted: boolean; success: boolean; host?: string; port?: number; error?: string } = {
+      attempted: false,
+      success: false,
+    };
+    if (terminalIp) {
+      const { host, port } = parseHostPort(terminalIp, 8443);
+      lan.attempted = true;
+      lan.host = host;
+      lan.port = port;
+      try {
+        await connectTcp(host, port, 3_000);
+        lan.success = true;
+      } catch (err) {
+        lan.error = err instanceof Error ? err.message : 'LAN reachability failed';
+      }
+    }
+
+    const success = gateway.success && (!lan.attempted || lan.success);
+    const verificationStatus = gateway.success && lan.attempted && lan.success
+      ? 'verified'
+      : gateway.success && !lan.attempted
+        ? 'gateway_only'
+        : 'failed';
+    const message = verificationStatus === 'verified'
+      ? 'BlockChyp connection verified.'
+      : verificationStatus === 'gateway_only'
+        ? 'BlockChyp gateway ping succeeded, but no terminal IP was provided so local hardware reachability was not verified.'
+        : gateway.error || lan.error || 'BlockChyp connection test failed.';
+    audit(req.db, 'setup_hardware_blockchyp_test', req.user!.id, req.ip || 'unknown', {
+      gateway_success: gateway.success,
+      lan_success: lan.attempted ? lan.success : null,
+      terminal_name: gateway.terminalName,
+    });
+    res.status(success ? 200 : 502).json({
+      success,
+      data: {
+        message,
+        verificationStatus,
+        gateway,
+        lan,
+      },
+      ...(success ? {} : { message }),
+    });
+  } catch (e: unknown) {
+    logger.error('settings_blockchyp_test_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'BlockChyp test failed' });
     }
   }
-
-  const success = gateway.success && (!lan.attempted || lan.success);
-  const verificationStatus = gateway.success && lan.attempted && lan.success
-    ? 'verified'
-    : gateway.success && !lan.attempted
-      ? 'gateway_only'
-      : 'failed';
-  const message = verificationStatus === 'verified'
-    ? 'BlockChyp connection verified.'
-    : verificationStatus === 'gateway_only'
-      ? 'BlockChyp gateway ping succeeded, but no terminal IP was provided so local hardware reachability was not verified.'
-      : gateway.error || lan.error || 'BlockChyp connection test failed.';
-  audit(req.db, 'setup_hardware_blockchyp_test', req.user!.id, req.ip || 'unknown', {
-    gateway_success: gateway.success,
-    lan_success: lan.attempted ? lan.success : null,
-    terminal_name: gateway.terminalName,
-  });
-  res.status(success ? 200 : 502).json({
-    success,
-    data: {
-      message,
-      verificationStatus,
-      gateway,
-      lan,
-    },
-    ...(success ? {} : { message }),
-  });
 });
 
+// BUGHUNT-2026-05-17: wrap bare-async — testTenantStripeConnection does an
+// outbound HTTPS call to Stripe and rejects on network/TLS errors. Without a
+// try/catch the rejection crashes the server.
 router.post('/payments/stripe/test', adminOnly, async (req, res) => {
-  const body = req.body as Record<string, string | undefined>;
-  const result = await testTenantStripeConnection({
-    secretKey: body.secret_key ?? body.stripe_secret_key,
-    publishableKey: body.publishable_key ?? body.stripe_publishable_key,
-    webhookSecret: body.webhook_secret ?? body.stripe_webhook_secret,
-  });
-  audit(req.db, 'stripe_settings_test', req.user!.id, req.ip || 'unknown', {
-    success: result.success,
-    account_id: result.accountId ?? null,
-    livemode: result.livemode ?? null,
-  });
-  res.status(result.success ? 200 : 400).json({
-    success: result.success,
-    data: result,
-    ...(result.success ? {} : { message: result.error || 'Stripe connection test failed.' }),
-  });
-});
-
-router.post('/hardware/receipt-printer/test', adminOnly, async (req, res) => {
-  const driver = String(req.body?.driver || '').trim();
-  const connection = String(req.body?.connection || '').trim();
-  const address = String(req.body?.address || '').trim();
-  if (!driver || driver === 'none') throw new AppError('Select a receipt printer driver first', 400);
-  if (!connection || !address) throw new AppError('Printer connection and address are required', 400);
-  if (connection === 'bluetooth') {
-    throw new AppError('Bluetooth test printing requires an OS print bridge; use USB/network for direct server tests.', 501);
-  }
-
-  const payload = escposTestReceiptPayload();
-  if (connection === 'network') {
-    const { host, port } = parseHostPort(address, 9100);
-    await writeTcp(host, port, payload);
-  } else if (connection === 'usb') {
-    await writeDevicePath(address, payload);
-  } else {
-    throw new AppError('Unsupported printer connection', 400);
-  }
-
-  audit(req.db, 'setup_hardware_receipt_printer_test', req.user!.id, req.ip || 'unknown', { driver, connection });
-  res.json({ success: true, data: { message: 'Test receipt sent to printer.', driver, connection } });
-});
-
-router.post('/hardware/cash-drawer/test', adminOnly, async (req, res) => {
-  const driver = String(req.body?.driver || '').trim();
-  const address = String(req.body?.address || '').trim();
-  const printer = req.body?.printer as { connection?: string; address?: string } | undefined;
-  const payload = cashDrawerKickPayload();
-
-  if (driver === 'network') {
-    const { host, port } = parseHostPort(address, 9100);
-    await writeTcp(host, port, payload);
-  } else if (driver === 'kicked_by_printer') {
-    const connection = String(printer?.connection || '').trim();
-    const printerAddress = String(printer?.address || '').trim();
-    if (!connection || !printerAddress) {
-      throw new AppError('Receipt printer connection is required to kick the drawer through the printer', 400);
+  try {
+    const body = req.body as Record<string, string | undefined>;
+    const result = await testTenantStripeConnection({
+      secretKey: body.secret_key ?? body.stripe_secret_key,
+      publishableKey: body.publishable_key ?? body.stripe_publishable_key,
+      webhookSecret: body.webhook_secret ?? body.stripe_webhook_secret,
+    });
+    audit(req.db, 'stripe_settings_test', req.user!.id, req.ip || 'unknown', {
+      success: result.success,
+      account_id: result.accountId ?? null,
+      livemode: result.livemode ?? null,
+    });
+    res.status(result.success ? 200 : 400).json({
+      success: result.success,
+      data: result,
+      ...(result.success ? {} : { message: result.error || 'Stripe connection test failed.' }),
+    });
+  } catch (e: unknown) {
+    logger.error('settings_stripe_test_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Stripe test failed' });
     }
+  }
+});
+
+// BUGHUNT-2026-05-17: wrap bare-async — many AppError throws on validation +
+// writeTcp / writeDevicePath are I/O that can throw on EHOSTUNREACH, EACCES,
+// ENOENT etc. Without a try/catch every printer misconfiguration crashes the
+// server.
+router.post('/hardware/receipt-printer/test', adminOnly, async (req, res) => {
+  try {
+    const driver = String(req.body?.driver || '').trim();
+    const connection = String(req.body?.connection || '').trim();
+    const address = String(req.body?.address || '').trim();
+    if (!driver || driver === 'none') throw new AppError('Select a receipt printer driver first', 400);
+    if (!connection || !address) throw new AppError('Printer connection and address are required', 400);
+    if (connection === 'bluetooth') {
+      throw new AppError('Bluetooth test printing requires an OS print bridge; use USB/network for direct server tests.', 501);
+    }
+
+    const payload = escposTestReceiptPayload();
     if (connection === 'network') {
-      const { host, port } = parseHostPort(printerAddress, 9100);
+      const { host, port } = parseHostPort(address, 9100);
       await writeTcp(host, port, payload);
     } else if (connection === 'usb') {
-      await writeDevicePath(printerAddress, payload);
+      await writeDevicePath(address, payload);
     } else {
-      throw new AppError('Drawer kick through Bluetooth printers requires an OS print bridge', 501);
+      throw new AppError('Unsupported printer connection', 400);
     }
-  } else {
-    throw new AppError('Select a cash drawer driver first', 400);
-  }
 
-  audit(req.db, 'setup_hardware_cash_drawer_test', req.user!.id, req.ip || 'unknown', { driver });
-  res.json({ success: true, data: { message: 'Cash drawer kick command sent.', driver } });
+    audit(req.db, 'setup_hardware_receipt_printer_test', req.user!.id, req.ip || 'unknown', { driver, connection });
+    res.json({ success: true, data: { message: 'Test receipt sent to printer.', driver, connection } });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Printer test failed' });
+      return;
+    }
+    logger.error('settings_printer_test_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(502).json({ success: false, message: 'Printer test failed (network/IO error)' });
+    }
+  }
 });
 
+// BUGHUNT-2026-05-17: wrap bare-async — same I/O exposure as the printer test.
+router.post('/hardware/cash-drawer/test', adminOnly, async (req, res) => {
+  try {
+    const driver = String(req.body?.driver || '').trim();
+    const address = String(req.body?.address || '').trim();
+    const printer = req.body?.printer as { connection?: string; address?: string } | undefined;
+    const payload = cashDrawerKickPayload();
+
+    if (driver === 'network') {
+      const { host, port } = parseHostPort(address, 9100);
+      await writeTcp(host, port, payload);
+    } else if (driver === 'kicked_by_printer') {
+      const connection = String(printer?.connection || '').trim();
+      const printerAddress = String(printer?.address || '').trim();
+      if (!connection || !printerAddress) {
+        throw new AppError('Receipt printer connection is required to kick the drawer through the printer', 400);
+      }
+      if (connection === 'network') {
+        const { host, port } = parseHostPort(printerAddress, 9100);
+        await writeTcp(host, port, payload);
+      } else if (connection === 'usb') {
+        await writeDevicePath(printerAddress, payload);
+      } else {
+        throw new AppError('Drawer kick through Bluetooth printers requires an OS print bridge', 501);
+      }
+    } else {
+      throw new AppError('Select a cash drawer driver first', 400);
+    }
+
+    audit(req.db, 'setup_hardware_cash_drawer_test', req.user!.id, req.ip || 'unknown', { driver });
+    res.json({ success: true, data: { message: 'Cash drawer kick command sent.', driver } });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Cash drawer test failed' });
+      return;
+    }
+    logger.error('settings_cash_drawer_test_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(502).json({ success: false, message: 'Cash drawer test failed (network/IO error)' });
+    }
+  }
+});
+
+// BUGHUNT-2026-05-17: wrap bare-async — many AppError throws + outbound S3
+// HTTPS calls + DNS lookups, all of which reject async. Any unhandled rejection
+// crashes the server during backup destination setup.
 router.post('/hardware/backup/test', adminOnly, async (req, res) => {
+  try {
   const kind = String(req.body?.kind || req.body?.backup_destination_type || '').trim();
   if (kind === 'local') {
     const backupPath = String(req.body?.path || req.body?.backup_destination_path || '').trim();
@@ -3148,6 +3217,17 @@ router.post('/hardware/backup/test', adminOnly, async (req, res) => {
   }
 
   throw new AppError('Unknown backup destination type', 400);
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'status' in e && typeof (e as any).status === 'number' && !res.headersSent) {
+      const ae = e as { status: number; message?: string };
+      res.status(ae.status).json({ success: false, message: ae.message || 'Backup test failed' });
+      return;
+    }
+    logger.error('settings_backup_test_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(502).json({ success: false, message: 'Backup destination test failed' });
+    }
+  }
 });
 
 // ==================== SMS/Voice Provider Settings ====================
