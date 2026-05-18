@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import Core
 import Networking
 
 // MARK: - §43.5 Device Template Editor ViewModel
@@ -154,6 +155,13 @@ public final class DeviceTemplateEditorViewModel {
                 )
                 savedTemplate = try await api.createDeviceTemplate(body: req)
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: createDeviceTemplate is POST without an
+            // idempotency key. A "cancelled" toast tempted a re-tap that
+            // could persist a duplicate template (its inline services
+            // included). Stay silent on the create path; PATCH (edit) is
+            // already idempotent so the same handling is safe there.
+            return
         } catch {
             saveError = error.localizedDescription
         }

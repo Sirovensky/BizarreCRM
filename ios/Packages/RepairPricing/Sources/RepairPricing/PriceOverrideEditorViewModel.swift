@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import Core
 import Networking
 
 // MARK: - §43.3 Price Override Editor ViewModel
@@ -63,6 +64,15 @@ public final class PriceOverrideEditorViewModel {
                     reason: reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : reason
                 )
                 savedOverride = try await api.createPriceOverride(req)
+            } catch let e where AppError.isCancellation(e) {
+                // BUGHUNT-2026-05-17: createPriceOverride is POST without an
+                // idempotency key. A "cancelled" toast tempted a re-tap that,
+                // if the server had already accepted the first POST, could
+                // create a second override row (some scopes have unique
+                // constraints and 409, but tenant+customer scopes don't).
+                // Stay silent — the list refresh will show whether the row
+                // landed.
+                return
             } catch {
                 saveError = error.localizedDescription
             }
