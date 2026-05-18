@@ -67,6 +67,15 @@ public final class TicketTimelineViewModel {
         do {
             let events = try await api.ticketEvents(id: ticketId)
             loadState = .loaded(events.sorted { $0.createdAt > $1.createdAt })
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: when the detail view changes tabs while the
+            // events GET is in flight, the broad `catch` fell through to the
+            // .failed branch (shouldFallback returns false for cancellation)
+            // and painted "cancelled" as the load-failure message. The
+            // timeline tab then showed a sticky error state even though the
+            // user just navigated away. Reset to .idle so retry()/re-entry
+            // gets a clean attempt.
+            loadState = .idle
         } catch {
             // If the events endpoint isn't available (404 etc.), fall back
             // to the history entries already embedded in TicketDetail.
