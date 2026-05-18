@@ -191,6 +191,12 @@ public struct ZReportEmailButton: View {
                 result = nil
             }
             AppLog.pos.info("Z-report email result: \(r == .sent ? "sent" : "unavailable", privacy: .public)")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: bare catch painted "cancelled" as the error
+            // message, tempting the manager to retry — which would queue a
+            // duplicate Z-report email. The server queue logs all sends; stay
+            // silent here and let the next close-shift screen present cleanly.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
