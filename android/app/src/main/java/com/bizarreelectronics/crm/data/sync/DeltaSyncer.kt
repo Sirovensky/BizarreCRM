@@ -109,7 +109,12 @@ class DeltaSyncer @Inject constructor(
 
         try {
             var lastSince = since
-            while (true) {
+            // BUGHUNT-2026-05-17: hard cap on delta-page loop. A misbehaving
+            // server that keeps returning fresh cursors (non-null with no
+            // serverExhausted) would trap the syncer indefinitely. Mirror
+            // the D8 safety convention used by the row repos.
+            var pages = 0
+            while (pages < MAX_DELTA_PAGES) {
                 val response = syncApi.getDelta(since = lastSince, cursor = cursor, limit = PAGE_SIZE)
                 val page = response.data ?: break
 
@@ -125,8 +130,12 @@ class DeltaSyncer @Inject constructor(
                 // Advance cursor.
                 cursor = page.cursor
                 if (page.since != null) lastSince = page.since
+                pages++
 
                 if (page.serverExhausted || cursor == null) break
+            }
+            if (pages >= MAX_DELTA_PAGES) {
+                Log.w(TAG, "Delta syncer hit safety cap of $MAX_DELTA_PAGES pages — committing partial progress")
             }
 
             // Persist new cursor + updated timestamp.
@@ -229,6 +238,14 @@ class DeltaSyncer @Inject constructor(
 
         /** Items per delta page. Server-side cap is also 500. */
         private const val PAGE_SIZE = 500
+
+        /**
+         * Hard ceiling on the delta-page loop. At PAGE_SIZE=500 this lets a
+         * single delta-sync absorb up to 500_000 rows before bailing — far
+         * beyond any realistic backlog. Any larger volume should go through
+         * a full re-sync rather than infinite paging.
+         */
+        private const val MAX_DELTA_PAGES = 1000
 
         /**
          * If the stored `last_updated_at` is older than this many days, discard
