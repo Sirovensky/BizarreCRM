@@ -148,6 +148,18 @@ final class TicketDeviceServicesViewModel {
                 as: TicketDetail.TicketDevice.self
             )
             savedSuccessfully = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: save() PUTs the entire services array,
+            // which mutates the ticket subtotal (money write). The broad
+            // catch painted "Save device services failed" into errorMessage
+            // when the sheet dismissed mid-PUT, even when the server had
+            // already accepted the new line items. The user would tap save
+            // again, re-PUTting the same payload — which on a successful
+            // first call is a no-op, but in any concurrent edit window
+            // (another agent updating quantity) silently overwrites their
+            // change. Suppress cancel-as-failure; the next detail refresh
+            // reflects the true state.
+            return
         } catch {
             AppLog.ui.error("Save device services failed (device \(self.deviceId)): \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
