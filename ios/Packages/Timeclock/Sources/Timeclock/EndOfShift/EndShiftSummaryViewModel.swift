@@ -118,6 +118,11 @@ public final class EndShiftSummaryViewModel {
 
     /// Called when cashier taps "Continue" in cash-count step.
     public func finishCashCount() {
+        // BUGHUNT-2026-05-17: re-entry guard. Without this, a double-tap on
+        // "Continue" spawns two parallel submitClose Tasks → duplicate
+        // closeShift POSTs and a doubled Z-report row. Only proceed when
+        // we're still in the cashCount step.
+        guard case .cashCount = step else { return }
         if requiresManagerSignOff {
             step = .managerSignOff
         } else {
@@ -141,6 +146,13 @@ public final class EndShiftSummaryViewModel {
             managerPinVerified = true
             managerPin = ""
             await submitClose(managerPinVerified: true)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: don't paint "Incorrect PIN" on a cancelled
+            // verify call — the PIN itself was never checked and the manager
+            // would retype a correct PIN thinking they fat-fingered it. Stay
+            // on the sign-off step with the PIN field still populated so the
+            // caller can re-tap Submit.
+            managerPinError = nil
         } catch {
             managerPinError = "Incorrect PIN. Try again."
         }
@@ -150,6 +162,12 @@ public final class EndShiftSummaryViewModel {
 
     private func submitClose(managerPinVerified: Bool) async {
         guard let existing = summary else { return }
+        // BUGHUNT-2026-05-17: re-entry guard against parallel submitClose
+        // tasks. If we're already confirming or done, refuse — a second
+        // closeShift POST while the first is in flight (or after success)
+        // either creates a duplicate close row or corrupts the Z-report id.
+        if case .confirming = step { return }
+        if case .done = step { return }
         step = .confirming
         let request = EndShiftRequest(
             cashCountedCents: liveCountedCents,
@@ -180,6 +198,14 @@ public final class EndShiftSummaryViewModel {
                 voidCount: existing.voidCount
             )
             step = .done(response.shiftId)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: closeShift may have already reached the
+            // server when the task was cancelled. Painting "Failed: cancelled"
+            // tempts a re-submit that would double-close the shift and
+            // produce a duplicate Z-report. Roll back to the manager sign-off
+            // step (or cashCount if no sign-off needed) so the caller decides
+            // how to proceed instead of getting a misleading failure toast.
+            step = requiresManagerSignOff ? .managerSignOff : .cashCount
         } catch {
             AppLog.ui.error("EndShift: close failed — \(error.localizedDescription, privacy: .public)")
             step = .failed(error.localizedDescription)
