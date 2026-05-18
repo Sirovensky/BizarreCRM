@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
@@ -39,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.bizarreelectronics.crm.data.remote.api.WarrantyRecordDto
@@ -153,6 +155,7 @@ fun WarrantyClaimScreen(
 
             // Search field
             item {
+                val isNameQuery = state.queryType == QueryType.Name
                 OutlinedTextField(
                     value = state.query,
                     onValueChange = viewModel::onQueryChange,
@@ -164,6 +167,11 @@ fun WarrantyClaimScreen(
                             Text("Search")
                         }
                     },
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = if (isNameQuery) KeyboardCapitalization.Words
+                                         else KeyboardCapitalization.Characters,
+                        autoCorrect = false,
+                    ),
                 )
             }
 
@@ -218,6 +226,9 @@ fun WarrantyClaimScreen(
                         label = { Text("Notes (optional)") },
                         minLines = 2,
                         maxLines = 4,
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Sentences,
+                        ),
                     )
                 }
                 item {

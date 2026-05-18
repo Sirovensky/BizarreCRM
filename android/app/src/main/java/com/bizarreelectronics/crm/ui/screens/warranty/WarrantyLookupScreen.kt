@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
@@ -36,6 +37,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.bizarreelectronics.crm.R
@@ -132,6 +135,7 @@ fun WarrantyLookupScreen(
 
             // Search field
             item {
+                val isPhoneQuery = state.queryType == WarrantyLookupQueryType.Phone
                 OutlinedTextField(
                     value = state.query,
                     onValueChange = viewModel::onQueryChange,
@@ -149,6 +153,11 @@ fun WarrantyLookupScreen(
                             )
                         }
                     },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = if (isPhoneQuery) KeyboardType.Phone else KeyboardType.Ascii,
+                        capitalization = if (isPhoneQuery) KeyboardCapitalization.None else KeyboardCapitalization.Characters,
+                        autoCorrect = false,
+                    ),
                 )
             }
 
