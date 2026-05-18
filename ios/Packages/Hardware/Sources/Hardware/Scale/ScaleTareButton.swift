@@ -129,6 +129,10 @@ public struct ScaleTareButton: View {
                     AppLog.hardware.info("ScaleTareButton: tare successful")
                 }
                 scheduleClear(after: 2)
+            } catch let e where AppError.isCancellation(e) {
+                // BUGHUNT-2026-05-17: tare cancel — don't paint a "failed"
+                // accessibility announcement / log line. Reset to idle.
+                await MainActor.run { state = .idle }
             } catch {
                 let msg = error.localizedDescription
                 await MainActor.run {
