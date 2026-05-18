@@ -222,6 +222,10 @@ public struct ServicePriceTable: View {
             }
             detail = try await api.getDeviceTemplate(id: initialTemplate.id)
             services = (detail.services ?? []).map(ServicePriceRow.init)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: template nav cancellation; keep prior
+            // services visible.
+            return
         } catch {
             AppLog.ui.error("ServicePriceTable load: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
