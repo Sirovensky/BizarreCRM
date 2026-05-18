@@ -381,6 +381,14 @@ final class PosRefundViewModel {
             // fallback if we have a customer id.
             await fallbackToStoreCredit(totalCents: totalCents, trimmedReason: trimmedReason)
             return
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: posReturn is a real-money refund without an
+            // idempotency key. Painting "cancelled" tempted a re-tap that
+            // double-refunded the invoice if the server had already accepted
+            // the original POST. Surface a verification hint pointing the
+            // cashier at the invoice's refund history before retrying.
+            self.status = .failed("Refund was interrupted. Open the invoice's refund history to confirm before retrying — a refund may already have been issued.")
+            return
         } catch {
             self.status = .failed(error.localizedDescription)
             return
