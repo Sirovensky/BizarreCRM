@@ -70,6 +70,14 @@ public final class AppointmentCancelViewModel {
             }
 
             cancelled = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: Two-step write (status PUT + SMS POST) with
+            // TCPA implications. If the user dismisses the sheet mid-flow,
+            // painting a "Cancelled" error tempts a retap that re-sends the
+            // cancellation text to the customer. Status flip is idempotent,
+            // SMS is not. Stay silent on cancellation; next sheet open
+            // re-checks status before re-issuing the SMS.
+            return
         } catch {
             let appError = AppError.from(error)
             errorMessage = Self.message(for: appError)
