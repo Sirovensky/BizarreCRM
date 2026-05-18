@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import Networking
+import Core
 
 // MARK: - §43.4 Service Part Mapping ViewModel
 
@@ -98,6 +99,11 @@ public final class ServicePartMappingViewModel {
 
     /// PATCH service with collected SKU / bundle data.
     public func save() async {
+        // BUGHUNT-2026-05-17: re-entry guard — double-tap on Save would fire a
+        // second PATCH before the first completes, producing duplicate audit
+        // rows and (when the user changed bundle rows mid-flight) racing the
+        // wrong payload onto the server.
+        guard !isSaving else { return }
         saveError = nil
         isSaving = true
         defer { isSaving = false }
@@ -110,6 +116,12 @@ public final class ServicePartMappingViewModel {
                 bundle: effectiveBundle
             )
             savedService = try await api.updateServiceParts(serviceId: serviceId, body: req)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: stay silent on cancellation — the PATCH may
+            // have already reached the server (idempotency token absent), so a
+            // banner would lie about the state. The sheet typically dismisses
+            // anyway; let the list reload reconcile.
+            return
         } catch {
             saveError = error.localizedDescription
         }
