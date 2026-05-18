@@ -15,7 +15,7 @@ import { recentViewsKey } from '@/components/layout/recentViewsKey';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useEscClose } from '@/hooks/useEscClose';
-import { formatTicketId, formatCurrency } from '@/utils/format';
+import { formatTicketId, formatCurrency, formatDate, formatShortDateTime } from '@/utils/format';
 import type { Ticket, TicketStatus, TicketNote, TicketDevice, TicketHistory } from '@bizarre-crm/shared';
 
 import { TicketActions } from './TicketActions';
@@ -772,9 +772,7 @@ export function TicketDetailPage() {
             const techName = techEmployee
               ? (techEmployee.full_name || `${techEmployee.first_name ?? ''} ${techEmployee.last_name ?? ''}`.trim())
               : `Tech #${so.tech_user_id}`;
-            const signedDate = so.signed_at
-              ? new Date(so.signed_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
-              : null;
+            const signedDate = so.signed_at ? formatDate(so.signed_at) : null;
             return (
               <div
                 className={`rounded-lg border p-3 text-sm ${
@@ -841,9 +839,7 @@ export function TicketDetailPage() {
                         const histTechName = histTech
                           ? (histTech.full_name || `${histTech.first_name ?? ''} ${histTech.last_name ?? ''}`.trim())
                           : [row.first_name, row.last_name].filter(Boolean).join(' ') || `Tech #${row.tech_user_id}`;
-                        const histDate = row.signed_at
-                          ? new Date(row.signed_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-                          : '—';
+                        const histDate = row.signed_at ? formatShortDateTime(row.signed_at) : '—';
                         const histPassed = row.checklist_results.filter((c) => c.passed).length;
                         const histTotal = row.checklist_results.length;
                         return (

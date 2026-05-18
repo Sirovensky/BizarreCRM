@@ -10,7 +10,7 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { useAuthStore } from '@/stores/authStore';
 import { useDraft } from '@/hooks/useDraft';
 import { cn } from '@/utils/cn';
-import { formatDateTime, formatPhone, timeAgo } from '@/utils/format';
+import { formatDateTime, formatPhone, timeAgo, parseServerDate } from '@/utils/format';
 import type { TicketNote, TicketHistory } from '@bizarre-crm/shared';
 
 // ─── Constants ──────────────────────────────────────────────────────
@@ -109,7 +109,13 @@ export function TicketNotes({
       data: m,
     }));
 
-    entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    // parseServerDate normalises SQL-style 'YYYY-MM-DD HH:MM:SS' (datetime('now'))
+    // which V8 would otherwise parse as local time, flipping order around
+    // the user's UTC offset (BUGHUNT-2026-05-18).
+    entries.sort((a, b) =>
+      (parseServerDate(b.timestamp)?.getTime() ?? 0)
+      - (parseServerDate(a.timestamp)?.getTime() ?? 0),
+    );
     return entries;
   }, [notes, history, smsMessages]);
 

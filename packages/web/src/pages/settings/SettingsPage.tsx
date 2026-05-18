@@ -24,7 +24,7 @@ import {
   validateImageFile,
 } from '@/utils/imageUploadPolicy';
 // @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): bare `n.toLocaleString()` ignored tenant locale — use shared formatNumber.
-import { formatNumber, formatCurrency, toLocalDateString } from '@/utils/format';
+import { formatNumber, formatCurrency, toLocalDateString, parseServerDate } from '@/utils/format';
 // FA-M7: DeviceTemplatesPage is a standalone admin editor. Before this change
 // it was only reachable by typing the URL (/settings/device-templates was
 // never defined). Mount it as a Settings tab so the DeviceTemplatePicker
@@ -2641,7 +2641,10 @@ function DataImportTab() {
     ...(rdImportStatus?.runs || []).map((r: any) => ({ ...r, source: 'RepairDesk' })),
     ...(rsImportStatus?.runs || []).map((r: any) => ({ ...r, source: 'RepairShopr' })),
     ...(mraImportStatus?.runs || []).map((r: any) => ({ ...r, source: 'MyRepairApp' })),
-  ].sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+  ].sort((a: any, b: any) =>
+    (parseServerDate(b.created_at)?.getTime() ?? 0)
+    - (parseServerDate(a.created_at)?.getTime() ?? 0),
+  );
 
   // Find whichever source is currently active (for progress bar)
   const activeImportStatus = rdImportStatus?.is_active ? rdImportStatus : rsImportStatus?.is_active ? rsImportStatus : mraImportStatus?.is_active ? mraImportStatus : null;

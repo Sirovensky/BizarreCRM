@@ -10,6 +10,7 @@ import { Star, Trash2, Loader2, ShieldOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { useHasRole } from '@/hooks/useHasRole';
+import { formatDate } from '@/utils/format';
 
 interface Employee {
   id: number;
@@ -202,7 +203,7 @@ export function PerformanceReviewsPage() {
                   <div key={r.id} className="px-4 py-3 text-sm">
                     <div className="flex items-center justify-between">
                       <div className="text-xs text-gray-500">
-                        {new Date(r.created_at).toLocaleDateString()} by{' '}
+                        {formatDate(r.created_at)} by{' '}
                         {r.reviewer_first} {r.reviewer_last}
                       </div>
                       <button

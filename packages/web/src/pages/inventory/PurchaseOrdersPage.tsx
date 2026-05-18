@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { inventoryApi, benchApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, formatDate } from '@/utils/format';
 import { confirm } from '@/stores/confirmStore';
 
 // WEB-UIUX-654: surface recent defect reports next to a PO line item so the
@@ -390,7 +390,7 @@ function PoDetailRow({ po, onReceive }: PoDetailRowProps) {
           {formatCurrency((po.total as number) || 0)}
         </td>
         <td className="px-4 py-3 text-surface-400 text-xs">
-          {po.created_at ? new Date(po.created_at as string).toLocaleDateString() : '—'}
+          {po.created_at ? formatDate(po.created_at as string) : '—'}
         </td>
       </tr>
 

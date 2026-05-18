@@ -14,7 +14,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Clock, Repeat2, Loader2 } from 'lucide-react';
 import { customerApi } from '@/api/endpoints';
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, formatDate } from '@/utils/format';
 
 interface CustomerHistorySidebarProps {
   customerId: number;
@@ -203,7 +203,7 @@ export function CustomerHistorySidebar({
                       {name}
                     </div>
                     <div className="text-[10px] text-surface-400">
-                      {new Date(t.created_at).toLocaleDateString()}
+                      {formatDate(t.created_at)}
                     </div>
                   </div>
                 </div>

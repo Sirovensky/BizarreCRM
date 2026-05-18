@@ -5,7 +5,7 @@ import { GripVertical, ChevronDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ticketApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
-import { formatCurrency, formatTicketId, timeAgo } from '@/utils/format';
+import { formatCurrency, formatTicketId, timeAgo, parseServerDate } from '@/utils/format';
 import { evaluateTicketTransition } from '@/utils/ticketTransitions';
 import { confirm } from '@/stores/confirmStore';
 
@@ -43,8 +43,13 @@ interface KanbanColumn {
 // ─── Helpers ───────────────────────────────────────────────────────
 
 function daysSince(iso: string): number {
-  const ts = iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z';
-  return Math.floor((Date.now() - new Date(ts).getTime()) / 86400000);
+  // parseServerDate handles both proper ISO and SQL-style 'YYYY-MM-DD HH:MM:SS'
+  // (datetime('now')) — without this, a SQL-style input becomes NaN here
+  // because raw appending of 'Z' to "YYYY-MM-DD HH:MM:SS" is invalid
+  // (BUGHUNT-2026-05-18).
+  const parsed = parseServerDate(iso);
+  if (!parsed || !Number.isFinite(parsed.getTime())) return 0;
+  return Math.floor((Date.now() - parsed.getTime()) / 86400000);
 }
 
 function customerName(ticket: KanbanTicket): string {

@@ -60,7 +60,7 @@ import {
 import { useDefaultTaxRateWithStatus } from '@/hooks/useDefaultTaxRate';
 import { useUiStore } from '@/stores/uiStore';
 import { cn } from '@/utils/cn';
-import { formatCurrency, formatDateTime, formatTime, generateIdempotencyKey, toLocalDateString } from '@/utils/format';
+import { formatCurrency, formatDateTime, formatTime, generateIdempotencyKey, toLocalDateString, parseServerDate } from '@/utils/format';
 import { stripPhone, formatPhoneAsYouType } from '@/utils/phoneFormat';
 import { PinModal } from '@/components/shared/PinModal';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -7102,7 +7102,10 @@ function HeldSalesView({ rows, loading, onRecall, onDiscard }: {
   const expiringMs = 23 * 60 * 60 * 1000;
   const isRepair = (row: HeldCartRow) => /repair|draft/i.test(row.label || '');
   const isExpiring = (row: HeldCartRow) => {
-    const t = row.created_at ? new Date(row.created_at).getTime() : NaN;
+    // parseServerDate normalises SQL-style 'YYYY-MM-DD HH:MM:SS' (datetime('now'))
+    // to a real UTC instant; without this, V8 reads it as local time and the
+    // "Expiring < 1h" badge skips by the user's UTC offset (BUGHUNT-2026-05-18).
+    const t = parseServerDate(row.created_at)?.getTime() ?? NaN;
     return Number.isFinite(t) && now - t > expiringMs;
   };
   const counts = {

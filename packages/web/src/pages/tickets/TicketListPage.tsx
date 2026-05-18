@@ -20,7 +20,7 @@ import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 import KanbanBoard from './KanbanBoard';
 import type { Ticket, TicketStatus } from '@bizarre-crm/shared';
-import { formatCurrency, formatDate, formatTicketId, timeAgo, toLocalDateString } from '@/utils/format';
+import { formatCurrency, formatDate, formatTicketId, timeAgo, toLocalDateString, parseServerDate } from '@/utils/format';
 import { formatApiError } from '@/utils/apiError';
 import { safeColor } from '@/utils/safeColor';
 import { normalizeListSearchKeyword } from '@/utils/listSearch';
@@ -567,8 +567,13 @@ const TicketRow = memo(function TicketRow({
         isExpanded && 'bg-surface-50/60 dark:bg-surface-800/30',
         (() => {
           if (ticket.status?.is_closed || ticket.status?.is_cancelled) return '';
-          const ua = ticket.updated_at;
-          const days = (Date.now() - new Date(ua.endsWith('Z') ? ua : ua + 'Z').getTime()) / 86400000;
+          // parseServerDate handles SQL-style 'YYYY-MM-DD HH:MM:SS' (datetime('now')).
+          // The old `ua + 'Z'` append produced an invalid string for SQL-style values,
+          // making `days` NaN and silently hiding the stale-ticket warning border
+          // (BUGHUNT-2026-05-18).
+          const parsed = parseServerDate(ticket.updated_at);
+          if (!parsed || !Number.isFinite(parsed.getTime())) return '';
+          const days = (Date.now() - parsed.getTime()) / 86400000;
           if (days > 7) return 'border-l-4 border-l-red-400 dark:border-l-red-500';
           if (days > 3) return 'border-l-4 border-l-amber-400 dark:border-l-amber-500';
           return '';
@@ -1659,10 +1664,15 @@ export function TicketListPage() {
         const today = new Date();
         const isToday = (d: number) => today.getFullYear() === year && today.getMonth() === month && today.getDate() === d;
 
-        // Group tickets by day
+        // Group tickets by day. parseServerDate normalises SQL-style
+        // 'YYYY-MM-DD HH:MM:SS' to a proper UTC instant; without this, V8
+        // treats it as local time and the calendar cell can be off by one
+        // day for users far from UTC (BUGHUNT-2026-05-18).
         const ticketsByDay: Record<number, Ticket[]> = {};
         for (const t of calendarTickets) {
-          const d = new Date(t.created_at).getDate();
+          const parsed = parseServerDate(t.created_at);
+          if (!parsed || !Number.isFinite(parsed.getTime())) continue;
+          const d = parsed.getDate();
           if (!ticketsByDay[d]) ticketsByDay[d] = [];
           ticketsByDay[d].push(t);
         }
@@ -2062,8 +2072,11 @@ export function TicketListPage() {
                       'p-3 cursor-pointer active:bg-surface-100 dark:active:bg-surface-800 transition-colors',
                       (() => {
                         if (ticket.status?.is_closed || ticket.status?.is_cancelled) return '';
-                        const ua = ticket.updated_at;
-                        const days = (Date.now() - new Date(ua.endsWith('Z') ? ua : ua + 'Z').getTime()) / 86400000;
+                        // BUGHUNT-2026-05-18: parseServerDate handles SQL-style timestamps
+                        // (datetime('now')) — old code appended 'Z' and produced NaN days.
+                        const parsed = parseServerDate(ticket.updated_at);
+                        if (!parsed || !Number.isFinite(parsed.getTime())) return '';
+                        const days = (Date.now() - parsed.getTime()) / 86400000;
                         if (days > 7) return 'border-l-4 border-l-red-400';
                         if (days > 3) return 'border-l-4 border-l-amber-400';
                         return '';

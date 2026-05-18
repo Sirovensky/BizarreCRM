@@ -47,7 +47,7 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { formatApiError } from '@/utils/apiError';
-import { formatCurrency, formatShortDateTime, formatDate } from '@/utils/format';
+import { formatCurrency, formatShortDateTime, formatDate, parseServerDate } from '@/utils/format';
 import { formatPhoneAsYouType, stripPhone } from '@/utils/phoneFormat';
 import { CopyButton } from '@/components/shared/CopyButton';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
@@ -1995,9 +1995,11 @@ function TicketsTab({ customerId }: { customerId: number }) {
     );
   }
 
-  // Sort by created_at descending (newest first)
+  // Sort by created_at descending (newest first). parseServerDate normalises
+  // SQL-style 'YYYY-MM-DD HH:MM:SS' (datetime('now')) which V8 would otherwise
+  // mis-parse as local time, flipping order across the user's UTC offset.
   const sorted = [...tickets].sort((a, b) =>
-    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    (parseServerDate(b.created_at)?.getTime() ?? 0) - (parseServerDate(a.created_at)?.getTime() ?? 0)
   );
 
   return (

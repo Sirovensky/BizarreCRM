@@ -21,6 +21,7 @@ import { Camera, Eraser, Check, X, Loader2, ClipboardCheck, AlertTriangle, Histo
 import toast from 'react-hot-toast';
 import { benchApi, settingsApi, ticketApi } from '@/api/endpoints';
 import { formatApiError } from '@/utils/apiError';
+import { formatDate } from '@/utils/format';
 import { confirm } from '@/stores/confirmStore';
 import {
   IMAGE_UPLOAD_ACCEPT,
@@ -484,9 +485,7 @@ export function QcSignOffModal({
             <div className="min-w-0">
               <p className="font-semibold">
                 Existing QC sign-off recorded
-                {priorSignOff.signed_at
-                  ? ` on ${new Date(priorSignOff.signed_at).toLocaleDateString()}`
-                  : ''}
+                {priorSignOff.signed_at ? ` on ${formatDate(priorSignOff.signed_at)}` : ''}
               </p>
               {priorSignOff.notes && (
                 <p className="mt-1 text-xs opacity-80">{priorSignOff.notes}</p>

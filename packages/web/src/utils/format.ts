@@ -123,7 +123,7 @@ export function formatCents(cents: number | null | undefined, currencyOverride?:
 // the browser's UTC offset (and flipping the calendar day for users west
 // of UTC near midnight UTC). Normalise to a proper ISO-8601 instant so
 // the centralised date helpers below get this right for every callsite.
-function normalizeMaybeSqliteTs(iso: string): string {
+export function normalizeMaybeSqliteTs(iso: string): string {
   if (!iso) return iso;
   // Already a full ISO instant (has T and Z/offset) \u2014 keep as-is.
   if (iso.includes('T') && (iso.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(iso))) {
@@ -138,6 +138,27 @@ function normalizeMaybeSqliteTs(iso: string): string {
     return `${iso}Z`;
   }
   return iso;
+}
+
+/**
+ * Parse a server-emitted timestamp into a Date.
+ *
+ * BUGHUNT-2026-05-18: server columns defaulting to SQLite `datetime('now')`
+ * arrive as 'YYYY-MM-DD HH:MM:SS' with no T, no Z. V8 parses such bare
+ * strings as LOCAL time, which silently shifts every comparison /
+ * relative-time calculation by the user's UTC offset.
+ *
+ * Always prefer this over `new Date(serverField)` for anything that came
+ * from the server. Returns `null` for empty input and `Invalid Date` for
+ * parse failures (caller can `Number.isFinite(d.getTime())` to check).
+ */
+export function parseServerDate(value: string | number | Date | null | undefined): Date | null {
+  if (value == null) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === 'number') return new Date(value);
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return new Date(normalizeMaybeSqliteTs(trimmed));
 }
 
 // @audit-fixed (WEB-FM-008 / Fixer-C1 2026-04-25): added optional `localeOverride`

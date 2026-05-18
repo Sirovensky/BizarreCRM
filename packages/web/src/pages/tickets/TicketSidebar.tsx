@@ -10,7 +10,7 @@ import toast from 'react-hot-toast';
 import { ticketApi, voiceApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
 import { cn } from '@/utils/cn';
-import { formatDate, formatDateTime, formatPhone, formatTicketId, timeAgo } from '@/utils/format';
+import { formatDate, formatDateTime, formatPhone, formatTicketId, formatTime, timeAgo, parseServerDate } from '@/utils/format';
 import { safeColor } from '@/utils/safeColor';
 import type { Ticket, TicketDevice } from '@bizarre-crm/shared';
 
@@ -442,7 +442,7 @@ function AppointmentsCard({ ticketId }: { ticketId: number }) {
                 </span>
                 {appt.end_time && (
                   <span className="text-surface-400">
-                    - {new Date(appt.end_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                    - {formatTime(appt.end_time)}
                   </span>
                 )}
               </div>
@@ -629,7 +629,14 @@ export function TicketSidebar({
           </div>
           {devices.filter((d) => d.warranty).map((d) => {
             const warrantyStart = d.collected_date ?? d.created_at;
-            const daysRemaining = d.warranty_days ? Math.max(0, d.warranty_days - Math.floor((Date.now() - new Date(warrantyStart).getTime()) / 86400000)) : 0;
+            // BUGHUNT-2026-05-18: parseServerDate handles SQL-style 'YYYY-MM-DD HH:MM:SS'
+            // (datetime('now')) which V8 would otherwise mis-parse as local time,
+            // shifting warranty days by the user's UTC offset.
+            const warrantyMs = parseServerDate(warrantyStart)?.getTime();
+            const daysElapsed = Number.isFinite(warrantyMs ?? NaN)
+              ? Math.floor((Date.now() - (warrantyMs as number)) / 86400000)
+              : 0;
+            const daysRemaining = d.warranty_days ? Math.max(0, d.warranty_days - daysElapsed) : 0;
             return (
               <div key={d.id} className="flex items-center justify-between text-sm mb-1.5 last:mb-0">
                 <span className="text-surface-600 dark:text-surface-400">{d.service?.name || d.device_name}</span>
