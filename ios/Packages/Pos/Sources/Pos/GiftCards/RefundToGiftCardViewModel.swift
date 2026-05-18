@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Foundation
 import Observation
+import Core
 import Networking
 
 // MARK: - RefundToGiftCardViewModel
@@ -66,6 +67,13 @@ public final class RefundToGiftCardViewModel {
         do {
             let response = try await api.refundInvoice(id: invoiceId, request: request)
             state = .success(response)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: Sheet dismissed mid-refund cancelled the Task.
+            // Painting .failure invites a retry that could double-refund the
+            // invoice (or issue two gift cards). Revert to .idle so any retry
+            // is intentional.
+            state = .idle
+            return
         } catch let APITransportError.httpStatus(code, message) {
             let msg = (message?.isEmpty == false) ? message! : "Refund failed"
             state = .failure("Refund failed (\(code)): \(msg)")
