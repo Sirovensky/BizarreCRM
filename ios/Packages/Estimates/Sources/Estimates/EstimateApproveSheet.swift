@@ -66,6 +66,15 @@ final class EstimateApproveSheetViewModel {
             )
             didApprove = true
             AppLog.ui.info("Estimate \(self.estimateId) approved by staff.")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: POST /approve records a customer signature
+            // and flips the estimate to approved. Money-binding for the
+            // downstream invoice/convert path. If the user dismisses mid-
+            // submit, server may have already accepted; painting an error
+            // tempts a retap that double-approves (server is idempotent on
+            // status but emits an audit row + may trigger notification each
+            // call). Stay silent.
+            return
         } catch {
             errorMessage = AppError.from(error).errorDescription ?? error.localizedDescription
             AppLog.ui.error("Estimate approve failed: \(error.localizedDescription, privacy: .public)")
