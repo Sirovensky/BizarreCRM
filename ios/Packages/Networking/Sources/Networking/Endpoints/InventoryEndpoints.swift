@@ -138,6 +138,13 @@ public extension APIClient {
                             "/api/v1/inventory/\(id)",
                             as: InventoryListItem.self
                         )
+                    } catch is CancellationError {
+                        // BUGHUNT-2026-05-17: don't mask cancel as nil — the
+                        // partial-results sort below would otherwise hand the
+                        // caller a label-print job for whatever subset finished.
+                        throw CancellationError()
+                    } catch let urlErr as URLError where urlErr.code == .cancelled {
+                        throw CancellationError()
                     } catch {
                         return nil
                     }
