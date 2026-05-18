@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import DesignSystem
 import Networking
 
@@ -80,6 +81,12 @@ public final class ReviewSettingsViewModel {
             errorMessage = "One or more URLs are invalid."
             return
         }
+        // BUGHUNT-2026-05-17: synchronous re-entry guard. CMD+Return is bound
+        // to Save, and the `.disabled(vm.isSaving)` button re-render lags a
+        // double-tap or repeated key-press, so two Tasks could both PATCH
+        // `/settings/review-platforms` — bumping audit log noise on the
+        // review URLs config (which feeds the public-facing nudge sheet).
+        guard !isSaving else { return }
         isSaving = true
         errorMessage = nil
         let settings = ReviewPlatformSettings(
@@ -90,6 +97,13 @@ public final class ReviewSettingsViewModel {
         do {
             _ = try await api.saveReviewPlatformSettings(settings)
             didSave = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: navigating off the settings page mid-save
+            // cancels the in-flight Task. The catch-all was painting
+            // "cancelled" as a save-failure error and re-enabling Save,
+            // tempting a retry that could land a duplicate PATCH if the
+            // original had already committed server-side.
+            errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
         }
