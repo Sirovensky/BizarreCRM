@@ -75,6 +75,13 @@ public final class SmsThreadViewModel {
             draft = ""
             newMessageId = nil
             await load() // refresh thread
+        } catch let e where AppError.isCancellation(e) {
+            // SMS send is real money + a customer-visible text. If the
+            // server already accepted, retrying double-charges and
+            // double-texts. Keep `draft` populated so the user can choose
+            // whether to retry after seeing whether the message appears
+            // in the refreshed thread.
+            return
         } catch {
             AppLog.ui.error("SMS send failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -98,6 +105,9 @@ public final class SmsThreadViewModel {
             _ = try await repo.send(to: phoneNumber, message: body)
             draft = ""
             await load()
+        } catch let e where AppError.isCancellation(e) {
+            // Same SMS-double-send guard as send().
+            return
         } catch {
             AppLog.ui.error("SMS retry failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
