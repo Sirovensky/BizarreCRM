@@ -135,6 +135,9 @@ public struct AppointmentReminderSettingsView: View {
             TextEditor(text: $draftSettings.messageTemplate)
                 .font(.brandMono(size: 13))
                 .frame(minHeight: 100)
+                #if canImport(UIKit)
+                .textInputAutocapitalization(.sentences)
+                #endif
                 .accessibilityLabel("Message template")
             Text("Tokens: {{customer_name}}, {{time}}")
                 .font(.brandLabelSmall())

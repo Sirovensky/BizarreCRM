@@ -250,6 +250,9 @@ public struct ComposeNewThreadView: View {
                 .padding(BrandSpacing.xs)
                 .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
                 .padding(.horizontal, BrandSpacing.md)
+                #if canImport(UIKit)
+                .textInputAutocapitalization(.sentences)
+                #endif
                 .accessibilityLabel("Message body")
 
             if let err = vm.sendError {

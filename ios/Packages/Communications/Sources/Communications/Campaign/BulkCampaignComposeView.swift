@@ -113,6 +113,9 @@ public struct BulkCampaignComposeView: View {
                 .frame(minHeight: 120, maxHeight: 200)
                 .padding(BrandSpacing.sm)
                 .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 10))
+                #if canImport(UIKit)
+                .textInputAutocapitalization(.sentences)
+                #endif
                 .accessibilityLabel("Campaign message body")
         }
     }

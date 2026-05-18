@@ -297,6 +297,9 @@ public struct CustomerAddNoteSheet: View {
                         TextEditor(text: $noteBody)
                             .font(.brandBodyMedium())
                             .frame(minHeight: noteType == .detail || noteType == .meeting ? 160 : 80)
+                            #if canImport(UIKit)
+                            .textInputAutocapitalization(.sentences)
+                            #endif
                             .accessibilityLabel("Note body")
                             .accessibilityHint("Type the note content here. Use @name to mention a teammate.")
                             .onChange(of: noteBody) { _, newValue in

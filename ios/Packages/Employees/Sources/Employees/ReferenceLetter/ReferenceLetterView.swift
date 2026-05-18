@@ -107,6 +107,9 @@ public struct ReferenceLetterView: View {
                 .padding(BrandSpacing.sm)
                 .background(Color.bizarreSurface2.opacity(0.7), in: RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.bizarreOutline.opacity(0.5), lineWidth: 0.5))
+                #if canImport(UIKit)
+                .textInputAutocapitalization(.sentences)
+                #endif
                 .accessibilityIdentifier("ref.letter.body")
                 .accessibilityLabel("Letter body text")
         }

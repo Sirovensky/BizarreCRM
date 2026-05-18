@@ -119,6 +119,9 @@ public struct EmailComposerView: View {
             VStack(alignment: .leading, spacing: BrandSpacing.xs) {
                 Text("Subject").font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted)
                 TextField("Subject line", text: $vm.subject)
+                    #if canImport(UIKit)
+                    .textInputAutocapitalization(.sentences)
+                    #endif
                     .accessibilityLabel("Subject line")
             }
 
@@ -130,6 +133,9 @@ public struct EmailComposerView: View {
                     .font(.brandBodyMedium())
                     .foregroundStyle(.bizarreOnSurface)
                     .background(Color.bizarreSurface2, in: RoundedRectangle(cornerRadius: 8))
+                    #if canImport(UIKit)
+                    .textInputAutocapitalization(.sentences)
+                    #endif
                     .accessibilityLabel("Email body — HTML")
             }
 

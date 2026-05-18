@@ -90,6 +90,9 @@ public struct PTORequestSheet: View {
                 Section("Reason (optional)") {
                     TextEditor(text: $vm.reason)
                         .frame(minHeight: 72)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.sentences)
+                        #endif
                         .accessibilityLabel("Reason for time off")
                 }
 

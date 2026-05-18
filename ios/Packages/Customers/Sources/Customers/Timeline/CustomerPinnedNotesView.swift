@@ -254,6 +254,9 @@ public struct CustomerNotesListView: View {
                     .frame(minHeight: 120)
                     .padding(BrandSpacing.sm)
                     .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 10))
+                    #if canImport(UIKit)
+                    .textInputAutocapitalization(.sentences)
+                    #endif
                 Spacer()
             }
             .padding(BrandSpacing.base)

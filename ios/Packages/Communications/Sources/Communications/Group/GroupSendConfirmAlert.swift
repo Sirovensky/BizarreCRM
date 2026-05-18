@@ -156,6 +156,9 @@ public struct GroupMessageComposer: View {
             .background(Color.bizarreSurfaceBase)
             .padding(BrandSpacing.base)
             .frame(maxHeight: .infinity)
+            #if canImport(UIKit)
+            .textInputAutocapitalization(.sentences)
+            #endif
             .overlay(alignment: .topLeading) {
                 if vm.body.isEmpty {
                     Text("Write your message…")

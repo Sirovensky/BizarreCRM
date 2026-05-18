@@ -102,6 +102,9 @@ public struct ScorecardManagerNotesSheet: View {
                 Section("Note") {
                     TextEditor(text: $vm.noteText)
                         .frame(minHeight: 100)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.sentences)
+                        #endif
                         .accessibilityLabel("Manager note text")
                 }
 

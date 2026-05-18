@@ -80,6 +80,9 @@ public struct TimeOffRequestSheet: View {
                 Section("Reason (optional)") {
                     TextEditor(text: $sheetVM.reason)
                         .frame(minHeight: 72)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.sentences)
+                        #endif
                         .accessibilityLabel("Reason for time-off request")
                 }
 

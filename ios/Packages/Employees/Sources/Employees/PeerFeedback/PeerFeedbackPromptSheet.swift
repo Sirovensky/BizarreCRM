@@ -232,6 +232,9 @@ private struct DictationTextEditor: View {
             if text.isEmpty {
                 TextEditor(text: $text)
                     .frame(minHeight: minHeight)
+                    #if canImport(UIKit)
+                    .textInputAutocapitalization(.sentences)
+                    #endif
                     .overlay(alignment: .topLeading) {
                         if text.isEmpty {
                             Text(placeholder)
@@ -245,6 +248,9 @@ private struct DictationTextEditor: View {
             } else {
                 TextEditor(text: $text)
                     .frame(minHeight: minHeight)
+                    #if canImport(UIKit)
+                    .textInputAutocapitalization(.sentences)
+                    #endif
                     .accessibilityLabel(placeholder)
             }
             if #available(iOS 17.0, *) {
