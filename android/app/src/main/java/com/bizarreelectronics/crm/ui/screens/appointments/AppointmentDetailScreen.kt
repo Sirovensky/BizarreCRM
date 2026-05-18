@@ -9,6 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ChevronRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -473,7 +474,7 @@ private fun CustomerCard(
             }
             if (onClick != null) {
                 Icon(
-                    Icons.Default.ChevronRight,
+                    Icons.AutoMirrored.Filled.ChevronRight,
                     contentDescription = "View customer",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -521,7 +522,7 @@ private fun LinkedEntityRow(
                 )
             }
             Icon(
-                Icons.Default.ChevronRight,
+                Icons.AutoMirrored.Filled.ChevronRight,
                 contentDescription = null,
                 modifier = Modifier.size(16.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,

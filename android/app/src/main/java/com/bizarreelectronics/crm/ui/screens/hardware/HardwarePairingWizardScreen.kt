@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ChevronRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -433,7 +434,7 @@ private fun SelectStep(
                                 Icon(Icons.Default.BluetoothConnected, contentDescription = "Bluetooth device")
                             },
                             trailingContent = {
-                                Icon(Icons.Default.ChevronRight, contentDescription = null)
+                                Icon(Icons.AutoMirrored.Filled.ChevronRight, contentDescription = null)
                             },
                         )
                     }
@@ -471,7 +472,7 @@ private fun RoleStep(onSelect: (HardwareRole) -> Unit) {
                         )
                     },
                     trailingContent = {
-                        Icon(Icons.Default.ChevronRight, contentDescription = null)
+                        Icon(Icons.AutoMirrored.Filled.ChevronRight, contentDescription = null)
                     },
                 )
             }

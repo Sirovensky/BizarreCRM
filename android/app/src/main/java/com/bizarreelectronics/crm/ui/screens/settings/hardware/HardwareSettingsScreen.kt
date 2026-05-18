@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ChevronRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -89,7 +90,7 @@ fun HardwareSettingsScreen(
                             Icon(Icons.Default.Print, contentDescription = null)
                         },
                         trailingContent = {
-                            Icon(Icons.Default.ChevronRight, contentDescription = null)
+                            Icon(Icons.AutoMirrored.Filled.ChevronRight, contentDescription = null)
                         },
                     )
                 }
@@ -108,7 +109,7 @@ fun HardwareSettingsScreen(
                             Icon(Icons.Default.Scale, contentDescription = null)
                         },
                         trailingContent = {
-                            Icon(Icons.Default.ChevronRight, contentDescription = null)
+                            Icon(Icons.AutoMirrored.Filled.ChevronRight, contentDescription = null)
                         },
                     )
                 }
@@ -135,7 +136,7 @@ fun HardwareSettingsScreen(
                             Icon(Icons.Default.Add, contentDescription = null)
                         },
                         trailingContent = {
-                            Icon(Icons.Default.ChevronRight, contentDescription = null)
+                            Icon(Icons.AutoMirrored.Filled.ChevronRight, contentDescription = null)
                         },
                     )
                 }
