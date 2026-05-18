@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import Core
 import Networking
 
 /// §16.7 — view model for the post-sale screen. Owns the charge-spinner
@@ -198,6 +199,12 @@ public final class PosPostSaleViewModel: Identifiable {
             // invoice_id -1. Treat as soft-success so staff aren't trained
             // to distrust the flow.
             emailStatus = .sent("Receipt placeholder (real charge pending §17.3)")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sendReceipt has no idempotency key. A
+            // "failed" toast tempted a re-tap that emailed the customer a
+            // second copy. Revert to idle so the user must reopen the
+            // sheet rather than reacting to a banner.
+            emailStatus = .idle
         } catch {
             emailStatus = .failed(error.localizedDescription)
         }
@@ -226,6 +233,10 @@ public final class PosPostSaleViewModel: Identifiable {
             smsStatus = .sent("Text sent to \(phoneInput).")
         } catch let APITransportError.httpStatus(status, _) where status == 404 {
             smsStatus = .sent("Receipt placeholder (real charge pending §17.3)")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sendSms has no idempotency key. A "failed"
+            // toast tempted a re-tap that texted the customer a second copy.
+            smsStatus = .idle
         } catch {
             smsStatus = .failed(error.localizedDescription)
         }
