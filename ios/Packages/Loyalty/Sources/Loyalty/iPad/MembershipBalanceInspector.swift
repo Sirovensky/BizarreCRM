@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import DesignSystem
 import Networking
 
@@ -70,6 +71,8 @@ public final class MembershipBalanceInspectorViewModel {
             } else {
                 state = .failed(transport.localizedDescription)
             }
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             state = .failed(error.localizedDescription)
         }

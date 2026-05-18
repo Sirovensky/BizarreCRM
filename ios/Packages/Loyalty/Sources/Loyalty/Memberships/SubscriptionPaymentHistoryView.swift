@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import DesignSystem
 import Networking
 
@@ -39,6 +40,8 @@ public final class SubscriptionPaymentHistoryViewModel {
             state = result.isEmpty ? .empty : .loaded
         } catch let t as APITransportError {
             state = .failed(t.localizedDescription)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             state = .failed(error.localizedDescription)
         }

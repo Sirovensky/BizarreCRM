@@ -62,6 +62,8 @@ public final class ExpenseReceiptInspectorViewModel {
             }
             let url = resolveURL(path: path, base: base)
             state = .loaded(receiptURL: url)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             AppLog.ui.error(
                 "Receipt status load failed: \(error.localizedDescription, privacy: .public)"
@@ -80,6 +82,10 @@ public final class ExpenseReceiptInspectorViewModel {
         do {
             try await api.deleteExpenseReceipt(expenseId: expenseId)
             state = .noReceipt
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: optimistic — server may have committed the delete;
+            // do NOT revert isDeleting or set deleteError to avoid double-delete risk.
+            return
         } catch {
             AppLog.ui.error(
                 "Receipt delete failed: \(error.localizedDescription, privacy: .public)"

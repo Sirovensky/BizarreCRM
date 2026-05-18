@@ -26,6 +26,8 @@ public final class LeadSourceReportViewModel {
             let leads = try await api.listLeads(pageSize: 200)
             let stats = LeadSourceAnalytics.computeStats(from: leads)
             state = .loaded(stats)
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             AppLog.ui.error("SourceReport load failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)

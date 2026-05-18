@@ -1,6 +1,7 @@
 import SwiftUI
 import Charts
 import Observation
+import Core
 import DesignSystem
 
 // MARK: - ForecastWidget
@@ -28,6 +29,8 @@ public final class ForecastViewModel {
         do {
             let payload = try await repo.fetchForecast()
             state = .loaded(payload)
+        } catch let e where AppError.isCancellation(e) {
+            state = .idle  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             state = .failed(error.localizedDescription)
         }

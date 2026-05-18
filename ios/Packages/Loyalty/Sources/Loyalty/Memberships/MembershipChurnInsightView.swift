@@ -81,6 +81,8 @@ public final class MembershipChurnInsightViewModel {
         do {
             cohort = try await api.membershipChurnCohort()
             state = .loaded
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             AppLog.ui.error("Churn cohort load failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)
