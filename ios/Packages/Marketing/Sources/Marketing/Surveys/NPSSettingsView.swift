@@ -106,6 +106,16 @@ public final class NPSSettingsViewModel {
         do {
             settings = try await api.updateNPSSettings(settings)
             savedSuccessfully = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: navigating off the Settings → Surveys
+            // page mid-save cancels the in-flight Task. Without this short-
+            // circuit `AppError.from(error)` returned `.cancelled`, whose
+            // localizedDescription "The operation was cancelled." was being
+            // painted as an error banner on a page the operator was already
+            // leaving. The underlying PATCH may have succeeded server-side,
+            // so re-tap is also unsafe — leave `savedSuccessfully` false
+            // and clear errorMessage so any retry is intentional.
+            errorMessage = nil
         } catch {
             errorMessage = AppError.from(error).localizedDescription
         }
