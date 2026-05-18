@@ -47,25 +47,27 @@ class RecordingConsentViewModel @Inject constructor(
     fun loadRecordingConfig(callId: Long) {
         viewModelScope.launch {
             _state.value = RecordingConsentUiState(isLoading = true)
-            runCatching { voiceApi.getRecordingConfig() }
-                .onSuccess { resp ->
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        config = resp.data,
-                    )
-                }
-                .onFailure { e ->
-                    val is404 = (e as? HttpException)?.code() == 404
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        config = if (is404) RecordingConfigData(
-                            enabled = false,
-                            two_party_required = false,
-                            announcement_url = null,
-                        ) else null,
-                        error = if (is404) null else (e.message ?: "Failed to load recording config"),
-                    )
-                }
+            // BUGHUNT-2026-05-17: runCatching swallows CancellationException.
+            try {
+                val resp = voiceApi.getRecordingConfig()
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    config = resp.data,
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val is404 = (e as? HttpException)?.code() == 404
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    config = if (is404) RecordingConfigData(
+                        enabled = false,
+                        two_party_required = false,
+                        announcement_url = null,
+                    ) else null,
+                    error = if (is404) null else (e.message ?: "Failed to load recording config"),
+                )
+            }
         }
     }
 

@@ -6,6 +6,7 @@ import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.GoalApi
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -136,30 +137,36 @@ class GoalsViewModel @Inject constructor(
                 put("is_team_goal", isTeamGoal)
                 if (employeeId != null) put("employee_id", employeeId)
             }
-            runCatching { goalApi.createGoal(body) }
-                .onSuccess {
-                    _state.value = _state.value.copy(
-                        showCreateDialog = false,
-                        toastMessage = "Goal created",
-                    )
-                    loadGoals()
-                }
-                .onFailure {
-                    _state.value = _state.value.copy(toastMessage = "Failed to create goal")
-                }
+            // BUGHUNT-2026-05-17: runCatching swallows CancellationException;
+            // create retap could DUPLICATE the goal row.
+            try {
+                goalApi.createGoal(body)
+                _state.value = _state.value.copy(
+                    showCreateDialog = false,
+                    toastMessage = "Goal created",
+                )
+                loadGoals()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(toastMessage = "Failed to create goal")
+            }
         }
     }
 
     fun deleteGoal(id: Long) {
         viewModelScope.launch {
-            runCatching { goalApi.deleteGoal(id) }
-                .onSuccess {
-                    _state.value = _state.value.copy(toastMessage = "Goal removed")
-                    loadGoals()
-                }
-                .onFailure {
-                    _state.value = _state.value.copy(toastMessage = "Failed to remove goal")
-                }
+            // BUGHUNT-2026-05-17: runCatching swallows CancellationException;
+            // server may have committed delete, retap 404s.
+            try {
+                goalApi.deleteGoal(id)
+                _state.value = _state.value.copy(toastMessage = "Goal removed")
+                loadGoals()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(toastMessage = "Failed to remove goal")
+            }
         }
     }
 

@@ -6,6 +6,7 @@ import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.PerformanceApi
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -144,17 +145,21 @@ class PerformanceReviewViewModel @Inject constructor(
                     "overall" to ratings.overall,
                 ))
             }
-            runCatching { performanceApi.createReview(body) }
-                .onSuccess {
-                    _state.value = _state.value.copy(
-                        showCreateDialog = false,
-                        toastMessage = "Review submitted",
-                    )
-                    loadReviews()
-                }
-                .onFailure {
-                    _state.value = _state.value.copy(toastMessage = "Failed to submit review")
-                }
+            // BUGHUNT-2026-05-17: runCatching swallows CancellationException;
+            // performance review create retap creates a DUPLICATE review row
+            // for the same employee + period, distorting their record.
+            try {
+                performanceApi.createReview(body)
+                _state.value = _state.value.copy(
+                    showCreateDialog = false,
+                    toastMessage = "Review submitted",
+                )
+                loadReviews()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(toastMessage = "Failed to submit review")
+            }
         }
     }
 

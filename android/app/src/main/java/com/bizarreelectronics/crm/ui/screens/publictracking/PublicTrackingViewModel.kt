@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.PublicTrackingApi
 import com.bizarreelectronics.crm.data.remote.dto.PublicTicketData
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -81,19 +82,23 @@ class PublicTrackingViewModel @Inject constructor(
     private fun load() {
         _state.value = PublicTrackingUiState.Loading
         viewModelScope.launch {
-            runCatching {
-                publicTrackingApi.getPortalTicket(
+            // BUGHUNT-2026-05-17: runCatching swallows CancellationException.
+            // Public-facing tracking page — nav cancel was painting fake
+            // "Something went wrong" instead of returning early.
+            try {
+                val response = publicTrackingApi.getPortalTicket(
                     orderId = orderId,
                     authorization = "Bearer $trackingToken",
                 )
-            }.onSuccess { response ->
                 val data = response.data
-                if (data == null) {
-                    _state.value = PublicTrackingUiState.NotFound
+                _state.value = if (data == null) {
+                    PublicTrackingUiState.NotFound
                 } else {
-                    _state.value = PublicTrackingUiState.Success(data)
+                    PublicTrackingUiState.Success(data)
                 }
-            }.onFailure { e ->
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
                 Timber.tag("PublicTracking").e(e, "load failed orderId=%s", orderId)
                 _state.value = when {
                     e is HttpException && e.code() == 404 -> PublicTrackingUiState.NotFound
