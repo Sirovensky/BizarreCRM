@@ -47,6 +47,14 @@ public final class StocktakeStartViewModel {
 
         do {
             startedSession = try await api.startStocktake(req)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: startStocktake is POST without an idempotency
+            // key — server inserts a fresh session row. A `.errorMessage =
+            // "cancelled"` toast tempted a re-tap that could persist a second
+            // open stocktake session for the same scope, splitting subsequent
+            // counts across two rows. Stay silent on cancellation; the
+            // session list refresh shows whether the original landed.
+            return
         } catch {
             if InventoryOfflineQueue.isNetworkError(error) {
                 errorMessage = "You're offline. Connect to start a stocktake."
