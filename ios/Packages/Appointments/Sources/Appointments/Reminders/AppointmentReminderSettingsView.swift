@@ -31,12 +31,23 @@ public final class AppointmentReminderSettingsViewModel {
     }
 
     public func save() async {
+        // BUGHUNT-2026-05-17: Re-entry guard — without this, a rapid double-
+        // tap on the Save button issues two PUT updates with potentially
+        // different field values mid-typing. The reminder policy gates when
+        // SMS/email goes out, so wrong values = wrong send timing.
+        guard !isSaving else { return }
         isSaving = true
         defer { isSaving = false }
         errorMessage = nil
         do {
             settings = try await api.updateAppointmentReminderPolicy(settings)
             saveSuccess = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PUT update reminder policy. If user dismisses
+            // mid-save, server may have accepted. Painting an error tempts
+            // a retap that overwrites with potentially-edited values. Stay
+            // silent; a fresh load reads the current server state.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
