@@ -279,6 +279,16 @@ public actor PhotoUploadService {
                     progress.isComplete = true
                 }
                 AppLog.ui.info("PhotoUploadService: upload complete for photo \(photoId)")
+            } catch is CancellationError {
+                // BUGHUNT-2026-05-17: cancellation is a teardown signal, not an
+                // upload failure. Previously the catch-all wrote `error` onto
+                // progress AND inserted a dead-letter row, so the next sync
+                // flush would try to re-upload a payload the user had
+                // explicitly dismissed. Bail without touching state — the
+                // caller's parent task already knows the work was cancelled.
+                AppLog.ui.info("PhotoUploadService: upload cancelled for photo \(photoId)")
+            } catch let urlErr as URLError where urlErr.code == .cancelled {
+                AppLog.ui.info("PhotoUploadService: upload cancelled (URLError) for photo \(photoId)")
             } catch {
                 await MainActor.run {
                     progress.error = error
