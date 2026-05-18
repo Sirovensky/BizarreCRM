@@ -159,6 +159,36 @@ export async function tryAutoRespond(
   msg: InboundSmsMessage,
 ): Promise<MatchResult> {
   try {
+    // BUGHUNT-2026-05-17 [TCPA / cost]: per-sender rate limit. Without
+    // this guard a misconfigured gateway loop (carrier receipts misread
+    // as inbound, third-party bot mirroring our auto-replies, or
+    // adversarial client) can pin the matcher in a hot loop, each
+    // inbound triggering a paid outbound auto-response. Cap to one
+    // auto-response per inbound sender per 10 minutes. We dedup on
+    // conv_phone (digits-only, leading 1 stripped) so the same
+    // sender across +1-formatted vs 10-digit inbound counts as one.
+    const AUTO_RESPONDER_COOLDOWN_MIN = 10;
+    const fromDigits = (msg.from || '').replace(/\D/g, '').replace(/^1/, '');
+    if (fromDigits) {
+      const recentRow = await adb.get<{ recent: number }>(
+        `SELECT COUNT(1) AS recent
+           FROM sms_messages
+          WHERE conv_phone = ?
+            AND direction = 'outbound'
+            AND provider = 'auto-responder'
+            AND created_at > datetime('now', ? || ' minutes')`,
+        fromDigits,
+        `-${AUTO_RESPONDER_COOLDOWN_MIN}`,
+      );
+      if (recentRow && Number(recentRow.recent) > 0) {
+        logger.info('sms auto-responder rate-limited per sender', {
+          fromMask: fromDigits.slice(-4),
+          cooldownMin: AUTO_RESPONDER_COOLDOWN_MIN,
+        });
+        return { matched: false };
+      }
+    }
+
     const MATCHER_LIMIT = 200;
     const rows = await adb.all<AutoResponderRow>(
       `SELECT id, rule_json, response_body
