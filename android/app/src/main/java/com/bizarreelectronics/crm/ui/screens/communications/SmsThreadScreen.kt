@@ -176,6 +176,8 @@ class SmsThreadViewModel @Inject constructor(
                     hasNoCustomer = data.customer == null,
                     entityTickets = ticketRefs,
                 )
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow to preserve structured concurrency
             } catch (_: Exception) {}
         }
     }

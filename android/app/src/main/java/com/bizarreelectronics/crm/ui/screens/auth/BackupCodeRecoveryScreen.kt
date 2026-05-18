@@ -31,6 +31,7 @@ import com.bizarreelectronics.crm.data.remote.dto.BackupCodeRecoveryRequest
 import com.bizarreelectronics.crm.ui.components.shared.BrandPrimaryButton
 import com.bizarreelectronics.crm.util.EmailValidator
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -118,6 +119,8 @@ class BackupCodeRecoveryViewModel @Inject constructor(
                 // Server performs the full recovery (resets password, disables 2FA).
                 // On success the user should log in fresh — signal success to the nav.
                 _state.value = _state.value.copy(isLoading = false, success = true)
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow to preserve structured concurrency
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,

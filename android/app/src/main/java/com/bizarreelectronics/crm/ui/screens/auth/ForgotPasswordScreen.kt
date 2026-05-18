@@ -24,6 +24,7 @@ import com.bizarreelectronics.crm.data.remote.dto.ForgotPasswordRequest
 import com.bizarreelectronics.crm.ui.components.shared.BrandPrimaryButton
 import com.bizarreelectronics.crm.util.EmailValidator
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -77,6 +78,8 @@ class ForgotPasswordViewModel @Inject constructor(
                 // Always show success — server returns 200 regardless of whether
                 // the email exists (SEC: enumeration prevention).
                 _state.value = _state.value.copy(isLoading = false, success = true)
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow to preserve structured concurrency
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,

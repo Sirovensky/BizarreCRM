@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.RefundApi
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -86,6 +87,8 @@ class GiftCardLiabilityViewModel @Inject constructor(
                     activeGiftCardCount = activeCount,
                     storeCreditOutstandingCents = storeCreditCents,
                 )
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow to preserve structured concurrency
             } catch (e: HttpException) {
                 if (e.code() == 404) {
                     _state.value = LiabilityState.NotAvailable
