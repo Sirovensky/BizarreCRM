@@ -92,6 +92,12 @@ public final class HireWizardViewModel {
     // MARK: - Submit
 
     func submit() async {
+        // BUGHUNT-2026-05-17: re-entry guard. The Create Account button is
+        // .disabled while isSubmitting, but a quick double-tap before
+        // SwiftUI re-renders fires two createEmployee POSTs — the second
+        // hits a "username already exists" 409 or, on tolerant servers,
+        // creates a duplicate. Guard at the VM layer.
+        guard !isSubmitting else { return }
         isSubmitting = true
         errorMessage = nil
         let body = CreateEmployeeBody(
@@ -105,6 +111,14 @@ public final class HireWizardViewModel {
             let result = try await api.createEmployee(body: body)
             createdEmployeeId = result.id
             AppLog.ui.info("Hire wizard: created employee id=\(result.id, privacy: .public)")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: createEmployee POST may have already
+            // landed when the task was cancelled. Painting "cancelled" as
+            // errorMessage tempts the manager to retap Create Account; the
+            // retap then 409s on the duplicate username (confusing) or
+            // double-creates on tolerant servers. Suppress the error;
+            // the employee list refresh will surface the actual row.
+            errorMessage = nil
         } catch {
             AppLog.ui.error("Hire wizard submit: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
