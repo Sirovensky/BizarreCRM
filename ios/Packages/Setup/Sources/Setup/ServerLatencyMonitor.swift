@@ -128,6 +128,12 @@ public final class ServerLatencyMonitor {
             let latencyMs = Date().timeIntervalSince(start) * 1000
             appendSample(LatencySample(date: start, latencyMs: latencyMs))
             lastStatus = .ok(latencyMs: latencyMs)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: probe was painting .failed on monitor stop /
+            // diagnostics-screen dismiss. The status is leftover-visible
+            // elsewhere via lastStatus; treat cancel as silently abandoning
+            // this sample without tallying a fake failure.
+            return
         } catch {
             appendSample(LatencySample(date: start, latencyMs: nil))
             lastStatus = .failed
