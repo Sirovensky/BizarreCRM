@@ -92,6 +92,16 @@ public final class TenantAdminViewModel: Sendable {
             let req = ImpersonateRequest(userId: userId, reason: reason, managerPin: managerPin)
             _ = try await api.impersonateUser(req)
             return true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: impersonateUser is a privilege-elevation
+            // POST that mints a fresh impersonation token + writes an audit
+            // row server-side. A `impersonateError = "cancelled"` toast
+            // tempted a re-tap that — if the server had already accepted
+            // the original POST — would mint a SECOND impersonation token
+            // (rotating the first) and audit two start events for the same
+            // operator/target. Stay silent on cancellation so the admin
+            // re-confirms intent rather than reacting to a banner.
+            return false
         } catch {
             impersonateError = error.localizedDescription
             return false
