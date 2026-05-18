@@ -46,7 +46,9 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -161,6 +163,12 @@ fun CustomerListScreen(
                     label = { Text("Tag name") },
                     singleLine = true,
                     modifier = androidx.compose.ui.Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(
+                        // Tags are short identifiers — let the user choose the
+                        // case; autocorrect-off prevents accidental mutation.
+                        capitalization = KeyboardCapitalization.None,
+                        autoCorrect = false,
+                    ),
                 )
             },
             confirmButton = {
