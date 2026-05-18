@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -131,6 +132,8 @@ fun MembershipListScreen(
                 MembershipContent(
                     tiers = state.tiers,
                     memberships = state.memberships,
+                    isRefreshing = state.isRefreshing,
+                    onRefresh = { viewModel.refresh() },
                     onNavigateToCustomer = onNavigateToCustomer,
                     onCancelMembership = { membership -> cancelTarget = membership },
                     modifier = Modifier.padding(padding),
@@ -176,16 +179,24 @@ fun MembershipListScreen(
 
 // ─── Content ─────────────────────────────────────────────────────────────────
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MembershipContent(
     tiers: List<MembershipTier>,
     memberships: List<Membership>,
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
     onNavigateToCustomer: (Long) -> Unit,
     onCancelMembership: (Membership) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    LazyColumn(
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = onRefresh,
         modifier = modifier.fillMaxSize(),
+    ) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -232,6 +243,7 @@ private fun MembershipContent(
                 )
             }
         }
+    }
     }
 }
 

@@ -21,6 +21,8 @@ sealed class MembershipUiState {
     data class Ready(
         val tiers: List<MembershipTier>,
         val memberships: List<Membership>,
+        /** BUGHUNT-2026-05-18: drives the pull-to-refresh indicator. */
+        val isRefreshing: Boolean = false,
     ) : MembershipUiState()
     data class Error(val message: String) : MembershipUiState()
 }
@@ -69,26 +71,43 @@ class MembershipViewModel @Inject constructor(
     }
 
     fun load() {
-        viewModelScope.launch {
-            _uiState.value = MembershipUiState.Loading
-            val tiersResult = repo.getTiers()
-            val membersResult = repo.getMemberships()
+        viewModelScope.launch { performLoad(isRefresh = false) }
+    }
 
-            tiersResult.fold(
-                onSuccess = { tiers ->
-                    membersResult.fold(
-                        onSuccess = { memberships ->
-                            _uiState.value = MembershipUiState.Ready(
-                                tiers = tiers,
-                                memberships = memberships,
-                            )
-                        },
-                        onFailure = { e -> handleLoadError(e) },
-                    )
-                },
-                onFailure = { e -> handleLoadError(e) },
-            )
+    /**
+     * BUGHUNT-2026-05-18: pull-to-refresh hook — keeps the list visible while
+     * the round-trip happens (vs. swap-to-spinner that `load()` does on first
+     * paint).
+     */
+    fun refresh() {
+        viewModelScope.launch { performLoad(isRefresh = true) }
+    }
+
+    private suspend fun performLoad(isRefresh: Boolean) {
+        val current = _uiState.value
+        if (isRefresh && current is MembershipUiState.Ready) {
+            _uiState.value = current.copy(isRefreshing = true)
+        } else {
+            _uiState.value = MembershipUiState.Loading
         }
+        val tiersResult = repo.getTiers()
+        val membersResult = repo.getMemberships()
+
+        tiersResult.fold(
+            onSuccess = { tiers ->
+                membersResult.fold(
+                    onSuccess = { memberships ->
+                        _uiState.value = MembershipUiState.Ready(
+                            tiers = tiers,
+                            memberships = memberships,
+                            isRefreshing = false,
+                        )
+                    },
+                    onFailure = { e -> handleLoadError(e) },
+                )
+            },
+            onFailure = { e -> handleLoadError(e) },
+        )
     }
 
     private fun handleLoadError(e: Throwable) {
