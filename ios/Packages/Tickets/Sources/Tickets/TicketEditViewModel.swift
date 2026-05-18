@@ -106,6 +106,11 @@ public final class TicketEditViewModel {
             didSave = true
             queuedOffline = true
             errorMessage = nil
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: sheet dismiss mid-enqueue — preserve the
+            // draft for next-session re-enqueue rather than flashing a
+            // phantom "Could not save offline" toast.
+            return
         } catch {
             // BUGHUNT-2026-05-17: don't silently swallow the queue failure —
             // tell the user so they can retry instead of thinking the update
