@@ -106,7 +106,9 @@ public final class EmailTemplateEditorViewModel {
     // MARK: - Save
 
     public func save() async {
-        guard isValid, let api else { return }
+        // BUGHUNT-2026-05-17: `isSaving` re-entry guard so a re-tap during
+        // the save round-trip can't fire a second POST.
+        guard isValid, let api, !isSaving else { return }
         isSaving = true
         errorMessage = nil
         defer { isSaving = false }
@@ -140,6 +142,12 @@ public final class EmailTemplateEditorViewModel {
                 )
             }
             onSave(saved)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: createEmailTemplate is a POST without
+            // idempotency. Cancellation banner tempts a re-tap that creates
+            // a duplicate template and surfaces a confusing name uniqueness
+            // error. Stay silent.
+            return
         } catch {
             let appError = AppError.from(error)
             errorMessage = appError.errorDescription
