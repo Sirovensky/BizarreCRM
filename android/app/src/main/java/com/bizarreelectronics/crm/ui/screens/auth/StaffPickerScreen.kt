@@ -60,6 +60,7 @@ import coil3.compose.AsyncImage
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
 import com.bizarreelectronics.crm.data.remote.dto.UserDto
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -137,6 +138,8 @@ class StaffPickerViewModel @Inject constructor(
                 // We show the current user always; others are listed from sessions.
                 val sessions = try {
                     authApi.sessions().data ?: emptyList()
+                } catch (e: CancellationException) {
+                    throw e  // BUGHUNT-2026-05-17: don't swallow nav-cancel
                 } catch (_: Exception) {
                     emptyList()
                 }
@@ -158,6 +161,8 @@ class StaffPickerViewModel @Inject constructor(
                 } else {
                     StaffPickerUiState.Content(staff)
                 }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: rethrow for structured concurrency
             } catch (e: Exception) {
                 _state.value = StaffPickerUiState.Error(
                     e.message ?: "Could not load staff accounts",
