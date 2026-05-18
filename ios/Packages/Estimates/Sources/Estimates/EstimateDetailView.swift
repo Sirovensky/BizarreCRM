@@ -677,6 +677,9 @@ public struct EstimateDetailView: View {
     // MARK: - §8.4 Manual expire
 
     private func manualExpire() async {
+        // BUGHUNT-2026-05-17: Re-entry guard. Expire is a status flip; a
+        // double-tap PUTs twice and emits two audit rows. Keep it once.
+        guard !isExpiring else { return }
         isExpiring = true
         expireErrorMessage = nil
         defer { isExpiring = false }
@@ -689,6 +692,11 @@ public struct EstimateDetailView: View {
                 as: Estimate.self
             )
             AppLog.ui.info("Estimate \(estimate.id) manually expired.")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PUT expire. Server may have accepted; a
+            // "Cancelled" toast tempts a retap that re-PUTs and writes a
+            // second audit entry.
+            return
         } catch {
             expireErrorMessage = "Could not expire: \(error.localizedDescription)"
             AppLog.ui.error("Manual expire failed: \(error.localizedDescription, privacy: .public)")
@@ -899,6 +907,13 @@ public struct EstimateDetailView: View {
             if let invoiceId = result.invoiceId {
                 onInvoiceCreated(invoiceId)
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: Money-critical POST converts estimate to
+            // invoice. Cancellation must not paint an error or trigger the
+            // onInvoiceCreated path — the server may have already created the
+            // invoice and a second invocation creates a duplicate. Stay
+            // silent; the detail re-fetch surfaces the new invoice.
+            return
         } catch {
             AppLog.ui.error("Estimate convert-to-invoice failed: \(error.localizedDescription, privacy: .public)")
         }
@@ -908,10 +923,19 @@ public struct EstimateDetailView: View {
 
     @MainActor
     private func expireEstimate() async {
+        // BUGHUNT-2026-05-17: Re-entry guard — alternate expire path via
+        // dedicated endpoint. Same audit-row + idempotency concerns as
+        // manualExpire() above.
+        guard !isExpiring else { return }
         isExpiring = true
         defer { isExpiring = false }
         do {
             _ = try await api.expireEstimate(estimateId: estimate.id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: PUT/POST expire endpoint. Stay silent on
+            // cancellation; the next list/detail reload reveals the row's
+            // actual status.
+            return
         } catch {
             AppLog.ui.error("Estimate expire failed: \(error.localizedDescription, privacy: .public)")
         }
