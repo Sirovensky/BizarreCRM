@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Foundation
 import Observation
+import Core
 import Networking
 
 // MARK: - GiftCardSellViewModel
@@ -121,6 +122,15 @@ public final class GiftCardSellViewModel {
         } catch let APITransportError.httpStatus(code, message) {
             let msg = (message?.isEmpty == false) ? message! : "Activation failed"
             state = .failure("Activate failed (\(code)): \(msg)")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: activateGiftCard mutates server balance +
+            // active flag; a `.failure("cancelled")` toast tempted a re-tap
+            // that could either double-load the balance (some server impls
+            // accept the second POST as a top-up) or 409 with a misleading
+            // "already active" error. Reset to `.idle`, force the cashier to
+            // re-scan/lookup so the next state shows the truth.
+            state = .idle
+            return
         } catch {
             state = .failure("Activate failed: \(error.localizedDescription)")
         }
@@ -144,6 +154,15 @@ public final class GiftCardSellViewModel {
         } catch let APITransportError.httpStatus(code, message) {
             let msg = (message?.isEmpty == false) ? message! : "Request failed"
             state = .failure("Send failed (\(code)): \(msg)")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: createVirtualGiftCard is a real-money POST
+            // with no idempotency key — server creates the card AND emails
+            // the recipient on success. A `.failure("cancelled")` toast
+            // tempted a re-tap that, if the original landed, would mint and
+            // email a duplicate virtual card. Reset to `.idle`; cashier
+            // verifies via the gift-card list before retrying.
+            state = .idle
+            return
         } catch {
             state = .failure("Send failed: \(error.localizedDescription)")
         }

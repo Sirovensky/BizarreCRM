@@ -54,6 +54,14 @@ public final class InvoiceSMSViewModel {
             _ = try await api.sendSms(to: phone.trimmingCharacters(in: .whitespaces),
                                       message: messageBody.trimmingCharacters(in: .whitespaces))
             state = .success
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sendSms is POST without an idempotency
+            // key. A `.failed("cancelled")` toast on a customer-facing send
+            // tempted a re-tap that could double-text the customer — TCPA
+            // / cost hazard. Reset to `.idle` silently; the caller can
+            // verify delivery via the SMS log before re-trying.
+            state = .idle
+            return
         } catch {
             AppLog.ui.error("Invoice SMS send failed: \(error.localizedDescription, privacy: .public)")
             let appError = AppError.from(error)
