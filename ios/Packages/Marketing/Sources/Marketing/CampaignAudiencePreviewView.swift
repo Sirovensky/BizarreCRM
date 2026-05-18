@@ -26,6 +26,15 @@ final class CampaignAudiencePreviewViewModel {
         defer { isLoading = false }
         do {
             preview = try await api.previewCampaignAudience(id: campaignId)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: the sheet's "Done" toolbar dismisses
+            // mid-load, which cancels the in-flight Task. Without this
+            // branch the catch-all logged the cancellation as an
+            // "Audience preview failed" error and painted a user-facing
+            // "cancelled" pane on a sheet that was already closing,
+            // making the next open of the same campaign briefly flash
+            // a stale error before the .task fires again.
+            errorMessage = nil
         } catch {
             AppLog.ui.error(
                 "Audience preview failed: \(error.localizedDescription, privacy: .public)"
