@@ -48,6 +48,13 @@ public final class SMSSpendCapViewModel {
             errorMessage = "Enter a valid dollar amount."
             return
         }
+        // BUGHUNT-2026-05-17: synchronous re-entry guard. `.disabled(vm.isSaving)`
+        // on the Save button gates re-tap *after* SwiftUI re-renders — a
+        // double-tap in the rendering window queues two Tasks that both
+        // pass the in-method flip and PATCH `/settings/sms-spend-cap`
+        // twice, doubling the money-config audit log on an unattended
+        // press.
+        guard !isSaving else { return }
         isSaving = true
         errorMessage = nil
         saveSuccess = false
@@ -56,6 +63,14 @@ public final class SMSSpendCapViewModel {
             let body = SMSSpendCapSettingsPatch(monthlyCap: cents, haltOnCapReached: haltOnCapReached)
             capSettings = try await api.updateSMSSpendCap(body)
             saveSuccess = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: navigating off the Settings page mid-save
+            // cancels the in-flight Task. The generic catch was painting
+            // "cancelled" as a user-facing error and logging it as a save
+            // failure, even though the underlying PATCH may have completed
+            // server-side. Leave `saveSuccess` false but clear errorMessage
+            // so any retry is intentional.
+            errorMessage = nil
         } catch {
             AppLog.ui.error("SMS spend cap save failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
