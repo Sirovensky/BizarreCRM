@@ -236,18 +236,45 @@ private extension Appointment {
 
     var durationInterval: TimeInterval? {
         guard let s = startTime, let e = endTime else { return nil }
-        let iso = ISO8601DateFormatter()
-        guard let start = iso.date(from: s) ?? sqlDate(s),
-              let end   = iso.date(from: e) ?? sqlDate(e) else { return nil }
+        // BUGHUNT-2026-05-18: was `ISO8601DateFormatter()` with default options,
+        // which rejects Node Date.toISOString() millisecond strings. Both
+        // start and end then fell through to sqlDate (which expects
+        // "yyyy-MM-dd HH:mm:ss" — also a miss for ISO input), so this always
+        // returned nil. The Edit screen then defaulted to a 60-minute slot
+        // even when the existing appointment was 30/90/120 minutes — the
+        // user had to re-pick the right duration on every edit. Try
+        // fractional → plain → sql to match the parseDate chain above.
+        guard let start = AppointmentDurationParser.parse(s),
+              let end   = AppointmentDurationParser.parse(e) else { return nil }
         let diff = end.timeIntervalSince(start)
         return diff > 0 ? diff : nil
     }
+}
 
-    private func sqlDate(_ raw: String) -> Date? {
+private enum AppointmentDurationParser {
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private static let sql: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd HH:mm:ss"
         f.timeZone = TimeZone(identifier: "UTC")
         f.locale = Locale(identifier: "en_US_POSIX")
-        return f.date(from: raw)
+        return f
+    }()
+
+    static func parse(_ raw: String) -> Date? {
+        isoFractional.date(from: raw)
+            ?? isoPlain.date(from: raw)
+            ?? sql.date(from: raw)
     }
 }
