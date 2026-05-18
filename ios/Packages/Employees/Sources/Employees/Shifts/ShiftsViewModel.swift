@@ -118,6 +118,13 @@ public final class ShiftsViewModel {
             shifts = shifts.map { $0.id == id ? updated : $0 }
             writeState = .saved
             return updated
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: updateShift PATCH may have already
+            // landed. A .failed banner tempts the manager to retap Save,
+            // double-stamping the shift update audit log. Reset to idle
+            // and let the next loadWeek refresh truth.
+            writeState = .idle
+            return nil
         } catch {
             AppLog.ui.error("Shift update failed: \(error.localizedDescription, privacy: .public)")
             writeState = .failed(error.localizedDescription)
@@ -133,6 +140,12 @@ public final class ShiftsViewModel {
             try await api.deleteShift(id: id)
             shifts = shifts.filter { $0.id != id }
             writeState = .saved
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: deleteShift DELETE may have already
+            // landed. A .failed banner tempts a retap that hits 404
+            // (confusing) or, on tolerant servers, no-ops silently. Reset
+            // to idle and rely on loadWeek refresh.
+            writeState = .idle
         } catch {
             AppLog.ui.error("Shift delete failed: \(error.localizedDescription, privacy: .public)")
             writeState = .failed(error.localizedDescription)
