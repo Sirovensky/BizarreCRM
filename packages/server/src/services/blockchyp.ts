@@ -1140,8 +1140,15 @@ export interface EnrollResult {
  * Presents the card capture screen, tokenizes the card, returns a token for future charges.
  */
 export async function enrollCard(db: Database.Database): Promise<EnrollResult> {
+  // BUGHUNT-2026-05-17: pin testMode for the lifetime of this call (BL10
+  // pattern). Previously getClient(db) re-read the config from disk so a
+  // settings flip between getBlockChypConfig() and getClient() could route
+  // a card-tokenisation request to the wrong gateway (live → sandbox or
+  // vice versa). enrollCard saves a token that is reused by subsequent
+  // recurring charges, so the test-mode mismatch propagates to every
+  // future billing cycle, not just the enrollment itself.
   const cfg = getBlockChypConfig(db);
-  const client = getClient(db);
+  const client = getClient(db, cfg);
 
   try {
     const request = new BlockChyp.EnrollRequest();
@@ -1187,8 +1194,12 @@ export interface TokenChargeResult {
  * No terminal interaction — runs server-side via BlockChyp gateway.
  */
 export async function chargeToken(db: Database.Database, token: string, amount: string, description: string): Promise<TokenChargeResult> {
+  // BUGHUNT-2026-05-17: pin testMode for the lifetime of this call (BL10
+  // pattern). chargeToken is the recurring-renewal call path; without
+  // snapshotting, a settings flip during runMembershipBillingOnce's batch
+  // loop could route some members' charges to sandbox and others to live.
   const cfg = getBlockChypConfig(db);
-  const client = getClient(db);
+  const client = getClient(db, cfg);
 
   try {
     const request = new BlockChyp.AuthorizationRequest();
@@ -1234,8 +1245,13 @@ export interface PaymentLinkResult {
  * Customer receives a link (via SMS/email/QR code) to enter card details.
  */
 export async function createPaymentLink(db: Database.Database, amount: string, description: string, callbackUrl?: string): Promise<PaymentLinkResult> {
+  // BUGHUNT-2026-05-17: pin testMode for the lifetime of this call (BL10
+  // pattern). Payment-link creation persists a card token in the customer's
+  // device flow; a settings flip mid-call could send a customer a SANDBOX
+  // payment link that they think is real (or vice versa), corrupting the
+  // recurring-billing chain.
   const cfg = getBlockChypConfig(db);
-  const client = getClient(db);
+  const client = getClient(db, cfg);
 
   try {
     const request = new BlockChyp.PaymentLinkRequest();

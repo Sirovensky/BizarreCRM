@@ -47,7 +47,7 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { formatApiError } from '@/utils/apiError';
-import { formatCurrency, formatShortDateTime } from '@/utils/format';
+import { formatCurrency, formatShortDateTime, formatDate } from '@/utils/format';
 import { formatPhoneAsYouType, stripPhone } from '@/utils/phoneFormat';
 import { CopyButton } from '@/components/shared/CopyButton';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
@@ -1231,7 +1231,12 @@ function MembershipCard({ customerId }: { customerId: number }) {
             </p>
             {memberData.current_period_end && (
               <p className="text-xs text-surface-400 mt-0.5">
-                Renews {new Date(memberData.current_period_end).toLocaleDateString()}
+                {/* BUGHUNT-2026-05-17: current_period_end is a SQLite
+                    datetime string (UTC, no 'Z'). `new Date(...)` parses as
+                    LOCAL, so a period ending at 00:30 UTC shows the prior
+                    day in negative-offset zones. formatDate normalizes the
+                    SQLite shape via normalizeMaybeSqliteTs. */}
+                Renews {formatDate(memberData.current_period_end)}
               </p>
             )}
             {memberData.cancel_at_period_end === 1 && (
@@ -2056,11 +2061,11 @@ function TicketsTab({ customerId }: { customerId: number }) {
                         ${Number(ticket.total || 0).toFixed(2)}
                       </span>
                       <p className="text-xs text-surface-400 dark:text-surface-500 mt-0.5">
-                        {new Date(ticket.created_at).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                        })}
+                        {/* BUGHUNT-2026-05-17: ticket.created_at is SQLite
+                            UTC. formatDate normalises before locale render
+                            so a midnight-UTC ticket doesn't display the
+                            previous date in negative-offset zones. */}
+                        {formatDate(ticket.created_at)}
                       </p>
                     </div>
                   </div>
@@ -2149,7 +2154,10 @@ function InvoicesTab({ customerId }: { customerId: number }) {
                   ${Number(inv.amount_paid || 0).toFixed(2)}
                 </td>
                 <td className="px-4 py-3 text-sm text-surface-500 dark:text-surface-400">
-                  {new Date(inv.created_at).toLocaleDateString()}
+                  {/* BUGHUNT-2026-05-17: inv.created_at is SQLite UTC. Use
+                      formatDate so the AR row date is consistent with the
+                      rest of the app's UTC-normalising helpers. */}
+                  {formatDate(inv.created_at)}
                 </td>
               </tr>
             ))}
