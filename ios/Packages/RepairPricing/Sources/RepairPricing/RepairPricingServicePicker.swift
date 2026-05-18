@@ -158,6 +158,10 @@ public struct RepairPricingServicePicker: View {
         defer { isLoading = false }
         do {
             services = try await api.listRepairServices()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: picker dismiss cancellation; keep prior
+            // services visible.
+            return
         } catch {
             AppLog.ui.error("ServicePicker load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
