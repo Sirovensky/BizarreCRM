@@ -176,6 +176,14 @@ class ClockInOutViewModel @Inject constructor(
             if (wasClockedIn) stopBreakTimer()
             // §14.10 — push new state to QS tile + Glance widget
             broadcastClockState(nowClockedIn)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // BUGHUNT-2026-05-17: clockIn/clockOut are payroll-critical writes.
+            // A bare catch (e: Exception) below would paint fake "Operation
+            // failed" if the user back-navs mid-request, tempting a re-tap
+            // that would double-post the punch (or punch in then immediately
+            // punch out). Re-throw so the launch dies cleanly and the next
+            // load of this screen reflects the actual server state.
+            throw e
         } catch (e: Exception) {
             _state.value = _state.value.copy(
                 isProcessing = false,
