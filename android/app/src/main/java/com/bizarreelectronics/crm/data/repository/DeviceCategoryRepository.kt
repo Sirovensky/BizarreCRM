@@ -1,7 +1,9 @@
 package com.bizarreelectronics.crm.data.repository
 
+import android.util.Log
 import com.bizarreelectronics.crm.data.remote.api.CatalogApi
 import com.bizarreelectronics.crm.data.remote.api.DeviceCategoryItem
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,10 +38,23 @@ class DeviceCategoryRepository @Inject constructor(
 
     /** Refresh from server. Silent on failure — UI keeps current cache. */
     suspend fun refresh() {
-        runCatching { catalogApi.getCategories() }
-            .onSuccess { resp ->
-                val rows = resp.data
-                if (!rows.isNullOrEmpty()) _categories.value = rows
-            }
+        // BUGHUNT-2026-05-17: runCatching swallows CancellationException via
+        // kotlin.Result wrapping Throwable, so an app shutdown during catalog
+        // refresh would silently complete and any followup work in the same
+        // coroutine scope would keep running on a cancelled job. Use an
+        // explicit try/catch that re-throws CancellationException.
+        try {
+            val resp = catalogApi.getCategories()
+            val rows = resp.data
+            if (!rows.isNullOrEmpty()) _categories.value = rows
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.d(TAG, "DeviceCategory refresh failed [${e.javaClass.simpleName}]: ${e.message}")
+        }
+    }
+
+    companion object {
+        private const val TAG = "DeviceCategoryRepo"
     }
 }
