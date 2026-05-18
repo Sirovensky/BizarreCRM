@@ -201,18 +201,41 @@ export async function processNotificationDigests(db: any, tenantSlug?: string | 
     if (claimedIds.length === 0) continue;
 
     const claimed = items.filter((item) => claimedIds.includes(item.id));
+    // BUGHUNT-2026-05-17 [CAN-SPAM]: split the "email sent" decision from
+    // the "mark sent" DB write so a markSent failure (DB lock, disk full,
+    // statement-prepare error) cannot run the catch path and reset the
+    // claimed rows to 'pending' — which would cause the next tick to
+    // re-send the same digest, duplicating outbound to the customer.
+    let sendResult: { ok: boolean; reason: string | null };
     try {
       const sent = await sendEmail(db, {
         to: recipient,
         subject: `CRM notification digest (${claimed.length})`,
         html: buildDigestHtml(recipient, claimed),
       });
-      if (!sent) throw new Error('Digest email send failed');
-      markSent(db, claimedIds);
+      sendResult = sent ? { ok: true, reason: null } : { ok: false, reason: 'Digest email send returned false' };
+    } catch (err) {
+      sendResult = { ok: false, reason: err instanceof Error ? err.message : String(err) };
+    }
+
+    if (sendResult.ok) {
+      // Email has been handed to SMTP — past this point we MUST mark sent.
+      // A failure to UPDATE means duplicate-send risk on next tick, so log
+      // loudly but do NOT throw it into the failure path.
+      try {
+        markSent(db, claimedIds);
+      } catch (markErr) {
+        logger.error('digest markSent failed AFTER successful email send — duplicate-send risk', {
+          tenantSlug: tenantSlug ?? null,
+          recipient,
+          claimedIds,
+          err: markErr instanceof Error ? markErr.message : String(markErr),
+        });
+      }
       const atIdx = recipient.lastIndexOf('@');
       logger.info('digest sent', { tenantSlug: tenantSlug ?? null, recipientDomain: atIdx > 0 ? recipient.slice(atIdx + 1) : 'unknown', count: claimed.length, mode });
-    } catch (err) {
-      markFailed(db, claimed, err instanceof Error ? err.message : String(err));
+    } else {
+      markFailed(db, claimed, sendResult.reason ?? 'unknown');
     }
   }
 
