@@ -157,12 +157,25 @@ public struct InvoiceStats: Decodable, Sendable {
 
 public struct InvoiceBulkActionRequest: Encodable, Sendable {
     public let ids: [Int64]
-    /// One of: "send_reminder", "export", "void", "delete"
+    /// One of: "send_reminder", "mark_paid", "void"
     public let action: String
 
     public init(ids: [Int64], action: String) {
         self.ids = ids
         self.action = action
+    }
+
+    // BUGHUNT-2026-05-17: server `POST /api/v1/invoices/bulk-action`
+    // destructures `invoice_ids` from req.body (see invoices.routes.ts
+    // ~L1457). Without this CodingKey remap, Swift encoded the field as
+    // `ids` and the server immediately threw "invoice_ids array is
+    // required" with a 400 — every bulk action (mark_paid / void /
+    // send_reminder) from iOS failed. Also dropped phantom "export"
+    // and "delete" actions from the docstring; server only honours the
+    // three above.
+    enum CodingKeys: String, CodingKey {
+        case action
+        case ids = "invoice_ids"
     }
 }
 
