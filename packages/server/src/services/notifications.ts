@@ -210,6 +210,41 @@ export function enqueueRetry(
     const cappedPhone = typeof phone === 'string' ? phone.slice(0, RETRY_PHONE_MAX) : '';
     const cappedMessage = typeof message === 'string' ? message.slice(0, RETRY_MESSAGE_MAX) : '';
     const cappedError = typeof errorMsg === 'string' ? errorMsg.slice(0, RETRY_ERROR_MAX) : '';
+
+    // BUGHUNT-2026-05-17 [duplicate-retry guard]: the retry queue has no
+    // UNIQUE constraint (see migration 070), so a second send failure for
+    // the same (entityType, entityId, phone) would insert a SECOND retry
+    // row and the customer would receive duplicate SMS on retry tick.
+    // Application-level idempotency: if an open retry row already exists
+    // for this entity+phone, refresh its last_error and bump its
+    // next_retry_at instead of inserting a duplicate. Don't reset
+    // retry_count — that would let a failing-source spin forever.
+    if (entityType !== null && entityId !== null) {
+      const existing = db
+        .prepare(
+          `SELECT id, retry_count FROM notification_retry_queue
+            WHERE entity_type = ? AND entity_id = ? AND recipient_phone = ?
+              AND retry_count < max_retries
+            ORDER BY id DESC LIMIT 1`,
+        )
+        .get(entityType, entityId, cappedPhone) as
+        | { id: number; retry_count: number }
+        | undefined;
+      if (existing) {
+        db.prepare(
+          `UPDATE notification_retry_queue
+              SET last_error = ?
+            WHERE id = ?`,
+        ).run(cappedError, existing.id);
+        logger.info('Retry already queued — refreshed error, not duplicating', {
+          entityType,
+          entityId,
+          existingId: existing.id,
+        });
+        return;
+      }
+    }
+
     db.prepare(`
       INSERT INTO notification_retry_queue (recipient_phone, message, entity_type, entity_id, tenant_slug, retry_count, max_retries, next_retry_at, last_error)
       VALUES (?, ?, ?, ?, ?, 0, 3, datetime('now', '+5 minutes'), ?)
