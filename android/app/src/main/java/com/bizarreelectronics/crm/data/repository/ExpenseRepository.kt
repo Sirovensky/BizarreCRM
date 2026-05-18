@@ -354,9 +354,13 @@ class ExpenseRepository @Inject constructor(
     /** Full pull from server — used by SyncManager. */
     suspend fun refreshFromServer() {
         if (!serverMonitor.isEffectivelyOnline.value) return
+        // BUGHUNT-2026-05-17: hard pagination cap. A misbehaving server
+        // reporting bogus `totalPages` could trap the client in an infinite
+        // refresh loop. Mirror the safety cap that InventoryRepository and
+        // InvoiceRepository already enforce (D8).
         try {
             var page = 1
-            while (true) {
+            while (page <= MAX_PAGINATION_PAGES) {
                 val response = expenseApi.getExpenses(mapOf("pagesize" to "200", "page" to page.toString()))
                 val expenses = response.data?.expenses ?: break
                 if (expenses.isEmpty()) break
@@ -364,6 +368,9 @@ class ExpenseRepository @Inject constructor(
                 val pagination = response.data?.pagination
                 if (pagination == null || page >= pagination.totalPages) break
                 page++
+            }
+            if (page > MAX_PAGINATION_PAGES) {
+                Log.w(TAG, "Expense pagination hit safety cap of $MAX_PAGINATION_PAGES pages — aborting refresh")
             }
         } catch (e: CancellationException) {
             throw e
@@ -413,6 +420,8 @@ class ExpenseRepository @Inject constructor(
 
     companion object {
         private const val TAG = "ExpenseRepository"
+        /** D8 safety cap — same value used by InventoryRepository / InvoiceRepository. */
+        private const val MAX_PAGINATION_PAGES = 1000
     }
 }
 

@@ -173,9 +173,13 @@ class LeadRepository @Inject constructor(
     /** Full pull from server — used by SyncManager. */
     suspend fun refreshFromServer() {
         if (!serverMonitor.isEffectivelyOnline.value) return
+        // BUGHUNT-2026-05-17: hard pagination cap. A misbehaving server
+        // reporting bogus `totalPages` could trap the client in an infinite
+        // refresh loop. Mirror the D8 safety cap already enforced by
+        // InventoryRepository, InvoiceRepository, and now ExpenseRepository.
         try {
             var page = 1
-            while (true) {
+            while (page <= MAX_PAGINATION_PAGES) {
                 val response = leadApi.getLeads(mapOf("pagesize" to "200", "page" to page.toString()))
                 val leads = response.data?.leads ?: break
                 if (leads.isEmpty()) break
@@ -183,6 +187,9 @@ class LeadRepository @Inject constructor(
                 val pagination = response.data?.pagination
                 if (pagination == null || page >= pagination.totalPages) break
                 page++
+            }
+            if (page > MAX_PAGINATION_PAGES) {
+                Log.w(TAG, "Lead pagination hit safety cap of $MAX_PAGINATION_PAGES pages — aborting refresh")
             }
         } catch (e: CancellationException) {
             throw e
@@ -232,6 +239,8 @@ class LeadRepository @Inject constructor(
 
     companion object {
         private const val TAG = "LeadRepository"
+        /** D8 safety cap — mirrors InventoryRepository / InvoiceRepository. */
+        private const val MAX_PAGINATION_PAGES = 1000
     }
 }
 
