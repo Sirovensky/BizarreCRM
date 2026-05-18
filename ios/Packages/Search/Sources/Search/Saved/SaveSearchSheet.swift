@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import DesignSystem
 
 /// §18 — "Save Search" sheet presented from the live search bar.
@@ -153,6 +154,11 @@ public struct SaveSearchSheet: View {
         } catch SavedSearchStore.SavedSearchStoreError.duplicateName(let existing) {
             isSaving = false
             errorMessage = "A saved search named \"\(existing)\" already exists. Choose a different name."
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: save cancelled mid-flight; retap could
+            // trigger duplicateName error for a save that actually landed.
+            isSaving = false
+            return
         } catch {
             isSaving = false
             errorMessage = error.localizedDescription
