@@ -16,6 +16,7 @@ import com.bizarreelectronics.crm.service.NotificationController.EXTRA_REPLY_TEX
 import com.bizarreelectronics.crm.service.NotificationController.EXTRA_THREAD_PHONE
 import com.google.gson.Gson
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -106,6 +107,8 @@ class NotificationActionReceiver : BroadcastReceiver() {
                 )
                 cancelNotification(context, notificationId)
                 showToastOnMain(context, "Reply sent")
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: don't swallow scope cancel
             } catch (e: Exception) {
                 Timber.e(e, "NotificationActionReceiver/reply: failed to enqueue SMS send")
             }
@@ -140,6 +143,8 @@ class NotificationActionReceiver : BroadcastReceiver() {
                     )
                 )
                 cancelNotification(context, notificationId)
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: don't swallow scope cancel
             } catch (e: Exception) {
                 Timber.e(e, "NotificationActionReceiver/markRead: failed to enqueue mark-read")
             }

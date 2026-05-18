@@ -7,6 +7,7 @@ import com.bizarreelectronics.crm.data.local.db.entities.SmsMessageEntity
 import com.bizarreelectronics.crm.data.sync.SyncWorker
 import com.google.gson.Gson
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -36,6 +37,11 @@ class WebSocketEventHandler @Inject constructor(
             webSocketService.events.collect { event ->
                 try {
                     handleEvent(event)
+                } catch (e: CancellationException) {
+                    // BUGHUNT-2026-05-17: don't swallow cancel from close()/logout.
+                    // The collect loop must exit when scope.cancel() fires; without
+                    // the rethrow the WS event handler keeps running after logout.
+                    throw e
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to handle WS event '${event.type}': ${e.message}")
                 }
