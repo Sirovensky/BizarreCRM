@@ -150,6 +150,9 @@ public struct PriceOverrideEditorSheet: View {
                     .lineLimit(3...6)
                     .font(.brandBodyMedium())
                     .foregroundStyle(.bizarreOnSurface)
+                    #if canImport(UIKit)
+                    .textInputAutocapitalization(.sentences)
+                    #endif
                     .accessibilityLabel("Reason for override")
                     .accessibilityIdentifier("priceOverride.reason")
             } header: {

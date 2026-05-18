@@ -307,9 +307,15 @@ public struct ExpenseEditView: View {
         Section("Description & Notes") {
             TextField("What was it for?", text: $vm.descriptionText, axis: .vertical)
                 .lineLimit(2...4)
+                #if canImport(UIKit)
+                .textInputAutocapitalization(.sentences)
+                #endif
                 .accessibilityLabel("Expense description")
             TextField("Internal notes (optional)", text: $vm.notes, axis: .vertical)
                 .lineLimit(2...4)
+                #if canImport(UIKit)
+                .textInputAutocapitalization(.sentences)
+                #endif
                 .accessibilityLabel("Internal notes")
         }
         .listRowBackground(Color.bizarreSurface1)

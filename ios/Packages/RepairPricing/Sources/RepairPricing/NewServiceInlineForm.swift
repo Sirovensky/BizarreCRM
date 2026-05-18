@@ -36,6 +36,9 @@ struct NewServiceInlineForm: View {
                 get: { service.name },
                 set: { onNameChange($0) }
             ))
+            #if canImport(UIKit)
+            .textInputAutocapitalization(.words)
+            #endif
             .font(.brandBodyMedium())
             .foregroundStyle(.bizarreOnSurface)
             .accessibilityLabel("Service \(index + 1) name")
@@ -65,6 +68,9 @@ struct NewServiceInlineForm: View {
                 get: { service.description },
                 set: { onDescriptionChange($0) }
             ))
+            #if canImport(UIKit)
+            .textInputAutocapitalization(.sentences)
+            #endif
             .font(.brandBodyMedium())
             .foregroundStyle(.bizarreOnSurface)
             .accessibilityLabel("Service \(index + 1) description")

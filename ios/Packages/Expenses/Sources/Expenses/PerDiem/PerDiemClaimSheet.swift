@@ -143,6 +143,9 @@ public struct PerDiemClaimSheet: View {
                 Section("Notes") {
                     TextField("Optional notes", text: $vm.notes, axis: .vertical)
                         .lineLimit(3...5)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.sentences)
+                        #endif
                         .accessibilityLabel("Per-diem notes")
                         .accessibilityIdentifier("perdiem.notes")
                 }
