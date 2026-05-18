@@ -192,7 +192,7 @@ public struct SmsProviderPage: View {
                 Section("Twilio credentials") {
                     TextField("Account SID", text: $vm.twilioAccountSid)
                         #if canImport(UIKit)
-                        .autocapitalization(.none)
+                        .textInputAutocapitalization(.never)
                         #endif
                         .accessibilityLabel("Twilio Account SID")
                         .accessibilityIdentifier("sms.twilioSid")
@@ -224,7 +224,7 @@ public struct SmsProviderPage: View {
                           text: $vm.optOutKeywordsText, axis: .vertical)
                     .lineLimit(1...3)
                     #if canImport(UIKit)
-                    .autocapitalization(.allCharacters)
+                    .textInputAutocapitalization(.characters)
                     #endif
                     .accessibilityLabel("Opt-out keywords")
                     .accessibilityIdentifier("sms.optOutKeywords")

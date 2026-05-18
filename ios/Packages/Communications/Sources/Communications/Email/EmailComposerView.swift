@@ -110,7 +110,7 @@ public struct EmailComposerView: View {
                     #if os(iOS)
                     .textContentType(.emailAddress)
                     .keyboardType(.emailAddress)
-                    .autocapitalization(.none)
+                    .textInputAutocapitalization(.never)
                     #endif
                     .accessibilityLabel("To — recipient email address")
             }

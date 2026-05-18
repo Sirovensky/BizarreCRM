@@ -351,7 +351,7 @@ public struct ExportScheduleEditorView: View {
                 TextField("Optional", text: $deliveryEmail)
                     .keyboardType(.emailAddress)
                     .textContentType(.emailAddress)
-                    .autocapitalization(.none)
+                    .textInputAutocapitalization(.never)
                     .accessibilityLabel("Delivery email address")
             } header: {
                 Text("Delivery email (optional)")

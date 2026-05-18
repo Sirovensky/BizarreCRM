@@ -65,7 +65,7 @@ public struct InvoiceEmailReceiptSheet: View {
             TextField("customer@example.com", text: $vm.emailAddress)
                 .keyboardType(.emailAddress)
                 .textContentType(.emailAddress)
-                .autocapitalization(.none)
+                .textInputAutocapitalization(.never)
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurface)
                 .accessibilityLabel("Recipient email address")

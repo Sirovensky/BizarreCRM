@@ -552,7 +552,7 @@ private struct RecurringImportEditorSheet: View {
                         .accessibilityLabel("Import source")
 
                         TextField(filePathPrompt, text: $draft.filePath)
-                            .autocapitalization(.none)
+                            .textInputAutocapitalization(.never)
                             .disableAutocorrection(true)
                             .accessibilityLabel("File path or URL")
 

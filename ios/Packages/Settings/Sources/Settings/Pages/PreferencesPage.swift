@@ -262,7 +262,7 @@ public struct PreferencesPage: View {
                 TextField("Timezone override (optional)", text: $vm.timezone)
                     .autocorrectionDisabled()
                     #if canImport(UIKit)
-                    .autocapitalization(.none)
+                    .textInputAutocapitalization(.never)
                     #endif
                     .accessibilityLabel("Timezone override")
                     .accessibilityIdentifier("preferences.timezone")
@@ -270,7 +270,7 @@ public struct PreferencesPage: View {
                 TextField("Language override (optional)", text: $vm.language)
                     .autocorrectionDisabled()
                     #if canImport(UIKit)
-                    .autocapitalization(.none)
+                    .textInputAutocapitalization(.never)
                     #endif
                     .accessibilityLabel("Language override")
                     .accessibilityIdentifier("preferences.language")

@@ -134,7 +134,7 @@ public struct BusinessProfilePage: View {
                     #if canImport(UIKit)
                     .textContentType(.emailAddress)
                     .keyboardType(.emailAddress)
-                    .autocapitalization(.none)
+                    .textInputAutocapitalization(.never)
                     #endif
                     .accessibilityLabel("Email")
                     .accessibilityIdentifier("business.email")
@@ -144,14 +144,14 @@ public struct BusinessProfilePage: View {
                 TextField("Timezone (IANA)", text: $vm.timezone)
                     .autocorrectionDisabled()
                     #if canImport(UIKit)
-                    .autocapitalization(.none)
+                    .textInputAutocapitalization(.never)
                     #endif
                     .accessibilityLabel("Timezone")
                     .accessibilityIdentifier("business.timezone")
                 TextField("Currency (ISO, e.g. USD)", text: $vm.currency)
                     .autocorrectionDisabled()
                     #if canImport(UIKit)
-                    .autocapitalization(.allCharacters)
+                    .textInputAutocapitalization(.characters)
                     #endif
                     .accessibilityLabel("Currency code")
                     .accessibilityIdentifier("business.currency")

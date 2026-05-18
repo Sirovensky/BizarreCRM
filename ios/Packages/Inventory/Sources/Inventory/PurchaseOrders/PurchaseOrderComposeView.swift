@@ -227,7 +227,7 @@ public struct PurchaseOrderComposeView: View {
         VStack(spacing: BrandSpacing.xs) {
             TextField("SKU", text: line.sku)
                 .font(.brandMono(size: 14))
-                .autocapitalization(.allCharacters)
+                .textInputAutocapitalization(.characters)
                 .disableAutocorrection(true)
                 .accessibilityLabel("SKU")
             TextField("Name", text: line.name)

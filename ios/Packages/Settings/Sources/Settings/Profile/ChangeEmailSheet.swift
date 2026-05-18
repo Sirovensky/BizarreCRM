@@ -90,7 +90,8 @@ struct ChangeEmailSheet: View {
                         #if canImport(UIKit)
                         .textContentType(.emailAddress)
                         .keyboardType(.emailAddress)
-                        .autocapitalization(.none)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
                         #endif
                         .accessibilityLabel("New email address")
                         .accessibilityIdentifier("changeEmail.newEmail")

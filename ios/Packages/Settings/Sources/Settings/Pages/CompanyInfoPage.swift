@@ -140,7 +140,7 @@ public struct CompanyInfoPage: View {
                     #if canImport(UIKit)
                     .textContentType(.URL)
                     .keyboardType(.URL)
-                    .autocapitalization(.none)
+                    .textInputAutocapitalization(.never)
                     #endif
                     .accessibilityLabel("Website")
                     .accessibilityIdentifier("company.website")

@@ -139,7 +139,7 @@ public struct ProfileView: View {
             ))
             #if canImport(UIKit)
             .textContentType(.givenName)
-            .autocapitalization(.words)
+            .textInputAutocapitalization(.words)
             #endif
             .accessibilityLabel("First name")
             .accessibilityIdentifier("profile.firstName")
@@ -150,7 +150,7 @@ public struct ProfileView: View {
             ))
             #if canImport(UIKit)
             .textContentType(.familyName)
-            .autocapitalization(.words)
+            .textInputAutocapitalization(.words)
             #endif
             .accessibilityLabel("Last name")
             .accessibilityIdentifier("profile.lastName")
@@ -166,7 +166,7 @@ public struct ProfileView: View {
             #if canImport(UIKit)
             .textContentType(.emailAddress)
             .keyboardType(.emailAddress)
-            .autocapitalization(.none)
+            .textInputAutocapitalization(.never)
             #endif
             .accessibilityLabel("Email address")
             .accessibilityIdentifier("profile.email")

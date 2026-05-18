@@ -78,7 +78,15 @@ public struct CreateCustomerFromThreadSheet: View {
     private var nameFields: some View {
         HStack(spacing: BrandSpacing.md) {
             brandField("First name", text: $vm.firstName, identifier: "create.customer.firstName")
+                #if !os(macOS)
+                .textContentType(.givenName)
+                .textInputAutocapitalization(.words)
+                #endif
             brandField("Last name", text: $vm.lastName, identifier: "create.customer.lastName")
+                #if !os(macOS)
+                .textContentType(.familyName)
+                .textInputAutocapitalization(.words)
+                #endif
         }
     }
 
@@ -87,7 +95,8 @@ public struct CreateCustomerFromThreadSheet: View {
 #if !os(macOS)
             .keyboardType(.emailAddress)
             .textContentType(.emailAddress)
-            .autocapitalization(.none)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
 #endif
     }
 

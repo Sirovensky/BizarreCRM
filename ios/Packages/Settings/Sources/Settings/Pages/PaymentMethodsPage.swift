@@ -144,7 +144,7 @@ public struct PaymentMethodsPage: View {
                             TextField("API key", text: $vm.settings.blockChypApiKey)
                                 #if canImport(UIKit)
                                 .textContentType(.password)
-                                .autocapitalization(.none)
+                                .textInputAutocapitalization(.never)
                                 #endif
                                 .accessibilityLabel("BlockChyp API key")
                         } else {
