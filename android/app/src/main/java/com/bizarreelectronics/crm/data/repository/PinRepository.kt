@@ -6,6 +6,7 @@ import com.bizarreelectronics.crm.util.Argon2idHasher
 import com.bizarreelectronics.crm.util.PinBlocklist
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 
 /**
  * §2.5 PIN lock — thin facade over `AuthApi.verifyPin` / `AuthApi.changePin`
@@ -49,6 +50,13 @@ class PinRepository @Inject constructor(
         }
         val response = try {
             authApi.verifyPin(mapOf("pin" to pin))
+        } catch (e: CancellationException) {
+            // BUGHUNT-2026-05-17: don't swallow cancellation into the offline
+            // branch. A cancelled verify (e.g. user navigated away from the
+            // keypad) was previously falling through to verifyOffline, which
+            // could increment the failure counter and hard-lock the user out
+            // of the device for no reason. Let CE propagate up to the caller.
+            throw e
         } catch (t: Throwable) {
             // §2.15 / §20 offline-ok: server unreachable → fall back to the
             // locally mirrored Argon2id hash. The mirror is only written
@@ -119,6 +127,13 @@ class PinRepository @Inject constructor(
         }
         val response = try {
             authApi.changePin(body)
+        } catch (e: CancellationException) {
+            // BUGHUNT-2026-05-17: don't catch cancellation as a generic
+            // "network error". A cancelled change RPC may have already been
+            // accepted server-side, and returning ChangeResult.Error here
+            // would invite the user to retry and double-change the PIN.
+            // Propagate CE so structured concurrency aborts cleanly.
+            throw e
         } catch (t: Throwable) {
             return ChangeResult.Error(t.message ?: "Network error")
         }
