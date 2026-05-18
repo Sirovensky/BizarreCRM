@@ -7,8 +7,8 @@ import Foundation
 /// Contract:
 /// - On a 401 for an authenticated request, APIClient calls
 ///   `refresher.refresh()`.
-/// - Concrete implementation posts `/auth/refresh` with the current refresh
-///   token (stored in `TokenStore`).
+/// - Concrete implementation posts `/api/v1/auth/refresh` with the current
+///   refresh token (stored in `TokenStore`).
 /// - On success the implementation MUST persist the new pair to
 ///   `TokenStore` AND return it so APIClient can update its local
 ///   `authToken`. APIClient then retries the original request ONCE.

@@ -56,8 +56,16 @@ public final class AuthRefresher: AuthSessionRefresher, @unchecked Sendable {
             throw APITransportError.unauthorized
         }
 
+        // BUGHUNT-2026-05-17: was `/auth/refresh` (relative path, no prefix).
+        // The server mounts auth routes at `/api/v1/auth` (index.ts:1558), so
+        // POST /auth/refresh 404s. Every token refresh would fail and the user
+        // would be bounced to the login screen after their first 401, even
+        // though they had a perfectly valid refresh token. All other endpoints
+        // in APIClient+Auth.swift / AuthEndpoints.swift / LoginFlow.swift use
+        // the `/api/v1/auth/...` form — this was a one-line slip in the only
+        // file that the user never sees succeed (silent on the happy path).
         let resp = try await apiClient.post(
-            "/auth/refresh",
+            "/api/v1/auth/refresh",
             body: Req(refreshToken: current),
             as: Resp.self
         )
