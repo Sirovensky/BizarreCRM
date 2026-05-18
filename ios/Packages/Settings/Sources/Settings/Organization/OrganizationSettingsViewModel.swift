@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import Core
 
 // MARK: - §19.5 OrganizationSettingsViewModel
 
@@ -43,6 +44,8 @@ public final class OrganizationSettingsViewModel: Sendable {
         defer { isLoading = false }
         do {
             settings = try await repository.fetch()
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -61,6 +64,10 @@ public final class OrganizationSettingsViewModel: Sendable {
         do {
             settings = try await repository.save(settings)
             saveConfirmed = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels save; server may have
+            // committed config. Stay silent.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

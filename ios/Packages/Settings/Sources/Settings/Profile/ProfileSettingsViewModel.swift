@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import Core
 
 // MARK: - §19.1 ProfileViewModel
 
@@ -43,6 +44,8 @@ public final class ProfileViewModel: Sendable {
             userId = result.id
             settings = result.settings
             lastSaved = result.settings
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-17: nav cancel
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -64,6 +67,11 @@ public final class ProfileViewModel: Sendable {
             settings = saved
             lastSaved = saved
             successMessage = "Profile saved."
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels save; server may have
+            // committed. Stay silent so retap doesn't re-PATCH and
+            // generate audit noise.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

@@ -140,6 +140,13 @@ public final class ImportWizardViewModel {
 
             isLoading = false
             transition(to: .preview)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: wizard dismiss cancels mid-upload, but
+            // server may have committed file + job rows. Retap re-uploads
+            // creating duplicate (zombie) import jobs.
+            isLoading = false
+            uploadProgress = 0
+            return
         } catch {
             isLoading = false
             uploadProgress = 0
@@ -160,6 +167,9 @@ public final class ImportWizardViewModel {
             columnMapping = ImportColumnMapper.autoMap(sourceColumns: p.columns, entity: selectedEntity)
             isLoading = false
             transition(to: .mapping)
+        } catch let e where AppError.isCancellation(e) {
+            isLoading = false
+            return  // BUGHUNT-2026-05-17: wizard dismiss cancel
         } catch {
             isLoading = false
             errorMessage = error.localizedDescription
@@ -196,6 +206,12 @@ public final class ImportWizardViewModel {
             isLoading = false
             transition(to: .progress)
             startPolling()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancel mid-startJob, but server may
+            // have started the import job (rows being written). Retap
+            // re-fires createJob+startJob, duplicating ingestion.
+            isLoading = false
+            return
         } catch {
             isLoading = false
             errorMessage = error.localizedDescription
