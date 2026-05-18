@@ -147,14 +147,22 @@ public struct ReceiptTemplateEditorView: View {
         Section("Header") {
             Toggle("Show Logo", isOn: $template.showLogo)
                 .accessibilityLabel("Show business logo on receipt")
+            // BUGHUNT-2026-05-18: receipt template fields missed
+            // textContentType / Autofill hints — admins re-typed shop
+            // details that iOS could've pulled from Contacts.
             TextField("Shop Name", text: $template.headerShopName)
+                .textContentType(.organizationName)
+                .textInputAutocapitalization(.words)
                 .accessibilityLabel("Shop name on receipt header")
             TextField("Address", text: $template.headerAddress)
+                .textContentType(.fullStreetAddress)
                 .accessibilityLabel("Business address on receipt header")
             TextField("Phone", text: $template.headerPhone)
+                .textContentType(.telephoneNumber)
                 .keyboardType(.phonePad)
                 .accessibilityLabel("Business phone number on receipt header")
             TextField("Website (optional)", text: $template.headerWebsite)
+                .textContentType(.URL)
                 .keyboardType(.URL)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
