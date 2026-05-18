@@ -727,63 +727,74 @@ router.get('/dashboard', (_req, res) => {
 
 // ─── Tenant Management ──────────────────────────────────────────────
 
+// BUGHUNT-2026-05-17: wrap bare-async handler in try/catch. `await
+// enrichTenantOperationalTimestamps` does cross-DB lookups that can throw on a
+// stale pool or missing tenant file, and the per-tenant fs.statSync is in a
+// `.map` — any uncaught throw becomes an unhandledRejection.
 router.get('/tenants', async (req, res) => {
-  const { status, plan, search, q, sort, order } = req.query as Record<string, string | undefined>;
-  const searchTerm = search ?? q;
-  const wantsPagination =
-    req.query.page !== undefined ||
-    req.query.per_page !== undefined ||
-    req.query.pagesize !== undefined ||
-    req.query.pageSize !== undefined ||
-    req.query.limit !== undefined;
-  const result = wantsPagination
-    ? listTenantsPaginated({
-      status,
-      plan,
-      search: searchTerm,
-      page: parsePage(req.query.page),
-      pageSize: parsePageSize(req.query.per_page ?? req.query.pagesize ?? req.query.pageSize ?? req.query.limit),
-      sort,
-      order,
-    })
-    : { tenants: listTenants({ status, plan, search: searchTerm }), pagination: null };
-  // SEC-M22: redact db_path from the list view. The path is an internal
-  // filesystem detail (e.g. "tenants/acme.db") that gives attackers a
-  // file-primitive target if they ever get a path-traversal or file-read
-  // foothold elsewhere. Callers only need the size; keep db_path available
-  // on the single-tenant detail view for ops tools.
-  const rowsWithTimestamps = await enrichTenantOperationalTimestamps(
-    getMasterDb(),
-    result.tenants as AnyRow[],
-  );
-  const enriched = rowsWithTimestamps.map((t: any) => {
-    let dbSizeMb = 0;
-    try { dbSizeMb = Math.round(fs.statSync(path.join(config.tenantDataDir, t.db_path)).size / (1024 * 1024) * 100) / 100; } catch {}
-    const { db_path: _redacted, ...safe } = t;
-    return { ...safe, db_size_mb: dbSizeMb };
-  });
-  res.json({
-    success: true,
-    data: {
-      tenants: enriched,
-      ...(result.pagination
-        ? {
-          pagination: {
-            page: result.pagination.page,
-            per_page: result.pagination.pageSize,
-            total: result.pagination.total,
-            total_pages: result.pagination.totalPages,
-            sort: result.pagination.sort,
-            order: result.pagination.order,
-            search: result.pagination.search,
-            ...(result.pagination.outOfBounds
-              ? { out_of_bounds: true, requested_page: result.pagination.requestedPage }
-              : {}),
-          },
-        }
-        : {}),
-    },
-  });
+  try {
+    const { status, plan, search, q, sort, order } = req.query as Record<string, string | undefined>;
+    const searchTerm = search ?? q;
+    const wantsPagination =
+      req.query.page !== undefined ||
+      req.query.per_page !== undefined ||
+      req.query.pagesize !== undefined ||
+      req.query.pageSize !== undefined ||
+      req.query.limit !== undefined;
+    const result = wantsPagination
+      ? listTenantsPaginated({
+        status,
+        plan,
+        search: searchTerm,
+        page: parsePage(req.query.page),
+        pageSize: parsePageSize(req.query.per_page ?? req.query.pagesize ?? req.query.pageSize ?? req.query.limit),
+        sort,
+        order,
+      })
+      : { tenants: listTenants({ status, plan, search: searchTerm }), pagination: null };
+    // SEC-M22: redact db_path from the list view. The path is an internal
+    // filesystem detail (e.g. "tenants/acme.db") that gives attackers a
+    // file-primitive target if they ever get a path-traversal or file-read
+    // foothold elsewhere. Callers only need the size; keep db_path available
+    // on the single-tenant detail view for ops tools.
+    const rowsWithTimestamps = await enrichTenantOperationalTimestamps(
+      getMasterDb(),
+      result.tenants as AnyRow[],
+    );
+    const enriched = rowsWithTimestamps.map((t: any) => {
+      let dbSizeMb = 0;
+      try { dbSizeMb = Math.round(fs.statSync(path.join(config.tenantDataDir, t.db_path)).size / (1024 * 1024) * 100) / 100; } catch {}
+      const { db_path: _redacted, ...safe } = t;
+      return { ...safe, db_size_mb: dbSizeMb };
+    });
+    res.json({
+      success: true,
+      data: {
+        tenants: enriched,
+        ...(result.pagination
+          ? {
+            pagination: {
+              page: result.pagination.page,
+              per_page: result.pagination.pageSize,
+              total: result.pagination.total,
+              total_pages: result.pagination.totalPages,
+              sort: result.pagination.sort,
+              order: result.pagination.order,
+              search: result.pagination.search,
+              ...(result.pagination.outOfBounds
+                ? { out_of_bounds: true, requested_page: result.pagination.requestedPage }
+                : {}),
+            },
+          }
+          : {}),
+      },
+    });
+  } catch (e: unknown) {
+    logger.error('super_admin_list_tenants_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_GENERIC, message: 'Failed to load tenants' });
+    }
+  }
 });
 
 // @audit-fixed: Previously this route called provisionTenant() with whatever
@@ -793,81 +804,102 @@ router.get('/tenants', async (req, res) => {
 // We now type-guard every input here so the route returns structured 400s and
 // also audits failed provisioning attempts (so brute-force slug enumeration
 // shows up in master_audit_log instead of disappearing into the noise).
+// BUGHUNT-2026-05-17: wrap bare-async handler in try/catch. `await provisionTenant`
+// runs migrations, writes a tenant DB file, and signs setup tokens — many failure
+// modes (disk full, schema bug, JWT secret missing) throw, and an unhandled
+// rejection here crashes the server during multi-tenant onboarding.
 router.post('/tenants', async (req, res) => {
-  const body = (req.body ?? {}) as Record<string, unknown>;
-  const slug = body.slug;
-  const shop_name = body.shop_name;
-  const admin_email = body.admin_email;
-  const plan = body.plan;
-  const admin_first_name = body.admin_first_name;
-  const admin_last_name = body.admin_last_name;
+  try {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const slug = body.slug;
+    const shop_name = body.shop_name;
+    const admin_email = body.admin_email;
+    const plan = body.plan;
+    const admin_first_name = body.admin_first_name;
+    const admin_last_name = body.admin_last_name;
 
-  if (typeof slug !== 'string' || slug.trim().length === 0) {
-    return res.status(400).json({ success: false, message: 'slug must be a non-empty string' });
-  }
-  if (typeof shop_name !== 'string' || shop_name.trim().length === 0) {
-    return res.status(400).json({ success: false, message: 'shop_name must be a non-empty string' });
-  }
-  if (typeof admin_email !== 'string' || !admin_email.includes('@')) {
-    return res.status(400).json({ success: false, message: 'admin_email must be a valid email' });
-  }
-  if (plan !== undefined && typeof plan !== 'string') {
-    return res.status(400).json({ success: false, message: 'plan must be a string' });
-  }
-  if (admin_first_name !== undefined && typeof admin_first_name !== 'string') {
-    return res.status(400).json({ success: false, message: 'admin_first_name must be a string' });
-  }
-  if (admin_last_name !== undefined && typeof admin_last_name !== 'string') {
-    return res.status(400).json({ success: false, message: 'admin_last_name must be a string' });
-  }
+    if (typeof slug !== 'string' || slug.trim().length === 0) {
+      return res.status(400).json({ success: false, message: 'slug must be a non-empty string' });
+    }
+    if (typeof shop_name !== 'string' || shop_name.trim().length === 0) {
+      return res.status(400).json({ success: false, message: 'shop_name must be a non-empty string' });
+    }
+    if (typeof admin_email !== 'string' || !admin_email.includes('@')) {
+      return res.status(400).json({ success: false, message: 'admin_email must be a valid email' });
+    }
+    if (plan !== undefined && typeof plan !== 'string') {
+      return res.status(400).json({ success: false, message: 'plan must be a string' });
+    }
+    if (admin_first_name !== undefined && typeof admin_first_name !== 'string') {
+      return res.status(400).json({ success: false, message: 'admin_first_name must be a string' });
+    }
+    if (admin_last_name !== undefined && typeof admin_last_name !== 'string') {
+      return res.status(400).json({ success: false, message: 'admin_last_name must be a string' });
+    }
 
-  // No admin_password — shop admin sets their own password on first login (password_set = 0)
-  const result = await provisionTenant({
-    slug: slug.toLowerCase().trim(),
-    name: shop_name,
-    adminEmail: admin_email,
-    adminFirstName: admin_first_name,
-    adminLastName: admin_last_name,
-    plan,
-  });
-  if (!result.success) {
-    auditLog('tenant_create_failed', req.superAdmin!.superAdminId, req.ip || 'unknown', {
+    // No admin_password — shop admin sets their own password on first login (password_set = 0)
+    const result = await provisionTenant({
       slug: slug.toLowerCase().trim(),
-      reason: result.error,
+      name: shop_name,
+      adminEmail: admin_email,
+      adminFirstName: admin_first_name,
+      adminLastName: admin_last_name,
+      plan,
     });
-    return res.status(400).json({ success: false, message: result.error });
+    if (!result.success) {
+      auditLog('tenant_create_failed', req.superAdmin!.superAdminId, req.ip || 'unknown', {
+        slug: slug.toLowerCase().trim(),
+        reason: result.error,
+      });
+      return res.status(400).json({ success: false, message: result.error });
+    }
+    auditLog('tenant_created', req.superAdmin!.superAdminId, req.ip || 'unknown', {
+      slug: result.slug,
+      tenant_id: result.tenantId,
+      plan: plan ?? 'free',
+    });
+    const port = config.port !== 443 ? `:${config.port}` : '';
+    const baseUrl = `https://${result.slug}.${config.baseDomain}${port}`;
+    const setupUrl = `${baseUrl}/setup/${result.setupToken}`;
+    res.status(201).json({ success: true, data: { tenant_id: result.tenantId, slug: result.slug, url: baseUrl, setup_url: setupUrl } });
+  } catch (e: unknown) {
+    logger.error('super_admin_create_tenant_error', { error: e instanceof Error ? e.message : String(e) });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_GENERIC, message: 'Failed to create tenant' });
+    }
   }
-  auditLog('tenant_created', req.superAdmin!.superAdminId, req.ip || 'unknown', {
-    slug: result.slug,
-    tenant_id: result.tenantId,
-    plan: plan ?? 'free',
-  });
-  const port = config.port !== 443 ? `:${config.port}` : '';
-  const baseUrl = `https://${result.slug}.${config.baseDomain}${port}`;
-  const setupUrl = `${baseUrl}/setup/${result.setupToken}`;
-  res.status(201).json({ success: true, data: { tenant_id: result.tenantId, slug: result.slug, url: baseUrl, setup_url: setupUrl } });
 });
 
+// BUGHUNT-2026-05-17: wrap bare-async handler in try/catch. The inner try/catch
+// only guards the tenant-DB stats lookup — the masterDb.prepare(...).get() above
+// it can throw on a pool failure and crash the server with an unhandledRejection.
 router.get('/tenants/:slug', async (req, res) => {
-  const masterDb = getMasterDb()!;
-  const tenant = masterDb.prepare('SELECT * FROM tenants WHERE slug = ?').get(req.params.slug) as any;
-  if (!tenant) return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'Tenant not found' });
-
-  let userCount = 0, ticketCount = 0, customerCount = 0;
-  let _tdbStats: import('better-sqlite3').Database | undefined;
   try {
-    _tdbStats = await getTenantDb(tenant.slug);
-    userCount = (_tdbStats.prepare('SELECT COUNT(*) as c FROM users WHERE is_active = 1').get() as any).c;
-    ticketCount = (_tdbStats.prepare('SELECT COUNT(*) as c FROM tickets WHERE is_deleted = 0').get() as any).c;
-    customerCount = (_tdbStats.prepare('SELECT COUNT(*) as c FROM customers WHERE is_deleted = 0').get() as any).c;
-  } catch {} finally {
-    if (_tdbStats !== undefined) releaseTenantDb(tenant.slug);
+    const masterDb = getMasterDb()!;
+    const tenant = masterDb.prepare('SELECT * FROM tenants WHERE slug = ?').get(req.params.slug) as any;
+    if (!tenant) return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'Tenant not found' });
+
+    let userCount = 0, ticketCount = 0, customerCount = 0;
+    let _tdbStats: import('better-sqlite3').Database | undefined;
+    try {
+      _tdbStats = await getTenantDb(tenant.slug);
+      userCount = (_tdbStats.prepare('SELECT COUNT(*) as c FROM users WHERE is_active = 1').get() as any).c;
+      ticketCount = (_tdbStats.prepare('SELECT COUNT(*) as c FROM tickets WHERE is_deleted = 0').get() as any).c;
+      customerCount = (_tdbStats.prepare('SELECT COUNT(*) as c FROM customers WHERE is_deleted = 0').get() as any).c;
+    } catch {} finally {
+      if (_tdbStats !== undefined) releaseTenantDb(tenant.slug);
+    }
+
+    let dbSizeMb = 0;
+    try { dbSizeMb = Math.round(fs.statSync(path.join(config.tenantDataDir, tenant.db_path)).size / (1024 * 1024) * 100) / 100; } catch {}
+
+    res.json({ success: true, data: { ...tenant, user_count: userCount, ticket_count: ticketCount, customer_count: customerCount, db_size_mb: dbSizeMb } });
+  } catch (e: unknown) {
+    logger.error('super_admin_get_tenant_error', { error: e instanceof Error ? e.message : String(e), slug: req.params.slug });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, code: ERROR_CODES.ERR_INT_GENERIC, message: 'Failed to load tenant' });
+    }
   }
-
-  let dbSizeMb = 0;
-  try { dbSizeMb = Math.round(fs.statSync(path.join(config.tenantDataDir, tenant.db_path)).size / (1024 * 1024) * 100) / 100; } catch {}
-
-  res.json({ success: true, data: { ...tenant, user_count: userCount, ticket_count: ticketCount, customer_count: customerCount, db_size_mb: dbSizeMb } });
 });
 
 router.put('/tenants/:slug', requireStepUpTotpSuperAdmin('super_admin_tenant_update'), async (req, res) => {
