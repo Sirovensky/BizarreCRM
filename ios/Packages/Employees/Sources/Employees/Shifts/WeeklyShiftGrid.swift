@@ -324,8 +324,29 @@ struct ShiftCell: View {
     }
 
     private func format(_ iso: String) -> String {
-        guard let date = ISO8601DateFormatter().date(from: iso) else { return iso }
+        // BUGHUNT-2026-05-18: ISO8601DateFormatter() default options reject
+        // Node Date.toISOString() millisecond precision; without the
+        // fractional retry the chip rendered the raw
+        // "2026-05-18T08:00:00.123Z" string instead of "8:00 AM" in the
+        // weekly schedule grid.
+        guard let date = Self.parseShiftIso(iso) else { return iso }
         return timeFormatter.string(from: date)
+    }
+
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private static func parseShiftIso(_ raw: String) -> Date? {
+        isoFractional.date(from: raw) ?? isoPlain.date(from: raw)
     }
 
     private var statusColor: Color {

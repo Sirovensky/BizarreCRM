@@ -238,7 +238,15 @@ public struct ClockInOutTile: View {
     // MARK: - Helpers
 
     private func formattedClockInTime(_ iso8601: String) -> String {
-        guard let date = ISO8601DateFormatter().date(from: iso8601) else {
+        // BUGHUNT-2026-05-18: default ISO8601 options reject millisecond
+        // precision; fallback rendered the raw ISO string in the dashboard
+        // clock-in tile (e.g., "2026-05-18T07:23:45.123Z" instead of
+        // "7:23 AM").
+        let isoFractional = ISO8601DateFormatter()
+        isoFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let isoPlain = ISO8601DateFormatter()
+        isoPlain.formatOptions = [.withInternetDateTime]
+        guard let date = isoFractional.date(from: iso8601) ?? isoPlain.date(from: iso8601) else {
             return iso8601
         }
         let f = DateFormatter()

@@ -220,11 +220,30 @@ public struct EmployeeClockInOutView: View {
     }
 
     private func formattedTime(_ iso8601: String) -> String {
-        guard let date = ISO8601DateFormatter().date(from: iso8601) else { return iso8601 }
+        // BUGHUNT-2026-05-18: default ISO8601 options reject millisecond
+        // precision; fallback was rendering the raw ISO string in the
+        // clock card.
+        guard let date = Self.parseClockIso(iso8601) else { return iso8601 }
         let f = DateFormatter()
         f.timeStyle = .short
         f.dateStyle = .none
         return f.string(from: date)
+    }
+
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private static func parseClockIso(_ raw: String) -> Date? {
+        isoFractional.date(from: raw) ?? isoPlain.date(from: raw)
     }
 }
 
