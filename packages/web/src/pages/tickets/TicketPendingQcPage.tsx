@@ -135,14 +135,14 @@ export function TicketPendingQcPage() {
 
         {!isLoading && !isError && data.length > 0 && (
           <div className="overflow-auto">
-            <table className="w-full text-left text-[13px]">
+            <table className="w-full text-left text-[13px]" aria-label="Tickets pending QC sign-off">
               <thead className="sticky top-0 z-10 bg-white dark:bg-surface-900">
                 <tr className="border-b border-surface-200 dark:border-surface-700">
-                  <th className="px-3 py-2 text-xs font-medium text-surface-500 dark:text-surface-400">Ticket</th>
-                  <th className="px-3 py-2 text-xs font-medium text-surface-500 dark:text-surface-400">Customer</th>
-                  <th className="px-3 py-2 text-xs font-medium text-surface-500 dark:text-surface-400">Assigned To</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-surface-500 dark:text-surface-400">Pending</th>
-                  <th className="px-3 py-2 text-xs font-medium text-surface-500 dark:text-surface-400">Updated</th>
+                  <th scope="col" className="px-3 py-2 text-xs font-medium text-surface-500 dark:text-surface-400">Ticket</th>
+                  <th scope="col" className="px-3 py-2 text-xs font-medium text-surface-500 dark:text-surface-400">Customer</th>
+                  <th scope="col" className="px-3 py-2 text-xs font-medium text-surface-500 dark:text-surface-400">Assigned To</th>
+                  <th scope="col" className="px-3 py-2 text-right text-xs font-medium text-surface-500 dark:text-surface-400">Pending</th>
+                  <th scope="col" className="px-3 py-2 text-xs font-medium text-surface-500 dark:text-surface-400">Updated</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-100 dark:divide-surface-800">

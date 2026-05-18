@@ -61,15 +61,15 @@ export function DeviceModelsTab({ from, to }: { from: string; to: string }) {
           <EmptyState message="No device repair data for this period" />
         ) : (
           <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm" aria-label="Device models by repair volume, average ticket, parts cost, and margin">
               <thead className="sticky top-0 bg-white dark:bg-surface-900">
                 <tr className="border-b border-surface-100 dark:border-surface-800">
-                  <th className="text-left px-4 py-3 font-medium text-surface-500">Model</th>
-                  <th className="text-right px-4 py-3 font-medium text-surface-500">Repairs</th>
-                  <th className="text-right px-4 py-3 font-medium text-surface-500">Avg Ticket</th>
-                  <th className="text-right px-4 py-3 font-medium text-surface-500">Parts Cost</th>
-                  <th className="text-right px-4 py-3 font-medium text-surface-500">Margin</th>
-                  <th className="text-left px-4 py-3 font-medium text-surface-500 w-1/5">Volume</th>
+                  <th scope="col" className="text-left px-4 py-3 font-medium text-surface-500">Model</th>
+                  <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">Repairs</th>
+                  <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">Avg Ticket</th>
+                  <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">Parts Cost</th>
+                  <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">Margin</th>
+                  <th scope="col" className="text-left px-4 py-3 font-medium text-surface-500 w-1/5">Volume</th>
                 </tr>
               </thead>
               <tbody>

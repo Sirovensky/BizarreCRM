@@ -63,13 +63,13 @@ export function InventoryAgePage() {
         </div>
       </div>
       <div className="max-h-80 overflow-y-auto overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm" aria-label="Inventory items sorted by age with stock and unit cost">
           <thead className="bg-surface-50 border-b border-surface-200 sticky top-0 dark:border-surface-700 dark:bg-surface-900">
             <tr>
-              <th className="text-left px-3 py-2">Item</th>
-              <th className="text-right px-3 py-2">Stock</th>
-              <th className="text-right px-3 py-2">Cost/Unit</th>
-              <th className="text-right px-3 py-2">Age</th>
+              <th scope="col" className="text-left px-3 py-2">Item</th>
+              <th scope="col" className="text-right px-3 py-2">Stock</th>
+              <th scope="col" className="text-right px-3 py-2">Cost/Unit</th>
+              <th scope="col" className="text-right px-3 py-2">Age</th>
             </tr>
           </thead>
           <tbody>

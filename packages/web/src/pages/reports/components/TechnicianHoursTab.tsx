@@ -116,14 +116,14 @@ export function TechnicianHoursTab({ from, to }: { from: string; to: string }) {
           <EmptyState message="No technician data for this period" />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm" aria-label="Technician productivity — tickets closed, hours, revenue, and revenue per hour">
               <thead>
                 <tr className="border-b border-surface-100 dark:border-surface-800">
-                  <th className="text-left px-4 py-3 font-medium text-surface-500">Technician</th>
-                  <th className="text-right px-4 py-3 font-medium text-surface-500">Tickets Closed</th>
-                  <th className="text-right px-4 py-3 font-medium text-surface-500">Hours Logged</th>
-                  <th className="text-right px-4 py-3 font-medium text-surface-500">Revenue</th>
-                  <th className="text-right px-4 py-3 font-medium text-surface-500">$/Hour</th>
+                  <th scope="col" className="text-left px-4 py-3 font-medium text-surface-500">Technician</th>
+                  <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">Tickets Closed</th>
+                  <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">Hours Logged</th>
+                  <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">Revenue</th>
+                  <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">$/Hour</th>
                 </tr>
               </thead>
               <tbody>

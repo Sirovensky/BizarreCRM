@@ -104,13 +104,13 @@ export function CustomerAcquisitionTab({ from, to }: { from: string; to: string 
           <EmptyState message="No acquisition data for this period" />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm" aria-label="Customer acquisition by source — counts and percentage share">
               <thead>
                 <tr className="border-b border-surface-100 dark:border-surface-800">
-                  <th className="text-left px-4 py-3 font-medium text-surface-500">Source</th>
-                  <th className="text-right px-4 py-3 font-medium text-surface-500">Customers</th>
-                  <th className="text-right px-4 py-3 font-medium text-surface-500">% of Total</th>
-                  <th className="text-left px-4 py-3 font-medium text-surface-500 w-1/3">Share</th>
+                  <th scope="col" className="text-left px-4 py-3 font-medium text-surface-500">Source</th>
+                  <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">Customers</th>
+                  <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">% of Total</th>
+                  <th scope="col" className="text-left px-4 py-3 font-medium text-surface-500 w-1/3">Share</th>
                 </tr>
               </thead>
               <tbody>
@@ -145,12 +145,12 @@ export function CustomerAcquisitionTab({ from, to }: { from: string; to: string 
             <h3 className="font-semibold text-surface-900 dark:text-surface-100">Monthly Breakdown by Source</h3>
           </div>
           <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm" aria-label="Monthly customer acquisition breakdown by source">
               <thead className="sticky top-0 bg-white dark:bg-surface-900">
                 <tr className="border-b border-surface-100 dark:border-surface-800">
-                  <th className="text-left px-4 py-3 font-medium text-surface-500">Month</th>
-                  <th className="text-left px-4 py-3 font-medium text-surface-500">Source</th>
-                  <th className="text-right px-4 py-3 font-medium text-surface-500">New Customers</th>
+                  <th scope="col" className="text-left px-4 py-3 font-medium text-surface-500">Month</th>
+                  <th scope="col" className="text-left px-4 py-3 font-medium text-surface-500">Source</th>
+                  <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">New Customers</th>
                 </tr>
               </thead>
               <tbody>

@@ -855,15 +855,15 @@ export function EmployeeListPage() {
       {/* Table */}
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+          <table className="w-full text-left text-sm" aria-label="Employee directory with role, status, weekly hours, and quick actions">
             <thead>
               <tr className="border-b border-surface-200 bg-surface-50 dark:border-surface-700 dark:bg-surface-800">
                 <th className="w-8 px-4 py-3" />
-                <th className="px-4 py-3 font-medium text-surface-600 dark:text-surface-400">Name</th>
-                <th className="px-4 py-3 font-medium text-surface-600 dark:text-surface-400">Role</th>
-                <th className="px-4 py-3 font-medium text-surface-600 dark:text-surface-400">Status</th>
-                <th className="px-4 py-3 font-medium text-surface-600 dark:text-surface-400">Hours This Week</th>
-                <th className="px-4 py-3 font-medium text-surface-600 dark:text-surface-400">Actions</th>
+                <th scope="col" className="px-4 py-3 font-medium text-surface-600 dark:text-surface-400">Name</th>
+                <th scope="col" className="px-4 py-3 font-medium text-surface-600 dark:text-surface-400">Role</th>
+                <th scope="col" className="px-4 py-3 font-medium text-surface-600 dark:text-surface-400">Status</th>
+                <th scope="col" className="px-4 py-3 font-medium text-surface-600 dark:text-surface-400">Hours This Week</th>
+                <th scope="col" className="px-4 py-3 font-medium text-surface-600 dark:text-surface-400">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-100 dark:divide-surface-700">

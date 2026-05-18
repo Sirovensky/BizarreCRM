@@ -220,14 +220,14 @@ export function PayrollPage() {
               <h2 className="text-sm font-semibold text-surface-900 dark:text-surface-50">Recent period status</h2>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" aria-label="Recent payroll periods with lock status">
                 <thead className="bg-surface-100 text-left text-xs uppercase tracking-wider text-surface-700 dark:bg-surface-800 dark:text-surface-200">
                   <tr>
-                    <th className="px-4 py-3 font-semibold">Period</th>
-                    <th className="px-4 py-3 font-semibold">Range</th>
-                    <th className="px-4 py-3 font-semibold">Status</th>
-                    <th className="px-4 py-3 font-semibold">Locked at</th>
-                    <th className="px-4 py-3 font-semibold">Notes</th>
+                    <th scope="col" className="px-4 py-3 font-semibold">Period</th>
+                    <th scope="col" className="px-4 py-3 font-semibold">Range</th>
+                    <th scope="col" className="px-4 py-3 font-semibold">Status</th>
+                    <th scope="col" className="px-4 py-3 font-semibold">Locked at</th>
+                    <th scope="col" className="px-4 py-3 font-semibold">Notes</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-100 dark:divide-surface-800">

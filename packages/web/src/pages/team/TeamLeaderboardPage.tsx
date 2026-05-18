@@ -93,14 +93,14 @@ export function TeamLeaderboardPage() {
 
       {sorted.length > 0 && (
         <div className="bg-white dark:bg-surface-900 rounded-lg shadow border dark:border-surface-700 overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm" aria-label="Team leaderboard ranking by tickets closed, revenue, and average hours">
             <thead className="bg-gray-50 dark:bg-surface-800 text-gray-600 dark:text-surface-300 text-left text-xs uppercase">
               <tr>
-                <th className="px-4 py-3 w-12">#</th>
-                <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3 text-right">Closed</th>
-                <th className="px-4 py-3 text-right">Revenue</th>
-                <th className="px-4 py-3 text-right">Avg hours</th>
+                <th scope="col" className="px-4 py-3 w-12">#</th>
+                <th scope="col" className="px-4 py-3">Name</th>
+                <th scope="col" className="px-4 py-3 text-right">Closed</th>
+                <th scope="col" className="px-4 py-3 text-right">Revenue</th>
+                <th scope="col" className="px-4 py-3 text-right">Avg hours</th>
               </tr>
             </thead>
             <tbody className="divide-y">

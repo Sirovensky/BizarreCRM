@@ -67,16 +67,16 @@ export function PartsUsageTab({ from, to }: { from: string; to: string }) {
           <EmptyState message="No parts usage data for this period" />
         ) : (
           <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm" aria-label="Parts usage report — usage count, quantity, and total cost by part">
               <thead className="sticky top-0 bg-white dark:bg-surface-900">
                 <tr className="border-b border-surface-100 dark:border-surface-800">
-                  <th className="text-left px-4 py-3 font-medium text-surface-500">#</th>
-                  <th className="text-left px-4 py-3 font-medium text-surface-500">Part Name</th>
-                  <th className="text-left px-4 py-3 font-medium text-surface-500">SKU</th>
-                  <th className="text-left px-4 py-3 font-medium text-surface-500">Supplier</th>
-                  <th className="text-right px-4 py-3 font-medium text-surface-500">Times Used</th>
-                  <th className="text-right px-4 py-3 font-medium text-surface-500">Qty Used</th>
-                  <th className="text-right px-4 py-3 font-medium text-surface-500">Total Cost</th>
+                  <th scope="col" className="text-left px-4 py-3 font-medium text-surface-500">#</th>
+                  <th scope="col" className="text-left px-4 py-3 font-medium text-surface-500">Part Name</th>
+                  <th scope="col" className="text-left px-4 py-3 font-medium text-surface-500">SKU</th>
+                  <th scope="col" className="text-left px-4 py-3 font-medium text-surface-500">Supplier</th>
+                  <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">Times Used</th>
+                  <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">Qty Used</th>
+                  <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">Total Cost</th>
                 </tr>
               </thead>
               <tbody>

@@ -84,16 +84,16 @@ export function ShiftHistoryPage() {
 
       {rows.length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-surface-200 bg-white dark:border-surface-700 dark:bg-surface-800">
-          <table className="min-w-full text-sm">
+          <table className="min-w-full text-sm" aria-label="Shift history with float, counts, and variance">
             <thead className="border-b border-surface-200 bg-surface-50 text-xs uppercase tracking-wide text-surface-500 dark:border-surface-700 dark:bg-surface-900/40 dark:text-surface-400">
               <tr>
-                <th className="px-4 py-2 text-left">Shift</th>
-                <th className="px-4 py-2 text-left">Opened</th>
-                <th className="px-4 py-2 text-left">Closed</th>
-                <th className="px-4 py-2 text-right">Opening float</th>
-                <th className="px-4 py-2 text-right">Counted</th>
-                <th className="px-4 py-2 text-right">Variance</th>
-                <th className="px-4 py-2 text-right">Z-report</th>
+                <th scope="col" className="px-4 py-2 text-left">Shift</th>
+                <th scope="col" className="px-4 py-2 text-left">Opened</th>
+                <th scope="col" className="px-4 py-2 text-left">Closed</th>
+                <th scope="col" className="px-4 py-2 text-right">Opening float</th>
+                <th scope="col" className="px-4 py-2 text-right">Counted</th>
+                <th scope="col" className="px-4 py-2 text-right">Variance</th>
+                <th scope="col" className="px-4 py-2 text-right">Z-report</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-100 dark:divide-surface-700">

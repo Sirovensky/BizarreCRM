@@ -222,15 +222,15 @@ export function AbcAnalysisPage() {
       )}
 
       <div className="rounded-lg border border-surface-200 bg-white overflow-x-auto dark:border-surface-700 dark:bg-surface-800">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm" aria-label="ABC inventory analysis — items ranked by units sold and revenue contribution">
           <thead className="bg-surface-50 border-b border-surface-200 dark:border-surface-700 dark:bg-surface-900">
             <tr>
-              <th className="text-left px-3 py-2">Item</th>
-              <th className="text-center px-3 py-2">Class</th>
-              <th className="text-right px-3 py-2">Units Sold</th>
-              <th className="text-right px-3 py-2">Revenue</th>
-              <th className="text-right px-3 py-2">In Stock</th>
-              <th className="text-left px-3 py-2">Last Sold</th>
+              <th scope="col" className="text-left px-3 py-2">Item</th>
+              <th scope="col" className="text-center px-3 py-2">Class</th>
+              <th scope="col" className="text-right px-3 py-2">Units Sold</th>
+              <th scope="col" className="text-right px-3 py-2">Revenue</th>
+              <th scope="col" className="text-right px-3 py-2">In Stock</th>
+              <th scope="col" className="text-left px-3 py-2">Last Sold</th>
             </tr>
           </thead>
           <tbody>
