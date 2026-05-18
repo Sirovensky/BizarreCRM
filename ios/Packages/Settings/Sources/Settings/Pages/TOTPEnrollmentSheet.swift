@@ -60,6 +60,13 @@ public final class TOTPEnrollmentViewModel {
                 return
             }
             step = .scanQR(TOTPSetupResponse(secret: wire.secret, qrURL: qrURL, backupCodes: wire.backupCodes))
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancels setup; server may
+            // have generated a TOTP secret in pending state. Re-tapping
+            // start would regenerate, invalidating the prior. Stay in
+            // .loading so user retap gets a fresh attempt without painting
+            // a misleading error first.
+            return
         } catch {
             step = .error(error.localizedDescription)
         }
@@ -76,6 +83,13 @@ public final class TOTPEnrollmentViewModel {
         do {
             try await api?.securityTotpVerify(secret: secret, code: codeInput)
             step = .showBackupCodes(backupCodes)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss mid-verify cancels response,
+            // but server may have committed TOTP activation. Painting
+            // "Incorrect code" tempts re-entry of the same 6-digit code,
+            // which the server will reject (already used / time-window
+            // moved), locking the user out of 2FA setup. Stay silent.
+            return
         } catch {
             verifyError = "Incorrect code — try again."
         }

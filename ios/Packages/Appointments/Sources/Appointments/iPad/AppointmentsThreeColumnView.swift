@@ -56,6 +56,10 @@ public final class AppointmentsThreeColumnViewModel {
         defer { isLoading = false }
         do {
             allAppointments = try await api.listAppointments(pageSize: 500)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav/refresh cancels prior fetch; keep
+            // prior list visible.
+            return
         } catch {
             AppLog.ui.error("ThreeColumn load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription

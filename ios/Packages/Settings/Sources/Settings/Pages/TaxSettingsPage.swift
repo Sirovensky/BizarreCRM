@@ -97,6 +97,9 @@ public final class TaxSettingsViewModel: Sendable {
                     jurisdiction: $0.jurisdiction ?? ""
                 )
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels load; keep prior rates.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -145,6 +148,11 @@ public final class TaxSettingsViewModel: Sendable {
             }
             showAddSheet = false
             await load()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss mid-save cancels response,
+            // but server may have committed. Retap creates DUPLICATE tax
+            // rate (POS will see two competing rates). Stay silent.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -159,6 +167,10 @@ public final class TaxSettingsViewModel: Sendable {
                                         jurisdiction: rate.jurisdiction)
             _ = try await api.updateTaxRate(id: rate.id, body)
             await load()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels archive PATCH; server may
+            // have committed. Stay silent.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

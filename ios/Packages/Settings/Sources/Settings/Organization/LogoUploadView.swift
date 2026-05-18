@@ -48,6 +48,11 @@ public final class LogoUploadViewModel {
             let wire = try await api.settingsUploadLogo(data, mimeType: "image/jpeg")
             logoURL = wire.url.flatMap { URL(string: $0) }
             successMessage = "Logo updated."
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels upload; server may have
+            // committed (logo updated). Stay silent; loadExisting on next
+            // appear will reflect server truth.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -62,6 +67,10 @@ public final class LogoUploadViewModel {
             try await api.settingsDeleteLogo()
             logoURL = nil
             successMessage = "Logo removed."
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels DELETE; server may have
+            // committed. Retap 404s. Stay silent.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

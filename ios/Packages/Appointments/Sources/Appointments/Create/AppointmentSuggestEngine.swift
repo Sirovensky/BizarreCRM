@@ -115,6 +115,10 @@ public final class AppointmentSuggestViewModel {
                 locationId: locationId
             )
             suggestedSlots = try await api.suggestAppointmentSlots(request)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: window/duration change cancels prior
+            // suggest fetch; keep prior slots visible.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

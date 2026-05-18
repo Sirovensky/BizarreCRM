@@ -64,6 +64,10 @@ public final class AppointmentCalendarGridViewModel {
         let to   = df.string(from: weekEnd)
         do {
             appointments = try await api.listAppointments(fromDate: from, toDate: to)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: week nav cancels prior fetch; keep prior
+            // appointments visible so the calendar doesn't flash empty.
+            return
         } catch {
             AppLog.ui.error("CalendarGrid load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription

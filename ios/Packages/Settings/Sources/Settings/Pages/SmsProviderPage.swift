@@ -76,6 +76,9 @@ public final class SmsProviderViewModel: Sendable {
             if let footer = resp.complianceFooter, !footer.isEmpty {
                 complianceFooter = footer
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels load; keep prior settings.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -107,6 +110,10 @@ public final class SmsProviderViewModel: Sendable {
             _ = try await api.saveSmsSettings(body)
             successMessage = "SMS settings saved."
             errorMessage = nil
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels save; server may have
+            // committed. Stay silent.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -120,6 +127,12 @@ public final class SmsProviderViewModel: Sendable {
             try await api.sendTestSms()
             successMessage = "Test SMS sent to your number."
             errorMessage = nil
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancels response, but server may
+            // have ALREADY dispatched the test SMS to admin's phone.
+            // Surfacing .error tempts a retap that DOUBLE-SENDS the test
+            // (carrier rate-limit + cost). Stay silent.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
