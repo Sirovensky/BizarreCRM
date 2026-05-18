@@ -36,6 +36,16 @@ final class TicketDeviceHistoryViewModel {
         do {
             let tickets = try await api.deviceHistory(imei: imei, serial: serial)
             state = tickets.isEmpty ? .empty : .loaded(tickets)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: device history sheet uses .task { load }
+            // and pull-to-refresh both call load(). Dismissing the sheet
+            // mid-GET cancels the task and the broad catch was painting the
+            // "cancelled" localized string into state = .error(...). On the
+            // next presentation of the same VM (rare, but possible in some
+            // host paths) the user saw a stale "history load failed" screen
+            // with no underlying error. Reset to .idle so the next load
+            // attempt has a clean state.
+            state = .idle
         } catch {
             state = .error(error.localizedDescription)
         }
