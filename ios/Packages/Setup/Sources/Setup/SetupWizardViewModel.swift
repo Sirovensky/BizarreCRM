@@ -145,6 +145,16 @@ public final class SetupWizardViewModel {
                 _ = try await repository.saveRepairPricingAutoMarginSettings(selection.autoMarginSettings)
             }
             return true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: seedRepairPricingDefaults / spreadsheet
+            // save / auto-margin save are POSTs that mutate the catalog's
+            // pricing seed rows. A `.errorMessage = "cancelled"` toast on
+            // the setup wizard tempted a re-tap that — for `.spreadsheet`
+            // mode specifically — would re-upload the full price sheet,
+            // and for `.tiered` could fail with a UNIQUE conflict that
+            // looks like a setup error to the new tenant. Stay silent on
+            // cancellation; the wizard advances on its own retry path.
+            return false
         } catch {
             errorMessage = error.localizedDescription
             AppLog.ui.error("Repair pricing setup submit error: \(error.localizedDescription, privacy: .public)")
