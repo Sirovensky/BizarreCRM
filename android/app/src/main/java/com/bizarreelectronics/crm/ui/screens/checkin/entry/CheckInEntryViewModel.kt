@@ -7,6 +7,7 @@ import com.bizarreelectronics.crm.data.remote.api.CustomerApi
 import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerRequest
 import com.bizarreelectronics.crm.data.remote.dto.CustomerListItem
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -477,8 +478,13 @@ class CheckInEntryViewModel @Inject constructor(
         }
         _step1.update { it.copy(isCreating = true, createError = null) }
         viewModelScope.launch {
-            runCatching {
-                customerApi.createCustomer(
+            // BUGHUNT-2026-05-17: runCatching swallows CancellationException
+            // on form dismiss; without rethrow, the create POST could commit
+            // server-side but isCreating stays true. Worse, retap with the
+            // same form fields creates a DUPLICATE customer row. Re-throw
+            // CancellationException so the launch reflects coroutine cancel.
+            try {
+                val resp = customerApi.createCustomer(
                     CreateCustomerRequest(
                         firstName = s.newFirstName.trim(),
                         lastName = s.newLastName.trim().ifBlank { null },
@@ -486,11 +492,10 @@ class CheckInEntryViewModel @Inject constructor(
                         email = s.newEmail.trim().ifBlank { null },
                     )
                 )
-            }.onSuccess { resp ->
                 val detail = resp.data
                 if (detail == null) {
                     _step1.update { it.copy(isCreating = false, createError = "Server returned no data") }
-                    return@onSuccess
+                    return@launch
                 }
                 val entry = AttachedCustomerEntry(
                     id = detail.id,
@@ -516,7 +521,9 @@ class CheckInEntryViewModel @Inject constructor(
                     )
                 }
                 appPreferences.addRecentCheckinCustomerId(entry.id)
-            }.onFailure { e ->
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
                 _step1.update { it.copy(isCreating = false, createError = "Could not create: ${e.message}") }
             }
         }
