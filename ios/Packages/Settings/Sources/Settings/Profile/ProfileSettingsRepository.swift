@@ -26,7 +26,11 @@ public final class LiveProfileRepository: ProfileRepository {
     }
 
     public func fetchProfile() async throws -> (id: Int, settings: ProfileModel) {
-        let me: MeResponse = try await api.get("/auth/me", as: MeResponse.self)
+        // BUGHUNT-2026-05-18: server mounts auth at `/api/v1/auth` (index.ts
+        // L1558). APIClient base URL is the shop origin, so the path here
+        // must include `/api/v1` — without it the SPA catchall returns HTML
+        // and JSON decode fails as "envelope missing".
+        let me: MeResponse = try await api.get("/api/v1/auth/me", as: MeResponse.self)
         return (id: me.id, settings: me.toProfileModel())
     }
 
@@ -37,11 +41,13 @@ public final class LiveProfileRepository: ProfileRepository {
             email:     settings.email,
             phone:     settings.phone
         )
-        // PUT /settings/users/:id updates first_name, last_name, email, phone.
+        // PUT /api/v1/settings/users/:id updates first_name, last_name, email, phone.
         // Returns { success, data: UserRow }.  We decode MeResponse which shares
         // the same snake_case fields.
+        // BUGHUNT-2026-05-18: was `/settings/users/:id` — missing `/api/v1`
+        // prefix, matched SPA catchall and lost the save.
         let updated: MeResponse = try await api.put(
-            "/settings/users/\(id)",
+            "/api/v1/settings/users/\(id)",
             body: body,
             as: MeResponse.self
         )
