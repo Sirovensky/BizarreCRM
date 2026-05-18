@@ -235,6 +235,11 @@ public final class ImportWizardViewModel {
             job = updated
             pollTask?.cancel()   // stop polling while paused
             AppLog.ui.info("Import paused: \(id, privacy: .public)")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: server may have committed the pause before
+            // nav-cancel; the next polling tick reconciles. Don't log a
+            // misleading "pause failed" line.
+            return
         } catch {
             AppLog.ui.error("Import pause failed: \(error.localizedDescription, privacy: .public)")
         }
@@ -250,6 +255,9 @@ public final class ImportWizardViewModel {
             job = updated
             startPolling()
             AppLog.ui.info("Import resumed: \(id, privacy: .public)")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: see pauseImport — same reconciliation path.
+            return
         } catch {
             AppLog.ui.error("Import resume failed: \(error.localizedDescription, privacy: .public)")
         }
