@@ -218,6 +218,10 @@ public struct InvoiceInspector: View {
         do {
             let inv = try await repo.detail(id: invoiceId)
             state = .loaded(inv)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: invoice nav cancels detail fetch; leave
+            // state alone so newer fetch can set .loaded.
+            return
         } catch {
             state = .failed(error.localizedDescription)
         }
