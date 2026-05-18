@@ -38,6 +38,9 @@ public final class GoalEditorViewModel {
             errorMessage = "End date must be after start date."
             return
         }
+        // BUGHUNT-2026-05-17: re-entry guard against a double-tap that
+        // would create two duplicate goal rows for the same user/team.
+        guard !isSaving else { return }
         isSaving = true
         defer { isSaving = false }
         errorMessage = nil
@@ -54,6 +57,14 @@ public final class GoalEditorViewModel {
             )
             let created = try await repo.createGoal(req)
             onSaved(created)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: createGoal POST may have landed before
+            // the task was cancelled. Painting "cancelled" tempts a retap
+            // that creates a duplicate goal row — gamification streak and
+            // progress calculations would then split across two goals.
+            // Suppress; the goal list refresh on dismiss reveals the saved
+            // state.
+            errorMessage = nil
         } catch {
             AppLog.ui.error("GoalEditor save failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
