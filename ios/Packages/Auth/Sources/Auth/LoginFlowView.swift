@@ -1038,6 +1038,7 @@ public struct PINUnlockView: View {
     @State private var lockoutEndsAt: Date?
     @State private var tick: Date = Date()
     @State private var hideTimer: Task<Void, Never>?
+    @State private var tickTimer: Task<Void, Never>?
     @State private var didAttemptBiometric: Bool = false
     public var onUnlock: (() -> Void)?
     public var onRevoked: (() -> Void)?
@@ -1172,7 +1173,11 @@ public struct PINUnlockView: View {
                 Task { await attemptBiometric(triggeredByUser: false) }
             }
         }
-        .onDisappear { hideTimer?.cancel() }
+        .onDisappear {
+            hideTimer?.cancel()
+            tickTimer?.cancel()
+            tickTimer = nil
+        }
     }
 
     /// Run a biometric evaluation. Success unlocks + resets the PIN
@@ -1264,7 +1269,14 @@ public struct PINUnlockView: View {
     /// Live ticker for the lockout countdown. Runs only while the view is
     /// visible so battery / background work is zero when signed in.
     private func startTicking() {
-        Task { @MainActor in
+        // BUGHUNT-2026-05-17: store the timer task and cancel on disappear.
+        // Previously this fired-and-forgot a Task that ticked every 500ms
+        // forever, writing `tick = Date()` to @State storage that the
+        // closure kept alive long after the view was dismissed. Every PIN
+        // unlock appearance leaked another ticker; a few quick lock /
+        // unlock cycles added measurable battery drain in the background.
+        tickTimer?.cancel()
+        tickTimer = Task { @MainActor in
             while !Task.isCancelled {
                 tick = Date()
                 if let until = lockoutEndsAt, until <= tick {
