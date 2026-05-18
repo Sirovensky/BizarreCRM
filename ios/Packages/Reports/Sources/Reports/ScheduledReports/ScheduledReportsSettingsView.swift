@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import DesignSystem
 
 // MARK: - ScheduledReportsViewModel
@@ -10,6 +11,12 @@ final class ScheduledReportsViewModel {
     var isLoading = false
     var errorMessage: String?
     var showAddSheet = false
+    /// BUGHUNT-2026-05-17: re-entry guard for createScheduledReport POST.
+    /// The Save button stayed enabled across the await, so a double-tap (or
+    /// quick re-tap during a slow network) used to fire two POSTs and
+    /// create duplicate schedules that the user couldn't tell apart in the
+    /// list because the server-assigned id is the only differentiator.
+    var isCreatingSchedule = false
 
     // New schedule form
     var newReportType = "revenue"
@@ -35,6 +42,11 @@ final class ScheduledReportsViewModel {
 
     func addSchedule() async {
         guard !newEmails.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        // BUGHUNT-2026-05-17: bail if a previous POST is still in flight to
+        // prevent a duplicate scheduled-report row from being created.
+        guard !isCreatingSchedule else { return }
+        isCreatingSchedule = true
+        defer { isCreatingSchedule = false }
         let emails = newEmails.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
         do {
             let created = try await repository.createScheduledReport(
@@ -45,6 +57,9 @@ final class ScheduledReportsViewModel {
             schedules.append(created)
             showAddSheet = false
             newEmails = ""
+        } catch let e where AppError.isCancellation(e) {
+            // Sheet dismissed mid-flight — swallow so we don't paint a fake error.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -200,10 +215,17 @@ public struct ScheduledReportsSettingsView: View {
                     Button("Cancel") { vm.showAddSheet = false }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        Task { await vm.addSchedule() }
+                    // BUGHUNT-2026-05-17: surface the in-flight state and disable
+                    // the button while the POST is running so the user can't
+                    // race-tap a duplicate save.
+                    if vm.isCreatingSchedule {
+                        ProgressView()
+                    } else {
+                        Button("Save") {
+                            Task { await vm.addSchedule() }
+                        }
+                        .disabled(vm.newEmails.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
-                    .disabled(vm.newEmails.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
         }

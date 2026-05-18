@@ -855,6 +855,23 @@ class SyncManager @Inject constructor(
                             smsDao.updateStatus(entry.entityId, "sent")
                         }
                     }
+                } catch (e: CancellationException) {
+                    // BUGHUNT-2026-05-17: don't perform a second DB write nor
+                    // mark the row "queued" on cancellation. The previous
+                    // `catch (e: Exception)` caught CancellationException,
+                    // attempted a suspend DAO write inside an already-
+                    // cancelled coroutine (which itself throws cancellation,
+                    // silently dropping the status flip on the floor), then
+                    // re-threw. Worse: if sendSms() had actually completed
+                    // on the server but the client coroutine was cancelled
+                    // before the "sent" flip ran, the catch would have set
+                    // the local row back to "queued" — guaranteeing the
+                    // next flushQueue() would re-send the SMS to the
+                    // customer (no idempotency key on /sms/send). Re-throw
+                    // cancellation immediately so the outer flushQueue
+                    // handler resets the queue entry status without
+                    // corrupting the SMS row's local state.
+                    throw e
                 } catch (e: Exception) {
                     // Make sure the UI reflects that the message is still in flight —
                     // flushQueue()'s outer catch will either retry or dead-letter the
