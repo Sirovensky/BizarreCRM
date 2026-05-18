@@ -9,6 +9,7 @@ import com.bizarreelectronics.crm.data.remote.api.VoiceApi
 import com.bizarreelectronics.crm.data.remote.api.VoicemailEntry
 import com.bizarreelectronics.crm.util.CallerIdLookupHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -189,11 +190,20 @@ class CallsViewModel @Inject constructor(
         onFallbackDial: (String) -> Unit,
     ) {
         if (!_state.value.canInitiateCalls) return
+        // BUGHUNT-2026-05-17: re-entry guard. A fast double-tap on the Call
+        // button could reach this VM method before Compose has had time to
+        // recompose with `isInitiating = true` on the dial sheet's button
+        // (the `enabled = !isInitiating` flag only blocks the *third* tap
+        // after the first POST kicks off). Without this guard, two POST
+        // /voice/call requests fire in parallel and the tenant is billed
+        // for two outbound legs.
+        if (_state.value.isInitiatingCall) return
         _state.value = _state.value.copy(isInitiatingCall = true)
         viewModelScope.launch {
-            runCatching {
-                voiceApi.initiateCall(InitiateCallRequest(to_number = number, customer_id = customerId))
-            }.onSuccess { resp ->
+            try {
+                val resp = voiceApi.initiateCall(
+                    InitiateCallRequest(to_number = number, customer_id = customerId),
+                )
                 _state.value = _state.value.copy(isInitiatingCall = false, showDialPrompt = false)
                 val session = resp.data
                 if (session != null) {
@@ -205,7 +215,17 @@ class CallsViewModel @Inject constructor(
                 } else {
                     onFallbackDial(number)
                 }
-            }.onFailure { e ->
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation. The POST may
+                // have already reached the SIP/VoIP provider and a call leg
+                // is dialing out (billed). A "Call failed" toast would
+                // tempt the user to re-tap, dialing a SECOND outbound leg.
+                // Clear the in-flight flag so the VM is consistent after
+                // scope cancellation, then propagate so structured
+                // concurrency stays intact.
+                _state.value = _state.value.copy(isInitiatingCall = false)
+                throw e
+            } catch (e: Exception) {
                 _state.value = _state.value.copy(isInitiatingCall = false, showDialPrompt = false)
                 val is404 = (e as? HttpException)?.code() == 404
                 if (is404) {
