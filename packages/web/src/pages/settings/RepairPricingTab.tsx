@@ -298,7 +298,13 @@ function ServicesSubTab() {
                       </td>
                       <td className="px-4 py-2.5 text-sm text-surface-500 dark:text-surface-400">{svc.description || '-'}</td>
                       <td className="px-4 py-2.5 text-center">
-                        <span className={cn('inline-block w-2 h-2 rounded-full', svc.is_active ? 'bg-green-500' : 'bg-surface-300')} />
+                        <span
+                          className={cn('inline-block w-2 h-2 rounded-full', svc.is_active ? 'bg-green-500' : 'bg-surface-300')}
+                          role="img"
+                          aria-label={svc.is_active ? 'Active' : 'Inactive'}
+                          title={svc.is_active ? 'Active' : 'Inactive'}
+                        />
+                        <span className="sr-only">{svc.is_active ? 'Active' : 'Inactive'}</span>
                       </td>
                       <td className="px-4 py-2.5 text-center text-sm text-surface-500">{svc.sort_order}</td>
                       <td className="px-4 py-2.5 text-right">
@@ -879,7 +885,13 @@ function PricesSubTab() {
                       </td>
                       <td className="px-4 py-2.5 text-center text-sm text-surface-500">{price.grade_count}</td>
                       <td className="px-4 py-2.5 text-center">
-                        <span className={cn('inline-block w-2 h-2 rounded-full', price.is_active ? 'bg-green-500' : 'bg-surface-300')} />
+                        <span
+                          className={cn('inline-block w-2 h-2 rounded-full', price.is_active ? 'bg-green-500' : 'bg-surface-300')}
+                          role="img"
+                          aria-label={price.is_active ? 'Active' : 'Inactive'}
+                          title={price.is_active ? 'Active' : 'Inactive'}
+                        />
+                        <span className="sr-only">{price.is_active ? 'Active' : 'Inactive'}</span>
                       </td>
                       <td className="px-4 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
                         {editingId === price.id ? (

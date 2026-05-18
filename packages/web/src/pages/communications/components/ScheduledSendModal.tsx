@@ -204,6 +204,7 @@ export function ScheduledSendModal({
               Send at
             </label>
             <input
+              autoFocus
               type="datetime-local"
               value={when}
               min={toLocalIsoInput(addMinutes(1))}

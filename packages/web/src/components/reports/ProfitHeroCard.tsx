@@ -140,6 +140,7 @@ export function ProfitHeroCard() {
         <div
           className="absolute inset-0 rounded-2xl bg-black/70 p-6 flex flex-col justify-center backdrop-blur-sm z-10"
           role="dialog"
+          aria-modal="true"
           aria-label="Edit profit thresholds"
         >
           <div className="text-white font-semibold mb-3">Adjust zone thresholds</div>
