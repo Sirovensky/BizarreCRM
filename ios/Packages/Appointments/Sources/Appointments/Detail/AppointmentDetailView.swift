@@ -44,6 +44,13 @@ public final class AppointmentDetailViewModel {
             let req = UpdateAppointmentRequest(status: AppointmentStatus.noShow.rawValue, noShow: true)
             appointment = try await api.updateAppointment(id: appointment.id, req)
             markedNoShow = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: No-show status may trigger a deposit charge
+            // server-side (see NoShowPolicySettingsView — threshold-based
+            // automatic deposit). Painting an error on cancellation tempts a
+            // retap that re-marks no-show and may re-trigger the charge if
+            // server logic isn't strictly idempotent on repeat status flips.
+            return
         } catch {
             errorMessage = AppError.from(error).errorDescription ?? "Failed to mark no-show."
             AppLog.ui.error("Appt mark no-show failed: \(error.localizedDescription, privacy: .public)")
@@ -61,6 +68,11 @@ public final class AppointmentDetailViewModel {
             let req = UpdateAppointmentRequest(status: AppointmentStatus.completed.rawValue)
             appointment = try await api.updateAppointment(id: appointment.id, req)
             markedCompleted = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: Mark-completed PUT. Server logs an audit
+            // entry per call and downstream invoicing may key off this
+            // transition. Silence cancellation so the retap can't double-fire.
+            return
         } catch {
             errorMessage = AppError.from(error).errorDescription ?? "Failed to mark completed."
             AppLog.ui.error("Appt mark completed failed: \(error.localizedDescription, privacy: .public)")
@@ -83,6 +95,13 @@ public final class AppointmentDetailViewModel {
             appointment = try await api.updateAppointment(id: appointment.id, req)
             reminderSent = true
             AppLog.ui.info("Reminder sent for appointment \(self.appointment.id, privacy: .public)")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: TCPA — send-reminder PUT triggers the
+            // server-side SMS/email dispatch. If the user backgrounds the
+            // app mid-PUT, the message may already be queued; an error toast
+            // tempts a retap that double-texts the customer. Stay silent on
+            // cancellation.
+            return
         } catch {
             errorMessage = AppError.from(error).errorDescription ?? "Failed to send reminder."
             AppLog.ui.error("Reminder send failed: \(error.localizedDescription, privacy: .public)")
@@ -102,6 +121,13 @@ public final class AppointmentDetailViewModel {
         do {
             let req = UpdateAppointmentRequest(status: AppointmentStatus.confirmed.rawValue)
             appointment = try await api.updateAppointment(id: appointment.id, req)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: Check-in PUT also triggers the confirmed-
+            // status SMS hook (same path as sendReminder). Cancellation must
+            // not paint an error or the staff retaps and double-texts. Keep
+            // checkedInAt set — the local stamp is informational; the server
+            // PUT may have landed anyway and the next reload reconciles.
+            return
         } catch {
             checkedInAt = nil
             errorMessage = AppError.from(error).errorDescription ?? "Check-in failed."
@@ -121,6 +147,11 @@ public final class AppointmentDetailViewModel {
             let req = UpdateAppointmentRequest(status: AppointmentStatus.completed.rawValue)
             appointment = try await api.updateAppointment(id: appointment.id, req)
             markedCompleted = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: Check-out PUT flips status to completed
+            // which downstream invoicing keys off. Silence cancellation so
+            // the staff doesn't retap and double-complete the appointment.
+            return
         } catch {
             checkedOutAt = nil
             errorMessage = AppError.from(error).errorDescription ?? "Check-out failed."
