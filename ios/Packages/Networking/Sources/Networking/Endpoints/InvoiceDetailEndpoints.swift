@@ -222,7 +222,13 @@ public extension APIClient {
 }
 
 // MARK: - Email receipt endpoint
-// Server: POST /api/v1/invoices/:id/email-receipt
+// Server: POST /api/v1/invoices/:id/send-receipt
+//
+// BUGHUNT-2026-05-17: iOS was POSTing to `/email-receipt` with a body of
+// `{ email, message }`. The real server route is `/send-receipt`
+// (invoices.routes.ts ~L2028) and it expects `{ channel: 'email'|'sms',
+// recipient?: string }`. Every email-receipt button from iOS 404'd; the
+// caller's spinner just hung until APIClient timed out.
 
 public struct EmailReceiptBody: Encodable, Sendable {
     public let email: String
@@ -231,6 +237,25 @@ public struct EmailReceiptBody: Encodable, Sendable {
         self.email = email
         self.message = message
     }
+
+    enum CodingKeys: String, CodingKey {
+        case channel
+        case recipient
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode("email", forKey: .channel)
+        // Recipient is optional server-side (it falls back to the customer
+        // row's email when absent). Only override when the caller passed a
+        // non-empty address — preserves the implicit-customer happy path.
+        if !email.isEmpty {
+            try c.encode(email, forKey: .recipient)
+        }
+        // `message` is intentionally dropped — server composes the body
+        // server-side from order id + total. There is no upstream field for
+        // a free-text overlay.
+    }
 }
 
 public struct EmailReceiptApiResponse: Decodable, Sendable {
@@ -238,9 +263,9 @@ public struct EmailReceiptApiResponse: Decodable, Sendable {
 }
 
 public extension APIClient {
-    /// `POST /api/v1/invoices/:id/email-receipt`
+    /// `POST /api/v1/invoices/:id/send-receipt` with `channel: "email"`.
     func emailReceipt(invoiceId: Int64, body: EmailReceiptBody) async throws -> EmailReceiptApiResponse {
-        try await post("/api/v1/invoices/\(invoiceId)/email-receipt",
+        try await post("/api/v1/invoices/\(invoiceId)/send-receipt",
                        body: body,
                        as: EmailReceiptApiResponse.self)
     }
