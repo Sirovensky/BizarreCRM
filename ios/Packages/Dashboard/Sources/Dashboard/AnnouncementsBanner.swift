@@ -42,6 +42,10 @@ final class AnnouncementsBannerViewModel {
             let items = try await api.systemAnnouncements(since: since)
             // Show only unseen announcements
             announcements = items.filter { $0.id > lastSeenId }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: dashboard nav cancellation; keep prior
+            // announcements visible rather than blanking the banner.
+            return
         } catch {
             AppLog.ui.error("Announcements load failed: \(error.localizedDescription, privacy: .public)")
             announcements = []
