@@ -287,6 +287,7 @@ public struct BatchEditSheet: View {
                 }
             }
             .scrollContentBackground(.hidden)
+            .scrollDismissesKeyboard(.interactively)
             .background(Color.bizarreSurfaceBase.ignoresSafeArea())
             .navigationTitle("Batch Edit")
             .navigationBarTitleDisplayMode(.inline)

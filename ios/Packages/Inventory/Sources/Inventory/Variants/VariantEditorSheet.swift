@@ -71,6 +71,7 @@ public struct VariantEditorSheet: View {
                 }
             }
             .scrollContentBackground(.hidden)
+            .scrollDismissesKeyboard(.interactively)
         }
     }
 

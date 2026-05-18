@@ -162,6 +162,7 @@ public struct InventoryReceiveItemsSheet: View {
                     }
                 }
                 .scrollContentBackground(.hidden)
+                .scrollDismissesKeyboard(.interactively)
             }
             .navigationTitle("Receive Items")
             .navigationBarTitleDisplayMode(.inline)

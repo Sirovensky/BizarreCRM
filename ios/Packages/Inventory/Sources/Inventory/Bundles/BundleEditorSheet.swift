@@ -27,6 +27,7 @@ public struct BundleEditorSheet: View {
                     warningsSection
                 }
                 .scrollContentBackground(.hidden)
+                .scrollDismissesKeyboard(.interactively)
             }
             .navigationTitle(vm.isEditing ? "Edit Bundle" : "New Bundle")
             .navigationBarTitleDisplayMode(.inline)

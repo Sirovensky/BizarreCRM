@@ -191,6 +191,7 @@ public struct InstallmentPlanEditorSheet: View {
                     }
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Payment Plan")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

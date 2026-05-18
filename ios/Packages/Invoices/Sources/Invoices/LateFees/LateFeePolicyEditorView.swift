@@ -180,6 +180,7 @@ public struct LateFeePolicyEditorView: View {
                 }
             }
         }
+        .scrollDismissesKeyboard(.interactively)
         .navigationTitle("Late Fee Policy")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

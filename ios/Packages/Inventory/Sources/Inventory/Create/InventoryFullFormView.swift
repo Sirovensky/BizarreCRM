@@ -82,6 +82,7 @@ struct InventoryFullFormView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .scrollDismissesKeyboard(.interactively)
         .background(Color.bizarreSurfaceBase.ignoresSafeArea())
     }
 

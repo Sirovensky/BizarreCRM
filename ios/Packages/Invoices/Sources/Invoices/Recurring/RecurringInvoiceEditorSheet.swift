@@ -116,6 +116,7 @@ public struct RecurringInvoiceEditorSheet: View {
                     }
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle(vm.existingRuleId == nil ? "New Recurring Rule" : "Edit Rule")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
