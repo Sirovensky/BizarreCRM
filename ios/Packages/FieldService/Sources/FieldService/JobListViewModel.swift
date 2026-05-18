@@ -6,6 +6,7 @@
 
 import Foundation
 import Observation
+import Core
 import Networking
 
 // MARK: - JobListViewModel
@@ -85,6 +86,12 @@ public final class JobListViewModel {
             )
             let jobs = response.jobs
             state = jobs.isEmpty ? .empty : .loaded(jobs)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: status/date filter changes spawn a new
+            // fetch that cancels this in-flight one. Painting .failed
+            // would briefly flash an error before the new fetch repopulates.
+            // Leave state alone — the newer fetch will set .loaded / .empty.
+            return
         } catch {
             state = .failed(error.localizedDescription)
         }
