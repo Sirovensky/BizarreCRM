@@ -45,23 +45,49 @@ public struct LocationEditorView: View {
                 }
 
                 Section("Address") {
+                    // USABILITY-2026-05-18: textContentType lets iOS Autofill
+                    // suggest matching address-book entries and route the
+                    // postal-code field to a digits-leaning keyboard instead
+                    // of the default alphabetic one (BusinessProfile +
+                    // CompanyInfo already do this — LocationEditor was the
+                    // outlier).
                     TextField("Address line 1", text: $addressLine1)
+                        #if canImport(UIKit)
+                        .textContentType(.streetAddressLine1)
+                        #endif
                         .accessibilityLabel("Address line 1")
                     TextField("Address line 2 (optional)", text: $addressLine2)
+                        #if canImport(UIKit)
+                        .textContentType(.streetAddressLine2)
+                        #endif
                         .accessibilityLabel("Address line 2")
                     TextField("City", text: $city)
+                        #if canImport(UIKit)
+                        .textContentType(.addressCity)
+                        #endif
                         .accessibilityLabel("City")
                     TextField("State / Province", text: $region)
+                        #if canImport(UIKit)
+                        .textContentType(.addressState)
+                        #endif
                         .accessibilityLabel("Region")
                     TextField("Postal code", text: $postal)
+                        #if canImport(UIKit)
+                        .textContentType(.postalCode)
+                        .keyboardType(.numbersAndPunctuation)
+                        #endif
                         .accessibilityLabel("Postal code")
                     TextField("Country", text: $country)
+                        #if canImport(UIKit)
+                        .textContentType(.countryName)
+                        #endif
                         .accessibilityLabel("Country")
                 }
 
                 Section("Contact") {
                     TextField("Phone", text: $phone)
                         #if canImport(UIKit)
+                        .textContentType(.telephoneNumber)
                         .keyboardType(.phonePad)
                         #endif
                         .accessibilityLabel("Phone number")
