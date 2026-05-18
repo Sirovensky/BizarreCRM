@@ -4,6 +4,8 @@ import android.util.Log
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.local.db.entities.SyncQueueEntity
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -83,7 +85,22 @@ class OrderedQueueProcessor @Inject constructor(
                 // SyncWorker mid-drain (Doze, replacement work, etc.).
                 // Roll the entry's state back to "pending" so the next
                 // drain picks it up cleanly, then re-throw to honor cancel.
-                runCatching { syncQueueDao.updateStatus(entry.id, "pending", null) }
+                //
+                // BUGHUNT-2026-05-17: wrap the rollback in NonCancellable.
+                // Previously the rollback used `runCatching { … }` around a
+                // suspend DAO call inside an already-cancelled coroutine —
+                // the first suspension point inside updateStatus() throws
+                // CancellationException, runCatching silently swallows it,
+                // and the row is left orphaned in "syncing" status until
+                // SyncManager.flushQueue's 60-second stale-syncing reset
+                // catches it on the next drain. Worse, runCatching catching
+                // a CancellationException violates structured-concurrency
+                // hygiene. NonCancellable lets the DB write actually run
+                // to completion, mirroring the pattern used in
+                // SyncManager.flushQueue's cancel handler.
+                withContext(NonCancellable) {
+                    syncQueueDao.updateStatus(entry.id, "pending", null)
+                }
                 throw e
             } catch (e: Exception) {
                 syncQueueDao.incrementRetry(entry.id)

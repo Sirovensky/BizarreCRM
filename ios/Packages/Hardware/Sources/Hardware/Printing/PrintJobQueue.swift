@@ -111,6 +111,20 @@ public actor PrintJobQueue {
                 entry.attempts += 1
                 try await engine.print(entry.job, on: entry.targetPrinter)
                 AppLog.hardware.info("PrintJobQueue: job \(entry.id, privacy: .public) succeeded on attempt \(entry.attempts)")
+            } catch let e where AppError.isCancellation(e) {
+                // BUGHUNT-2026-05-17: previously the catch-all treated a
+                // CancellationError from `engine.print` as a print failure and
+                // burned a retry attempt — combined with `try? await Task.sleep`
+                // (which wakes immediately when cancelled) the loop chewed
+                // through maxAttempts in microseconds and dead-lettered the job
+                // when the user simply backgrounded the app mid-print. Put the
+                // entry back at the head of the queue with the attempt counter
+                // rolled back so the next drain (post-reconnect or post-foreground)
+                // resumes from the same state.
+                entry.attempts -= 1
+                pendingJobs.insert(entry, at: pendingJobs.startIndex)
+                AppLog.hardware.info("PrintJobQueue: drain cancelled — re-queued job \(entry.id, privacy: .public)")
+                return
             } catch {
                 entry.lastError = error.localizedDescription
                 AppLog.hardware.warning("PrintJobQueue: job \(entry.id, privacy: .public) failed attempt \(entry.attempts)/\(self.policy.maxAttempts): \(error.localizedDescription, privacy: .public)")
@@ -118,12 +132,24 @@ public actor PrintJobQueue {
                 if entry.attempts < policy.maxAttempts {
                     let backoff = policy.baseBackoffSeconds * pow(2.0, Double(entry.attempts - 1))
                     AppLog.hardware.info("PrintJobQueue: retry in \(backoff)s")
-                    // Re-insert at back for fair scheduling; backoff before next pass
+                    // Re-insert at back for fair scheduling; backoff before next pass.
                     pendingJobs.append(entry)
-                    // Break out of loop to sleep, then re-enter drain
-                    isDraining = false
+                    // BUGHUNT-2026-05-17: previously toggled `isDraining = false`
+                    // around the Task.sleep. Actor reentrancy meant a concurrent
+                    // `enqueue(...)` could call `drain()` during the sleep, find
+                    // `isDraining=false`, set it true, and start consuming the
+                    // same `pendingJobs` array — two drains running in parallel
+                    // on the same printer, leading to interleaved bytes / partial
+                    // receipts. Keep the flag set; the sleep already serializes
+                    // the next iteration of the loop.
                     try? await Task.sleep(nanoseconds: UInt64(backoff * 1_000_000_000))
-                    isDraining = true
+                    // If the surrounding Task was cancelled during the sleep,
+                    // `try?` swallows it — surface it explicitly so we don't
+                    // immediately retry on a dead Task.
+                    if Task.isCancelled {
+                        AppLog.hardware.info("PrintJobQueue: drain cancelled during backoff — bailing out")
+                        return
+                    }
                 } else {
                     AppLog.hardware.error("PrintJobQueue: job \(entry.id, privacy: .public) dead-lettered after \(entry.attempts) attempts")
                     deadLetterJobs.append(entry)
