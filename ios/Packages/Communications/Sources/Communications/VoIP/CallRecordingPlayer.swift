@@ -109,12 +109,17 @@ final class CallRecordingPlayerViewModel {
         timer = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(250))
+                // BUGHUNT-2026-05-18: the previous guard sat INSIDE
+                // MainActor.run, so `return` left the closure but the while
+                // loop kept sleeping every 250ms on a deinited VM forever.
+                // Break out of the loop here instead.
+                guard let strongSelf = self else { break }
                 await MainActor.run {
-                    guard let self, let player = self.player else { return }
-                    self.currentTime = player.currentTime
+                    guard let player = strongSelf.player else { return }
+                    strongSelf.currentTime = player.currentTime
                     if !player.isPlaying {
-                        self.isPlaying = false
-                        self.timer?.cancel()
+                        strongSelf.isPlaying = false
+                        strongSelf.timer?.cancel()
                     }
                 }
             }
