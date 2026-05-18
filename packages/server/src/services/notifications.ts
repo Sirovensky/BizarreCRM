@@ -286,6 +286,48 @@ export async function processRetryQueue(db: Database.Database, tenantSlug: strin
       continue;
     }
 
+    // BUGHUNT-2026-05-17 [TCPA]: re-check the customer's current opt-out
+    // state before dispatching a queued retry. A retry can sit in the
+    // queue for hours (5^retryCount minutes between attempts); if the
+    // customer replied STOP in that window, sms.routes.ts:1406 already
+    // flipped their sms_opt_in to 0. Sending the queued message now
+    // would breach TCPA. Lookup by both phone and mobile so we catch
+    // either column. If the customer can't be matched (anonymous send
+    // to a phone we don't track), continue — the original send path
+    // already validated consent, so this is a defense-in-depth check.
+    try {
+      const consentRow = db
+        .prepare(
+          `SELECT sms_opt_in, sms_consent_transactional
+             FROM customers
+            WHERE phone = ? OR mobile = ?
+            LIMIT 1`,
+        )
+        .get(item.recipient_phone, item.recipient_phone) as
+        | { sms_opt_in: number | null; sms_consent_transactional: number | null }
+        | undefined;
+      if (
+        consentRow &&
+        (consentRow.sms_opt_in === 0 || consentRow.sms_consent_transactional === 0)
+      ) {
+        // Drop the retry — the customer has opted out since enqueue.
+        db.prepare('DELETE FROM notification_retry_queue WHERE id = ?').run(item.id);
+        logger.info('Retry suppressed — customer opted out after enqueue', {
+          phone: item.recipient_phone,
+          retryAttempt: claimedCount,
+        });
+        continue;
+      }
+    } catch (consentErr) {
+      // If the consent lookup itself fails (table missing on a legacy
+      // tenant DB) fall through to the send. We don't want to indefinitely
+      // wedge retries because a SELECT errored.
+      logger.warn('Retry consent re-check failed — proceeding with send', {
+        phone: item.recipient_phone,
+        err: consentErr instanceof Error ? consentErr.message : String(consentErr),
+      });
+    }
+
     try {
       await sendSmsTenant(db, tenantSlug, item.recipient_phone, item.message);
       // Success — remove from retry queue (dead-letter never triggered)
