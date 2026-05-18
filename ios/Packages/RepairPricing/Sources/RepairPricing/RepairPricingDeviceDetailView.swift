@@ -277,6 +277,9 @@ public struct RepairPricingDeviceDetailView: View {
         do {
             let detail = try await api.getDeviceTemplate(id: template.id)
             template = detail
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav cancellation; keep prior template.
+            return
         } catch {
             AppLog.ui.error("DeviceTemplate detail load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
