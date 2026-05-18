@@ -78,8 +78,15 @@ public actor MembershipSubscriptionManager {
         if let api {
             do {
                 let body = EnrollMembershipRequest(customerId: customerId, planId: plan.id)
+                // BUGHUNT-2026-05-17: server mounts membership.routes at
+                // /api/v1/membership (index.ts:1775) and exposes /subscribe at
+                // membership.routes.ts:197. Was missing the /api/v1 prefix →
+                // every enrollment call 404'd, so server reconciliation silently
+                // failed and the local-store fallback persisted as the only
+                // record of the subscription. Same fix applies to serverPost
+                // and serverPatch below (both target /membership/:id/*).
                 let response = try await api.post(
-                    "/membership/subscribe",
+                    "/api/v1/membership/subscribe",
                     body: body,
                     as: MembershipDTO.self
                 )
@@ -135,7 +142,7 @@ public actor MembershipSubscriptionManager {
         guard let existing = store[membershipId] else { return nil }
         // Best-effort; server handles billing.
         // Server route: POST /api/v1/membership/:id/resume (renew uses resume)
-        await serverPost("/membership/\(membershipId)/resume")
+        await serverPost("/api/v1/membership/\(membershipId)/resume")
         let updated = existing.withStatus(.active)
         store[membershipId] = updated
         return updated
@@ -154,7 +161,7 @@ public actor MembershipSubscriptionManager {
         guard let api else { return }
         let body = MembershipActionRequest(action: action)
         _ = try? await api.post(
-            "/membership/\(membershipId)/\(action)",
+            "/api/v1/membership/\(membershipId)/\(action)",
             body: body,
             as: EmptyMembershipResponse.self
         )
