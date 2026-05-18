@@ -32,7 +32,9 @@ public struct FollowUpPolicyEditorSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         BrandHaptics.tap()
-                        Task { await vm.save(); dismiss() }
+                        Task {
+                            if await vm.save() { dismiss() }
+                        }
                     }
                     .disabled(vm.isSaving)
                     .accessibilityIdentifier("followUp.policy.saveButton")
@@ -160,7 +162,11 @@ public final class FollowUpPolicyEditorViewModel {
         rules.remove(atOffsets: offsets)
     }
 
-    public func save() async {
+    /// BUGHUNT-2026-05-18: returns whether the save succeeded so the
+    /// sheet only dismisses on success — previously the caller called
+    /// `await save(); dismiss()` unconditionally, so the error alert
+    /// triggered on an already-dismissed view and the user never saw it.
+    public func save() async -> Bool {
         isSaving = true
         defer { isSaving = false }
         do {
@@ -173,6 +179,7 @@ public final class FollowUpPolicyEditorViewModel {
                 _ = try await api.createFollowUp(linkId: linkId, request: rule.toRequest())
             }
             BrandHaptics.success()
+            return true
         } catch let e where AppError.isCancellation(e) {
             // BUGHUNT-2026-05-17: bulk POST cancelled. Server may have
             // accepted some-but-not-all rules. Painting "Could not save
@@ -180,11 +187,12 @@ public final class FollowUpPolicyEditorViewModel {
             // already-saved rules as duplicates (endpoint has no idempotency
             // key). Stay silent; the next sheet open re-loads from the
             // server and the admin can re-confirm the actual state.
-            return
+            return false
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription
                 ?? "Could not save follow-up rules."
             showError = true
+            return false
         }
     }
 }

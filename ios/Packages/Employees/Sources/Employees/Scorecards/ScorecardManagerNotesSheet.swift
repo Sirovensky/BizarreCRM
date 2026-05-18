@@ -58,10 +58,13 @@ public final class ScorecardManagerNotesSheetViewModel {
         self.onSaved = onSaved
     }
 
-    public func save() async {
+    /// BUGHUNT-2026-05-18: returns false on validation failure so the
+    /// sheet stays open and the inline errorMessage is visible. Save
+    /// callers must check the return value before dismissing.
+    public func save() async -> Bool {
         guard !noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             errorMessage = "Note cannot be empty."
-            return
+            return false
         }
         isSaving = true
         defer { isSaving = false }
@@ -69,6 +72,7 @@ public final class ScorecardManagerNotesSheetViewModel {
         // Server call would go here; optimistic local return for now.
         let note = ScorecardManagerNote(text: noteText, noteType: noteType)
         onSaved(note)
+        return true
     }
 }
 
@@ -118,7 +122,9 @@ public struct ScorecardManagerNotesSheet: View {
                         ProgressView()
                     } else {
                         Button("Save") {
-                            Task { await vm.save(); dismiss() }
+                            Task {
+                                if await vm.save() { dismiss() }
+                            }
                         }
                         .keyboardShortcut(.return)
                     }

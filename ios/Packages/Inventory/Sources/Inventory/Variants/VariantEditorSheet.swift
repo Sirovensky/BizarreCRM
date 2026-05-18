@@ -33,7 +33,13 @@ public struct VariantEditorSheet: View {
                     if vm.isSaving {
                         ProgressView()
                     } else {
-                        Button("Save") { Task { await vm.save(); dismiss() } }
+                        Button("Save") {
+                            Task {
+                                if await vm.save() { dismiss() }
+                                // else keep sheet open so the inline
+                                // errorMessage banner is visible to the user.
+                            }
+                        }
                             .foregroundStyle(.bizarreOrange)
                             .disabled(!vm.isValid)
                     }
@@ -280,8 +286,13 @@ final class VariantEditorViewModel {
         generatedCombinations = []
     }
 
-    func save() async {
+    /// BUGHUNT-2026-05-18: caller relied on side-effect — Save tapped,
+    /// sheet dismissed unconditionally even when `generateVariants` set
+    /// `errorMessage`. Returning the success flag lets the view leave
+    /// the sheet open to display the banner instead of swallowing it.
+    func save() async -> Bool {
         await generateVariants()
+        return errorMessage == nil
     }
 
     // MARK: Helpers
