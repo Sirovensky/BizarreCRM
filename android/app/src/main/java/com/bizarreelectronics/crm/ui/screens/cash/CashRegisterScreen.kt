@@ -14,6 +14,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -89,10 +92,16 @@ fun CashRegisterScreen(
             }
 
             is CashRegisterUiState.Error -> {
-                ErrorState(
-                    message = state.message,
-                    onRetry = { viewModel.loadCurrentShift() },
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .semantics { liveRegion = LiveRegionMode.Assertive },
+                ) {
+                    ErrorState(
+                        message = state.message,
+                        onRetry = { viewModel.loadCurrentShift() },
+                    )
+                }
             }
 
             is CashRegisterUiState.NoShift -> {
