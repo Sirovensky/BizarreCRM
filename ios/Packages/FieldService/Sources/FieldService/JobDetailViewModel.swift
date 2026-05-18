@@ -56,6 +56,10 @@ public final class JobDetailViewModel {
         do {
             let job = try await api.fieldServiceJob(id: jobId)
             state = .loaded(job)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: nav cancel on job-detail load — don't
+            // flip to .failed on a torn-down screen; .task re-fires.
+            return
         } catch {
             state = .failed(error.localizedDescription)
         }

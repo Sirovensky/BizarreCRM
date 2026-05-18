@@ -474,6 +474,11 @@ struct ComplaintDetailSheet: View {
                 complaintId: complaint.id, rootCause: rootCause)
             onUpdated?()
             dismiss()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: sheet dismiss mid-resolve. Server may
+            // have committed the resolve (writes a customer_complaints
+            // audit row). Retap would double the audit. Stay silent.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -487,6 +492,10 @@ struct ComplaintDetailSheet: View {
             try await api.rejectCustomerComplaint(complaintId: complaint.id)
             onUpdated?()
             dismiss()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: see resolve — server-side reject may
+            // have committed before nav-cancel.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

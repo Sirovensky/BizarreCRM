@@ -41,6 +41,8 @@ public final class LocationListViewModel {
         do {
             locations = try await repo.fetchLocations()
             loadState = .loaded
+        } catch let e where AppError.isCancellation(e) {
+            return  // BUGHUNT-2026-05-18: nav cancel — .task re-fires on reopen
         } catch {
             loadState = .error(error.localizedDescription)
         }
@@ -65,6 +67,11 @@ public final class LocationListViewModel {
                 )
                 return copy
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: setPrimary PATCH may have committed — a
+            // "set-primary failed" error tempts re-tap, which writes a
+            // second audit row for the same primary-location swap.
+            return
         } catch {
             loadState = .error(error.localizedDescription)
         }

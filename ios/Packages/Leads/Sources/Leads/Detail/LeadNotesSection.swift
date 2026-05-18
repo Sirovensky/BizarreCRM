@@ -240,6 +240,11 @@ private struct LeadAddNoteSheet: View {
             let note = try await api.createLeadNote(leadId: leadId, body: trimmed)
             onAdded(note)
             dismiss()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: sheet dismiss mid-create. POST has no
+            // idempotency key — a retap after "cancelled" would write a
+            // duplicate note row.
+            return
         } catch {
             self.error = error.localizedDescription
         }

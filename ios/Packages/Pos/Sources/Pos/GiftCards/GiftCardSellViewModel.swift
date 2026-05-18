@@ -105,6 +105,12 @@ public final class GiftCardSellViewModel {
         } catch let APITransportError.httpStatus(code, message) {
             let msg = (message?.isEmpty == false) ? message! : "Not found"
             state = .failure("Lookup failed (\(code)): \(msg)")
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: sheet dismiss mid-lookup — revert to idle
+            // rather than painting a "Lookup failed: cancelled" toast. The
+            // user re-scanning auto-retries.
+            state = .idle
+            return
         } catch {
             state = .failure("Lookup failed: \(error.localizedDescription)")
         }

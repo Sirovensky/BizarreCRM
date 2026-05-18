@@ -82,6 +82,11 @@ public final class EmployeeDetailViewModel {
             timeOffRequests = timeOff.filter { $0.status == .approved || $0.status == .pending }
                 .sorted { $0.startDate < $1.startDate }
             loadState = .loaded
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: nav cancel on detail load — don't flip
+            // loadState to .failed on a torn-down screen, since .task
+            // re-fires the load on the next open.
+            return
         } catch {
             AppLog.ui.error("EmployeeDetail load failed: \(error.localizedDescription, privacy: .public)")
             loadState = .failed(error.localizedDescription)
