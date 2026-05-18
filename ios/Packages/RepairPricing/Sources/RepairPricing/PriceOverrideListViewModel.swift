@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import Networking
+import Core
 
 // MARK: - §43.3 Price Override List ViewModel
 
@@ -37,6 +38,13 @@ public final class PriceOverrideListViewModel {
         do {
             try await api.deletePriceOverride(id: item.id)
             overrides = overrides.filter { $0.id != item.id }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: DELETE may have already reached the server
+            // when the task is torn down (sheet dismissed / row swiped away
+            // and the list reloaded mid-flight). A red banner would falsely
+            // imply the override survives — but the next list reload may
+            // show it gone. Stay silent; the next `load()` reconciles.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
