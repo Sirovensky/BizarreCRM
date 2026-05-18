@@ -45,6 +45,14 @@ public final class AppointmentCreateViewModel {
         do {
             let created = try await api.createAppointment(req)
             createdId = created.id
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: POST create appointment. Unlike the
+            // FullViewModel this basic create doesn't carry an idempotency
+            // key — every retap of Save creates a fresh appointment row.
+            // If the user dismisses mid-flight the server may already have
+            // inserted; painting an error tempts a retap that duplicates.
+            // Stay silent; list reload reveals the row.
+            return
         } catch {
             AppLog.ui.error("Appointment create failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
