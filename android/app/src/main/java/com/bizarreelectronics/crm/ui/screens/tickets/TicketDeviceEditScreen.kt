@@ -49,6 +49,7 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -358,10 +359,13 @@ class TicketDeviceEditViewModel @Inject constructor(
 
             // 2. Remove parts that were deleted in the editor.
             for (partId in removedPartIds) {
-                runCatching { ticketApi.removePartFromDevice(partId) }
-                    .onFailure { e ->
-                        android.util.Log.w(TAG, "Failed to remove part $partId: ${e.message}")
-                    }
+                try {
+                    ticketApi.removePartFromDevice(partId)
+                } catch (e: CancellationException) {
+                    throw e // BUGHUNT-2026-05-17: preserve structured concurrency on part delete
+                } catch (e: Exception) {
+                    android.util.Log.w(TAG, "Failed to remove part $partId: ${e.message}")
+                }
             }
 
             // 3. Add any new parts that were added in the editor.
@@ -372,10 +376,13 @@ class TicketDeviceEditViewModel @Inject constructor(
                     quantity = part.quantity,
                     price = part.price,
                 )
-                runCatching { ticketApi.addPartToDevice(deviceId, request) }
-                    .onFailure { e ->
-                        android.util.Log.w(TAG, "Failed to add part ${part.name}: ${e.message}")
-                    }
+                try {
+                    ticketApi.addPartToDevice(deviceId, request)
+                } catch (e: CancellationException) {
+                    throw e // BUGHUNT-2026-05-17: preserve structured concurrency on part add (money-adjacent)
+                } catch (e: Exception) {
+                    android.util.Log.w(TAG, "Failed to add part ${part.name}: ${e.message}")
+                }
             }
 
             _state.update {
@@ -385,6 +392,8 @@ class TicketDeviceEditViewModel @Inject constructor(
                     saveComplete = true,
                 )
             }
+        } catch (e: CancellationException) {
+            throw e // BUGHUNT-2026-05-17: preserve structured concurrency on device save
         } catch (e: Exception) {
             _state.update {
                 it.copy(
