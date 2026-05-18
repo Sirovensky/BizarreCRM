@@ -79,7 +79,10 @@ public final class SnippetEditorViewModel {
     // MARK: - Save
 
     public func save() async {
-        guard isValid else { return }
+        // BUGHUNT-2026-05-17: guard against re-entry; `isSaving` is observed
+        // by the editor's "Save" button (disabled while saving) but the
+        // keyboard-shortcut path can re-fire before the button refreshes.
+        guard isValid, !isSaving else { return }
         isSaving = true
         errorMessage = nil
         defer { isSaving = false }
@@ -112,6 +115,14 @@ public final class SnippetEditorViewModel {
             }
             savedSnippet = saved
             onSave(saved)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: createSnippet is a POST without an idempotency
+            // key. If the server stored the snippet before the Task was cancelled,
+            // painting "Failed" tempts a re-tap that creates a duplicate snippet
+            // (and a shortcode-uniqueness constraint will then surface a confusing
+            // "shortcode already taken" error on the second attempt). Stay silent;
+            // the snippet list reload will reveal the actual state.
+            return
         } catch {
             let appError = AppError.from(error)
             errorMessage = appError.errorDescription
