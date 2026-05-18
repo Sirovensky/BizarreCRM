@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Foundation
 import Observation
+import Core
 import Networking
 import DesignSystem
 
@@ -157,6 +158,14 @@ public final class CashTenderViewModel: Identifiable {
             )
             phase = .changeDue(result)
             BrandHaptics.success()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: Sheet dismissed mid-charge cancelled the Task.
+            // Don't paint .failed — that prompts the cashier to retry and risks
+            // double-charging the customer. The server-side idempotency key on
+            // posTransactionRequest is the source of truth; revert to .entry
+            // so any retry reuses the same key.
+            phase = .entry
+            return
         } catch {
             phase = .failed(error.localizedDescription)
             BrandHaptics.error()
