@@ -66,10 +66,32 @@ public final class WSConnectionStateObserver {
     /// `true` while any WS channel is in a reconnect backoff (shows chip).
     public private(set) var isReconnecting: Bool = false
 
+    /// BUGHUNT-2026-05-18: simple bool→bool set was racy when multiple
+    /// topics dropped together. Topic A would mark `reconnecting=true`,
+    /// topic B would mark it again, topic A would complete and write
+    /// `false` — leaving the chip hidden even though topic B was still
+    /// in backoff. Ref-count the active reconnect tasks so the chip only
+    /// clears when EVERY topic has finished its current reconnect cycle.
+    private var activeReconnectCount: Int = 0
+
     private init() {}
 
+    /// Legacy setter kept for any caller that still flips the bool directly.
+    /// Prefer `beginReconnect` / `endReconnect` for new code so the count
+    /// stays accurate.
     public func setReconnecting(_ value: Bool) {
         isReconnecting = value
+        if !value { activeReconnectCount = 0 }
+    }
+
+    public func beginReconnect() {
+        activeReconnectCount += 1
+        isReconnecting = activeReconnectCount > 0
+    }
+
+    public func endReconnect() {
+        activeReconnectCount = max(0, activeReconnectCount - 1)
+        isReconnecting = activeReconnectCount > 0
     }
 }
 
@@ -298,19 +320,28 @@ public actor WebSocketManager {
     // MARK: - Reconnect on disconnect
 
     func scheduleReconnect(topic: Topic, attempt: Int) {
+        // BUGHUNT-2026-05-18: cancel the prior in-flight reconnect (if any)
+        // — its early-cancel guard will release the count it acquired, so
+        // we can safely acquire a fresh count for this new attempt.
         reconnectTasks[topic]?.cancel()
         // §21.5 Disconnect UX: mark as reconnecting so UI can show chip.
         Task { @MainActor in
-            WSConnectionStateObserver.shared.setReconnecting(true)
+            WSConnectionStateObserver.shared.beginReconnect()
         }
         reconnectTasks[topic] = Task { [weak self] in
             let delay = WebSocketManager.backoffDelay(attempt: attempt)
             try? await Task.sleep(nanoseconds: delay)
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled else {
+                // Cancelled before connect — release the count we acquired.
+                await Task { @MainActor in
+                    WSConnectionStateObserver.shared.endReconnect()
+                }.value
+                return
+            }
             await self?.connections[topic]?.connect()
             // Clear reconnecting flag once connected.
             await Task { @MainActor in
-                WSConnectionStateObserver.shared.setReconnecting(false)
+                WSConnectionStateObserver.shared.endReconnect()
             }.value
         }
     }
