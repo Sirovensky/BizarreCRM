@@ -139,3 +139,54 @@ fun AuditFilterSheet(
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DateField(value: String, onChange: (String) -> Unit, label: String) {
+    var showPicker by remember { mutableStateOf(false) }
+    if (showPicker) {
+        val initialMillis = value.takeIf { it.isNotBlank() }?.let {
+            runCatching {
+                java.time.LocalDate.parse(it)
+                    .atStartOfDay(java.time.ZoneId.systemDefault())
+                    .toInstant().toEpochMilli()
+            }.getOrNull()
+        } ?: System.currentTimeMillis()
+        val pickerState = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
+        DatePickerDialog(
+            onDismissRequest = { showPicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { ms ->
+                        val iso = java.time.Instant.ofEpochMilli(ms)
+                            .atZone(java.time.ZoneId.systemDefault())
+                            .toLocalDate().toString()
+                        onChange(iso)
+                    }
+                    showPicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPicker = false }) { Text("Cancel") }
+            },
+        ) { DatePicker(state = pickerState) }
+    }
+    OutlinedTextField(
+        value = value,
+        onValueChange = {},
+        readOnly = true,
+        label = { Text(label) },
+        placeholder = { Text("Any") },
+        singleLine = true,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { showPicker = true },
+        trailingIcon = {
+            if (value.isNotBlank()) {
+                IconButton(onClick = { onChange("") }) {
+                    Icon(Icons.Default.Close, contentDescription = "Clear $label")
+                }
+            }
+        },
+    )
+}
