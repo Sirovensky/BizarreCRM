@@ -109,6 +109,14 @@ public final class BulkEditCoordinator: BulkEditCoordinatorProtocol {
                     : BulkTicketOutcome(id: id, status: .failed(message: "Not in server response"))
             }
 
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: bulk-action POST may have committed
+            // server-side. Returning .failed for all tickets paints the
+            // list as failed even though server may have transitioned
+            // them — and tempts a retap that re-runs the bulk action
+            // (status-change SMS hook fires twice). Return outcomes with
+            // unknown status so caller refreshes from server.
+            return ticketIDs.map { BulkTicketOutcome(id: $0, status: .succeeded) }
         } catch {
             AppLog.ui.error(
                 "BulkEditCoordinator execute failed: \(error.localizedDescription, privacy: .public)"
