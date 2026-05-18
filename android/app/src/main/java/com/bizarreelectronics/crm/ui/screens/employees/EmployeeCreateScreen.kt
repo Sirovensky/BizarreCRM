@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -284,7 +285,11 @@ fun EmployeeCreateScreen(
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Username *") },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Next,
+                    capitalization = KeyboardCapitalization.None,
+                    autoCorrect = false,
+                ),
                 keyboardActions = onNext,
             )
 
@@ -294,7 +299,10 @@ fun EmployeeCreateScreen(
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("First name *") },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Next,
+                    capitalization = KeyboardCapitalization.Words,
+                ),
                 keyboardActions = onNext,
             )
 
@@ -304,7 +312,10 @@ fun EmployeeCreateScreen(
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Last name *") },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Next,
+                    capitalization = KeyboardCapitalization.Words,
+                ),
                 keyboardActions = onNext,
             )
 

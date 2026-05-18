@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -87,7 +88,10 @@ fun LocationCreateScreen(
                         onValueChange = viewModel::onNameChange,
                         label = { Text(stringResource(R.string.location_field_name)) },
                         singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Next,
+                            capitalization = KeyboardCapitalization.Words,
+                        ),
                         modifier = Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
@@ -95,7 +99,10 @@ fun LocationCreateScreen(
                         onValueChange = viewModel::onAddressChange,
                         label = { Text(stringResource(R.string.location_field_address)) },
                         singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Next,
+                            capitalization = KeyboardCapitalization.Words,
+                        ),
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -104,7 +111,10 @@ fun LocationCreateScreen(
                             onValueChange = viewModel::onCityChange,
                             label = { Text(stringResource(R.string.location_field_city)) },
                             singleLine = true,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            keyboardOptions = KeyboardOptions(
+                                imeAction = ImeAction.Next,
+                                capitalization = KeyboardCapitalization.Words,
+                            ),
                             modifier = Modifier.weight(1f),
                         )
                         OutlinedTextField(
@@ -112,7 +122,10 @@ fun LocationCreateScreen(
                             onValueChange = viewModel::onStateChange,
                             label = { Text(stringResource(R.string.location_field_state)) },
                             singleLine = true,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            keyboardOptions = KeyboardOptions(
+                                imeAction = ImeAction.Next,
+                                capitalization = KeyboardCapitalization.Characters,
+                            ),
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -133,7 +146,10 @@ fun LocationCreateScreen(
                             onValueChange = viewModel::onCountryChange,
                             label = { Text(stringResource(R.string.location_field_country)) },
                             singleLine = true,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            keyboardOptions = KeyboardOptions(
+                                imeAction = ImeAction.Next,
+                                capitalization = KeyboardCapitalization.Words,
+                            ),
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -194,7 +210,10 @@ fun LocationCreateScreen(
                         label = { Text(stringResource(R.string.location_field_notes)) },
                         minLines = 3,
                         maxLines = 6,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Done,
+                            capitalization = KeyboardCapitalization.Sentences,
+                        ),
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
