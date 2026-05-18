@@ -11,6 +11,7 @@ import Foundation
 import Observation
 import CoreLocation
 import Networking
+import Core
 
 // MARK: - JobDetailViewModel
 
@@ -81,6 +82,15 @@ public final class JobDetailViewModel {
             } catch FieldCheckInError.locationPermissionDenied {
                 alertMessage = "Location access denied. Status updated without GPS coordinates."
                 // Continue with manual update (no coords).
+            } catch let e where AppError.isCancellation(e) {
+                // BUGHUNT-2026-05-17: don't swallow cancellation in the
+                // location step. If the outer task was cancelled (e.g., the
+                // tech navigated away from the job before location resolved),
+                // we shouldn't proceed to POST a status update without
+                // coords. Roll the state back to .loaded so the screen
+                // reflects unchanged status instead of attempting the POST.
+                state = .loaded(job)
+                return
             } catch {
                 alertMessage = "Could not determine location. Status updated without GPS coordinates."
             }
@@ -123,6 +133,14 @@ public final class JobDetailViewModel {
                 updatedAt: nil
             )
             state = .updated(updatedJob, newStatus: newStatus)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: updateFieldServiceJobStatus POST may have
+            // landed before the task was cancelled. Painting .failed tempts
+            // the tech to retap the status button, double-stamping the job
+            // status_history audit (and on tolerant servers double-firing
+            // notification webhooks to the customer). Roll back to .loaded
+            // with the original job; the tech can refresh to verify.
+            state = .loaded(job)
         } catch {
             state = .failed(error.localizedDescription)
         }
