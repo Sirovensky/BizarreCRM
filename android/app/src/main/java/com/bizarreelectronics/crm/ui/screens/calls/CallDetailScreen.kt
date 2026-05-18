@@ -2,10 +2,12 @@ package com.bizarreelectronics.crm.ui.screens.calls
 
 import android.content.Context
 import android.content.Intent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ChevronRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -31,6 +33,7 @@ import com.bizarreelectronics.crm.util.DateFormatter
 fun CallDetailScreen(
     callId: Long,
     onBack: () -> Unit,
+    onNavigateToCustomer: ((Long) -> Unit)? = null,
     viewModel: CallsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.detailState.collectAsState()
@@ -77,6 +80,7 @@ fun CallDetailScreen(
                 onCallBack = { number -> dialNumber(context, number) },
                 onLoadTranscription = { viewModel.loadTranscription(callId) },
                 onPlayRecording = { url -> playRecording(context, url) },
+                onNavigateToCustomer = onNavigateToCustomer,
             )
         }
     }
@@ -93,6 +97,7 @@ private fun CallDetailContent(
     onCallBack: (String) -> Unit,
     onLoadTranscription: () -> Unit,
     onPlayRecording: (String) -> Unit,
+    onNavigateToCustomer: ((Long) -> Unit)? = null,
 ) {
     Column(
         modifier = modifier
@@ -109,7 +114,15 @@ private fun CallDetailContent(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                val canOpenCustomer = entry.customer_id != null && onNavigateToCustomer != null
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = if (canOpenCustomer) {
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { onNavigateToCustomer!!(entry.customer_id!!) }
+                    } else Modifier,
+                ) {
                     val icon = when {
                         entry.direction == "missed" || entry.status == "missed" -> Icons.Default.PhoneMissed
                         entry.direction == "inbound" -> Icons.Default.PhoneCallback
@@ -117,16 +130,26 @@ private fun CallDetailContent(
                     }
                     Icon(icon, contentDescription = null, modifier = Modifier.size(32.dp))
                     Spacer(modifier = Modifier.width(12.dp))
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             entry.customer_name ?: entry.from_number,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
+                            color = if (canOpenCustomer) {
+                                MaterialTheme.colorScheme.primary
+                            } else MaterialTheme.colorScheme.onSurface,
                         )
                         Text(
                             entry.from_number,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (canOpenCustomer) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }

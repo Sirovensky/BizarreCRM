@@ -3268,6 +3268,9 @@ fun AppNavGraph(
                 com.bizarreelectronics.crm.ui.screens.calls.CallDetailScreen(
                     callId = it.arguments?.getLong("id") ?: return@composable,
                     onBack = { navController.popBackStack() },
+                    onNavigateToCustomer = { id ->
+                        navController.navigate(Screen.CustomerDetail.createRoute(id))
+                    },
                 )
             }
             // §42.4 — Voicemail inbox
