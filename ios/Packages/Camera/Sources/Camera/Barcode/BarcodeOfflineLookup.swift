@@ -131,6 +131,11 @@ public actor BarcodeOfflineLookup {
                 throw BarcodeError.notFound(code)
             }
             throw BarcodeError.networkError(e.localizedDescription)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: don't wrap cancel as a "network error" the
+            // caller would surface as a red banner. Re-throw raw so the caller
+            // can recognise the cancel via AppError.isCancellation and stay silent.
+            throw e
         } catch {
             throw BarcodeError.networkError(error.localizedDescription)
         }
