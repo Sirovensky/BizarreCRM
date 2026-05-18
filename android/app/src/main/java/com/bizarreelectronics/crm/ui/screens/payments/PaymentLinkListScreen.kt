@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -257,7 +258,7 @@ private fun PaymentLinkRow(
                                 DropdownMenuItem(
                                     text = { Text("Resend") },
                                     onClick = { showMenu = false; pendingAction = LinkPendingAction.RESEND },
-                                    leadingIcon = { Icon(Icons.Default.Send, contentDescription = "Resend link") },
+                                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Resend link") },
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Remind") },

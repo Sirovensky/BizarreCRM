@@ -1,12 +1,12 @@
 package com.bizarreelectronics.crm.ui.screens.estimates.components
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Receipt
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material3.DropdownMenu
@@ -58,7 +58,7 @@ fun EstimateContextMenu(
         )
         DropdownMenuItem(
             text = { Text("Send") },
-            leadingIcon = { Icon(Icons.Default.Send, contentDescription = null) },
+            leadingIcon = { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null) },
             onClick = { onDismiss(); onSend() },
         )
         DropdownMenuItem(

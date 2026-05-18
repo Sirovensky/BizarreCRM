@@ -629,7 +629,7 @@ private fun AgingInvoiceCard(
                     ) {
                         DropdownMenuItem(
                             text = { Text("Send reminder") },
-                            leadingIcon = { Icon(Icons.Default.Send, contentDescription = null) },
+                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null) },
                             onClick = { showMenu = false; onSendReminder() },
                         )
                         DropdownMenuItem(

@@ -215,7 +215,7 @@ fun TicketNoteCompose(
                     enabled = fieldValue.text.isNotBlank() && !isSubmitting,
                 ) {
                     Icon(
-                        Icons.Default.Send,
+                        Icons.AutoMirrored.Filled.Send,
                         contentDescription = "Send note",
                         tint = if (fieldValue.text.isNotBlank() && !isSubmitting)
                             MaterialTheme.colorScheme.primary
