@@ -184,10 +184,16 @@ public struct CreateVirtualGiftCardRequest: Encodable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
+        // BUGHUNT-2026-05-17: server `POST /api/v1/gift-cards` reads
+        // `recipient_email` / `recipient_name` (snake_case). Without the
+        // explicit remap, Swift encodes the keys as camelCase and the server
+        // silently dropped both — virtual cards were issued with NULL
+        // recipient fields, so the auto-email step had no address to send to
+        // and the card looked stranded to the cashier.
         case kind
-        case recipientEmail
-        case recipientName
-        case amountCents = "amount"
+        case recipientEmail = "recipient_email"
+        case recipientName  = "recipient_name"
+        case amountCents    = "amount"
         case message
     }
 
