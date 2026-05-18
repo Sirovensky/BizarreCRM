@@ -54,6 +54,9 @@ public final class SkuPickerViewModel {
         defer { isSearching = false }
         do {
             results = try await api.searchSkus(keyword: query)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: rapid keystroke cancels prior search; preserving last results avoids the dropdown flickering empty between keypresses.
+            return
         } catch {
             AppLog.ui.error("SKU search failed: \(error.localizedDescription, privacy: .public)")
             results = []

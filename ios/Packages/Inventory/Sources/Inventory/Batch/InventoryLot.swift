@@ -172,6 +172,10 @@ public final class LotTrackingViewModel {
         isLoading = true; errorMessage = nil
         defer { isLoading = false }
         do { lots = try await repo.lots(forSku: sku) }
+        catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: lot list reload cancelled; keep existing lots.
+            return
+        }
         catch { errorMessage = error.localizedDescription }
     }
 
@@ -181,6 +185,9 @@ public final class LotTrackingViewModel {
         do {
             recallResult = try await repo.recall(lotId: lotId)
             showRecallSheet = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: lot recall is a high-impact action — flips lot status to recalled, notifies affected customers. Cancellation after server commit + retry = double-notification storm to customers. Silent return; admin must reload to see recall status.
+            return
         } catch { errorMessage = error.localizedDescription }
     }
 
