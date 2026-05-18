@@ -132,6 +132,14 @@ public actor SyncFlusher {
                 Task { try? await SyncQueueStore.shared.markCancelled(id) }
                 AppLog.sync.info("sync flush cancelled mid-record (kind=\(kind, privacy: .public) id=\(id))")
                 break
+            } catch let urlErr as URLError where urlErr.code == .cancelled {
+                // BUGHUNT-2026-05-18: URL cancel (parent Task cancel propagating
+                // through URLSession) was falling through to the catch-all and
+                // bumping attemptCount on a row whose payload was perfectly
+                // fine — eventually dead-lettering legitimate work.
+                Task { try? await SyncQueueStore.shared.markCancelled(id) }
+                AppLog.sync.info("sync flush URL-cancelled mid-record (kind=\(kind, privacy: .public) id=\(id))")
+                break
             } catch {
                 // Domain handlers should raise a typed error with enough
                 // context for the operator; we record the stringified form

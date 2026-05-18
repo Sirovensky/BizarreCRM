@@ -91,12 +91,15 @@ public final class TicketDetailViewModel {
         do {
             try await repo.delete(id: ticketId)
             wasDeleted = true
-        } catch is CancellationError {
+        } catch let e where AppError.isCancellation(e) {
             // BUGHUNT-2026-05-17: don't paint "cancelled" as an action error.
             // A cancellation here is structural (view dismissed during the
             // delete round-trip); the server may have already accepted the
             // DELETE. Surfacing a "failed" toast tempts the user to retry,
             // which is a no-op if it actually succeeded but confuses them.
+            // BUGHUNT-2026-05-18: widened from `is CancellationError` to also
+            // catch URLError.cancelled — the DELETE request itself being
+            // cancelled mid-flight throws URLError, not CancellationError.
         } catch {
             AppLog.ui.error("Delete ticket \(self.ticketId) failed: \(error.localizedDescription, privacy: .public)")
             actionErrorMessage = error.localizedDescription
@@ -109,11 +112,13 @@ public final class TicketDetailViewModel {
         do {
             let response = try await repo.convertToInvoice(id: ticketId)
             convertedInvoiceId = response.resolvedInvoiceId
-        } catch is CancellationError {
+        } catch let e where AppError.isCancellation(e) {
             // BUGHUNT-2026-05-17: convertToInvoice is a money write — if the
             // server accepted before the cancel, retrying creates a duplicate
             // invoice. Suppress the cancel-as-error toast so the user doesn't
             // re-tap. Real success is signalled by convertedInvoiceId.
+            // BUGHUNT-2026-05-18: widened — URLError.cancelled from the POST
+            // round-trip was falling through to "convert failed" toast.
         } catch {
             AppLog.ui.error("Convert ticket \(self.ticketId) to invoice failed: \(error.localizedDescription, privacy: .public)")
             actionErrorMessage = error.localizedDescription
@@ -126,10 +131,11 @@ public final class TicketDetailViewModel {
         do {
             let response = try await repo.duplicate(id: ticketId)
             duplicatedTicketId = response.resolvedId
-        } catch is CancellationError {
+        } catch let e where AppError.isCancellation(e) {
             // BUGHUNT-2026-05-17: same as convertToInvoice — duplicate is a
             // server-side row create; a cancellation-as-failure toast tempts
             // a retry that would create two duplicates.
+            // BUGHUNT-2026-05-18: widened to AppError.isCancellation.
         } catch {
             AppLog.ui.error("Duplicate ticket \(self.ticketId) failed: \(error.localizedDescription, privacy: .public)")
             actionErrorMessage = error.localizedDescription

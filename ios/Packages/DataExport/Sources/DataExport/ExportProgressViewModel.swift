@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import Core
 
 // MARK: - ExportProgressViewModel
 
@@ -58,7 +59,12 @@ public final class ExportProgressViewModel {
                 guard !Task.isCancelled else { break }
                 let updated = try await repository.pollExport(id: job.id)
                 apply(updated)
-            } catch is CancellationError {
+            } catch let e where AppError.isCancellation(e) {
+                // BUGHUNT-2026-05-18: also catch URLError.cancelled — the
+                // poll request fails with NSURLErrorCancelled on Task cancel,
+                // not CancellationError, so the prior `catch is CancellationError`
+                // missed half the cancel paths and painted an export-failed
+                // banner on a screen the user already left.
                 break
             } catch {
                 errorMessage = error.localizedDescription

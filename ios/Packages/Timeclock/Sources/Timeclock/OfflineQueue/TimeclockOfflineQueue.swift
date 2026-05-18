@@ -120,6 +120,14 @@ public actor TimeclockOfflineQueue {
                 // its slot" was effectively preserved by accident only.
                 cancelledIndex = index
                 break
+            } catch let urlErr as URLError where urlErr.code == .cancelled {
+                // BUGHUNT-2026-05-18: URL-level cancel (parent Task cancel
+                // propagating through URLSession) was falling through to the
+                // catch-all, logging "drain failed" for every remaining event
+                // and re-queueing them without bailing — flooding the sync log
+                // with phantom failures on app background.
+                cancelledIndex = index
+                break
             } catch {
                 AppLog.sync.error(
                     "Timeclock drain failed: \(error.localizedDescription, privacy: .public) — keeping in queue"

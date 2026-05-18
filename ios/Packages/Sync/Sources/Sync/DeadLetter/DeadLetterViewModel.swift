@@ -33,7 +33,10 @@ public final class DeadLetterViewModel {
         defer { isLoading = false }
         do {
             items = try await repository.fetchAll()
-        } catch is CancellationError {
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: retry/discard fan into SyncManager and
+            // URLSession; cancelled requests throw URLError.cancelled, which
+            // `catch is CancellationError` misses. Treat both as cancel.
             return
         } catch {
             errorMessage = error.localizedDescription
@@ -50,7 +53,10 @@ public final class DeadLetterViewModel {
             items.removeAll { $0.id == id }
             // Kick the drain loop through SyncManager.
             await SyncManager.shared.syncNow()
-        } catch is CancellationError {
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: retry/discard fan into SyncManager and
+            // URLSession; cancelled requests throw URLError.cancelled, which
+            // `catch is CancellationError` misses. Treat both as cancel.
             return
         } catch {
             errorMessage = error.localizedDescription
@@ -65,7 +71,10 @@ public final class DeadLetterViewModel {
         do {
             try await repository.discard(id)
             items.removeAll { $0.id == id }
-        } catch is CancellationError {
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-18: retry/discard fan into SyncManager and
+            // URLSession; cancelled requests throw URLError.cancelled, which
+            // `catch is CancellationError` misses. Treat both as cancel.
             return
         } catch {
             errorMessage = error.localizedDescription
