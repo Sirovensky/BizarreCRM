@@ -122,10 +122,19 @@ public final class MyQueueViewModel {
     public private(set) var tickets: [MyQueueTicket] = []
     public private(set) var isLoading = false
     public private(set) var errorMessage: String?
+    // BUGHUNT-2026-05-17: filter didSet previously fired an untracked
+    // `Task { await load() }`. Toggling Mine ↔ Mine+team while a fetch
+    // was already in flight (auto-refresh or the previous tap) left two
+    // /tickets/my-queue requests racing; whichever response landed last
+    // painted `tickets` regardless of which scope it represented, so the
+    // visible filter chip and the queue contents could disagree.
     public var filter: MyQueueFilter = .mine {
         didSet {
             if oldValue != filter {
-                Task { await load() }
+                loadTask?.cancel()
+                loadTask = Task { @MainActor [weak self] in
+                    await self?.load()
+                }
             }
         }
     }
@@ -136,6 +145,7 @@ public final class MyQueueViewModel {
 
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private var autoRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var loadTask: Task<Void, Never>?
 
     public init(api: APIClient) {
         self.api = api
@@ -143,7 +153,6 @@ public final class MyQueueViewModel {
 
     public func load() async {
         isLoading = true
-        defer { isLoading = false }
         errorMessage = nil
         do {
             // §3.4 — pass `scope` param so server can return mine-only vs mine+team.
@@ -153,6 +162,9 @@ public final class MyQueueViewModel {
                 "/api/v1/tickets/my-queue?sort=due_asc\(scopeParam)",
                 as: MyQueueResponse.self
             )
+            // BUGHUNT-2026-05-17: if a newer filter toggle cancelled us mid-flight,
+            // bail before stomping the newer task's tickets / isLoading.
+            if Task.isCancelled { return }
             // §3.4 — if server returned fewer results than expected due to role gate,
             // `team_filter_blocked` field (optional) indicates the toggle should be
             // shown as disabled. Decoded from envelope extension in MyQueueResponse.
@@ -168,9 +180,14 @@ public final class MyQueueViewModel {
                 if aOrd != bOrd { return aOrd < bOrd }
                 return a.ageInDays > b.ageInDays
             }
+            isLoading = false
+        } catch let e where AppError.isCancellation(e) {
+            // Superseded by a newer load; the newer task owns isLoading.
+            return
         } catch {
             AppLog.ui.error("MyQueue load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
+            isLoading = false
         }
     }
 
