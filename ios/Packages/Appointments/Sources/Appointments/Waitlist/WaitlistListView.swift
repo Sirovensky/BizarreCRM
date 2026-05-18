@@ -157,7 +157,25 @@ public struct WaitlistListView: View {
         } else if let err = vm.errorMessage {
             PhaseErrorView(message: err) { Task { await vm.load() } }
         } else if vm.entries.isEmpty {
-            PhaseEmptyView(icon: "list.clipboard", text: "No waitlist entries")
+            // BUGHUNT-2026-05-18: empty state had no inline action — same
+            // pattern as Appointments / Leads. Surface a Borderedprominent
+            // button so users on first install have a path forward.
+            VStack(spacing: BrandSpacing.md) {
+                Image(systemName: "list.clipboard")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityHidden(true)
+                Text("No waitlist entries")
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                Button { showingAdd = true } label: {
+                    Label("Add to waitlist", systemImage: "plus")
+                        .font(.brandLabelLarge())
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.bizarreOrange)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             List {
                 ForEach(vm.entries) { entry in
