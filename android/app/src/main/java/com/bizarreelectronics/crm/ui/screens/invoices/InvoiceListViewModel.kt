@@ -117,13 +117,19 @@ class InvoiceListViewModel @Inject constructor(
 
     private fun loadStats() {
         viewModelScope.launch {
-            runCatching {
+            // BUGHUNT-2026-05-17: runCatching swallows CancellationException;
+            // re-throw to preserve structured concurrency. Non-critical
+            // fetch: 404 / network errors stay silent.
+            try {
                 val resp = invoiceApi.getStats()
                 if (resp.success && resp.data != null) {
                     _state.value = _state.value.copy(stats = resp.data)
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // 404 or any other error → leave stats = null (header not shown)
             }
-            // 404 or any other error → leave stats = null (header not shown)
         }
     }
 
