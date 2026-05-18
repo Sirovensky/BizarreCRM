@@ -97,16 +97,29 @@ public struct SupplierEditorSheet: View {
                         TextField("Contact name", text: $vm.contactName)
                             .accessibilityLabel("Contact name")
                     }
+                    // BUGHUNT-2026-05-18: missing textContentType across the
+                    // supplier contact section. iOS Autofill (Contacts /
+                    // Keychain) was suppressed; buyers retyping a supplier
+                    // address by hand is a known time sink.
                     Section("Contact") {
                         TextField("Email", text: $vm.email)
+                            #if canImport(UIKit)
+                            .textContentType(.emailAddress)
                             .keyboardType(.emailAddress)
+                            #endif
                             .autocapitalization(.none)
                             .disableAutocorrection(true)
                             .accessibilityLabel("Email address")
                         TextField("Phone", text: $vm.phone)
+                            #if canImport(UIKit)
+                            .textContentType(.telephoneNumber)
                             .keyboardType(.phonePad)
+                            #endif
                             .accessibilityLabel("Phone number")
                         TextField("Address", text: $vm.address, axis: .vertical)
+                            #if canImport(UIKit)
+                            .textContentType(.fullStreetAddress)
+                            #endif
                             .lineLimit(2...4)
                             .accessibilityLabel("Address")
                     }

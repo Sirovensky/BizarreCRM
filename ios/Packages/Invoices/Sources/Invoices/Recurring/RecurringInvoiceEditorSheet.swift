@@ -86,12 +86,17 @@ public struct RecurringInvoiceEditorSheet: View {
                     Toggle("Has end date", isOn: $vm.hasEndDate)
                         .accessibilityLabel("Enable end date")
                     if vm.hasEndDate {
+                        // BUGHUNT-2026-05-18: End date had no range so the
+                        // user could pick a date before Start — the server
+                        // would generate zero invoices and the cause would
+                        // be invisible to the merchant. Clamp to startDate.
                         DatePicker(
                             "End date",
                             selection: Binding(
                                 get: { vm.endDate ?? Calendar.current.date(byAdding: .year, value: 1, to: .now)! },
                                 set: { vm.endDate = $0 }
                             ),
+                            in: vm.startDate...,
                             displayedComponents: .date
                         )
                         .accessibilityLabel("End date")

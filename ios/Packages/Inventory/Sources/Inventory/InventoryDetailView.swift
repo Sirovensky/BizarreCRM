@@ -73,8 +73,12 @@ public struct InventoryDetailView: View {
             Text("\"\(navTitle)\" will be hidden from POS and sales. All stock movements and history are preserved and the item can be reactivated from the server.")
         }
         // §6.2 Delete confirm
+        // BUGHUNT-2026-05-18: title was generic "Delete item?" — the
+        // Deactivate dialog right above includes the item name. Match it
+        // so a staff member with two tabs open can tell which item they're
+        // about to delete before tapping the red button.
         .confirmationDialog(
-            "Delete item?",
+            "Delete \"\(navTitle)\"?",
             isPresented: $showingDeleteConfirm,
             titleVisibility: .visible
         ) {

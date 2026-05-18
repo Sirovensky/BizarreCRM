@@ -75,7 +75,21 @@ public struct AppointmentCreateView: View {
                         .textInputAutocapitalization(.sentences)
 #endif
                     DatePicker("Start", selection: $vm.startDate)
-                    DatePicker("End", selection: $vm.endDate)
+                        .onChange(of: vm.startDate) { _, newStart in
+                            // BUGHUNT-2026-05-18: when user pushes Start
+                            // past current End, keep the 1-hour default
+                            // duration rather than silently breaking the
+                            // form. Mirrors Calendar / Reminders default UX.
+                            if vm.endDate <= newStart {
+                                vm.endDate = newStart.addingTimeInterval(60 * 60)
+                            }
+                        }
+                    // BUGHUNT-2026-05-18: End DatePicker had no range, so a
+                    // user who scrolled End back before Start saw the Save
+                    // button silently disable with no inline reason. Clamp
+                    // to `startDate...` so the picker physically prevents
+                    // the invalid state.
+                    DatePicker("End", selection: $vm.endDate, in: vm.startDate...)
                 }
                 Section("Notes") {
                     TextField("Notes", text: $vm.notes, axis: .vertical)

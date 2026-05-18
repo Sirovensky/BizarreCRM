@@ -107,6 +107,7 @@ public struct TicketWarrantyLookupView: View {
 
             TextField("Customer phone", text: $vm.phone)
                 .keyboardType(.phonePad)
+                .textContentType(.telephoneNumber)
                 .padding(BrandSpacing.md)
                 .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
                 .accessibilityLabel("Customer phone number")

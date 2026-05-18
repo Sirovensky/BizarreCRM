@@ -20,12 +20,22 @@ struct CustomerContactEditSheet: View {
                         .autocorrectionDisabled()
                         .accessibilityLabel("Contact relationship")
                 }
+                // BUGHUNT-2026-05-18: textContentType was missing — keyboard
+                // type was right but iOS Autofill suggestions weren't offered.
+                // For a sub-contact (e.g. account holder's spouse), the user
+                // usually wants to pull from Contacts.
                 Section("Contact details") {
                     TextField("Phone", text: $vm.editPhone)
+                        #if canImport(UIKit)
+                        .textContentType(.telephoneNumber)
                         .keyboardType(.phonePad)
+                        #endif
                         .accessibilityLabel("Contact phone")
                     TextField("Email", text: $vm.editEmail)
+                        #if canImport(UIKit)
+                        .textContentType(.emailAddress)
                         .keyboardType(.emailAddress)
+                        #endif
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .accessibilityLabel("Contact email")

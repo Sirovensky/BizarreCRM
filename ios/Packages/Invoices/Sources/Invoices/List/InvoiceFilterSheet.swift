@@ -133,12 +133,16 @@ public struct InvoiceFilterSheet: View {
                 .listRowBackground(Color.bizarreSurface1)
                 .accessibilityLabel("Filter start date")
 
+                // BUGHUNT-2026-05-18: To-date had no `in:` range — user
+                // could set it earlier than From and the filter would
+                // return 0 results with no inline explanation.
                 DatePicker(
                     "To",
                     selection: Binding(
                         get: { draft.dateRangeEnd ?? Date() },
                         set: { draft.dateRangeEnd = $0 }
                     ),
+                    in: (draft.dateRangeStart ?? .distantPast)...,
                     displayedComponents: .date
                 )
                 .datePickerStyle(.compact)
