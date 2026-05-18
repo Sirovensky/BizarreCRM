@@ -96,6 +96,16 @@ final class TicketDeviceSheetViewModel {
                 )
             }
             savedSuccessfully = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: in add mode this is a POST that creates a
+            // new device row. The broad catch was painting "Device save
+            // failed" into errorMessage on plain CancellationError, even
+            // when the server had already accepted the POST. Re-tapping
+            // save then created a SECOND device on the same ticket — a real
+            // data corruption (duplicate devices, inflated subtotals).
+            // Suppress cancel-as-failure; let the next detail refresh show
+            // the actually-created device.
+            return
         } catch {
             AppLog.ui.error("Device save failed (ticket \(self.ticketId)): \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
