@@ -33,7 +33,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -242,6 +245,9 @@ fun PaymentSettingsScreen(
                         supportingText = { Text("Display name shown on the payment terminal") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Words,
+                        ),
                     )
                     ListItem(
                         headlineContent = { Text("Prompt for tip") },
@@ -270,6 +276,9 @@ fun PaymentSettingsScreen(
                         supportingText = { Text("Comma-separated values, e.g. 15,18,20") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number,
+                        ),
                     )
                 }
             }
