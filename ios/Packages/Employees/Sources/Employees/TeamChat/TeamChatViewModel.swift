@@ -83,6 +83,10 @@ public final class TeamChatViewModel {
 
     public func send() async {
         guard let ch = channel else { return }
+        // BUGHUNT-2026-05-17: re-entry guard. Rapid double-taps on the Send
+        // button (especially with a sluggish network) fire two postMessage
+        // calls, producing two duplicate messages in the channel feed.
+        guard !isSending else { return }
         let trimmed = draftBody.trimmingCharacters(in: .whitespacesAndNewlines)
         let body: String
         if let attach = pendingAttachment {
@@ -98,6 +102,13 @@ public final class TeamChatViewModel {
             messages.append(row)
             draftBody = ""
             pendingAttachment = nil
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: postMessage POST may have already landed.
+            // Painting "cancelled" as errorMessage tempts a retap that
+            // sends a duplicate message — the polling loop will eventually
+            // pull both. Suppress; keep the draft so the user can decide
+            // to retype intentionally if needed.
+            errorMessage = nil
         } catch {
             AppLog.ui.error("TeamChat send failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -128,6 +139,13 @@ public final class TeamChatViewModel {
             try await repo.deleteMessage(channelId: ch.id, messageId: message.id)
             messages.removeAll { $0.id == message.id }
             pinnedIds.remove(message.id)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: deleteMessage may have landed already.
+            // Painting "cancelled" tempts a retap that 404s on the
+            // already-deleted message. Suppress and let the polling loop
+            // catch up to remove the message from the local list when the
+            // server has it gone.
+            errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
         }
