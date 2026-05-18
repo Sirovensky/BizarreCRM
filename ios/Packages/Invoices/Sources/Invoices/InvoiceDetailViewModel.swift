@@ -26,6 +26,11 @@ public final class InvoiceDetailViewModel {
         if case .loaded = state { /* soft-refresh */ } else { state = .loading }
         do {
             state = .loaded(try await repo.detail(id: invoiceId))
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: pull-to-refresh / nav cancels prior fetch;
+            // keep prior detail visible so we don't flash a fake .failed
+            // banner on a working invoice.
+            return
         } catch {
             AppLog.ui.error("Invoice detail load failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)

@@ -38,6 +38,10 @@ final class InvoiceTemplatePickerViewModel {
         do {
             let templates = try await api.listInvoiceTemplates()
             state = .loaded(templates)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss cancels fetch; surfacing
+            // .failed when the user is leaving is just noise.
+            return
         } catch {
             state = .failed(error.localizedDescription)
         }

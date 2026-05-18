@@ -93,6 +93,12 @@ final class LateFeePolicyEditorViewModel {
                 as: LateFeePolicy.self
             )
             didSave = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: editor dismiss mid-PATCH cancels the
+            // response, but server may have committed. Retap re-PATCHs the
+            // same policy (audit-row noise, no functional harm) — still
+            // misleading "cancelled" banner. Stay silent.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

@@ -25,6 +25,10 @@ public final class InvoiceStatsViewModel {
         defer { isLoading = false }
         do {
             stats = try await api.invoiceStats()
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav-away cancels stats fetch; keep prior
+            // stats visible instead of clearing.
+            return
         } catch {
             AppLog.ui.error("Invoice stats load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription

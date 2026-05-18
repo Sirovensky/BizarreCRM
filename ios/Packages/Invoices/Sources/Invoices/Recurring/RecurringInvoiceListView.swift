@@ -29,6 +29,10 @@ final class RecurringInvoiceListViewModel {
         do {
             let rules = try await api.listRecurringRules()
             state = .loaded(rules)
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: pull-to-refresh cancels prior fetch;
+            // leave state alone so newer fetch sets .loaded.
+            return
         } catch {
             state = .failed(error.localizedDescription)
         }
@@ -40,6 +44,15 @@ final class RecurringInvoiceListViewModel {
             if case .loaded(let rules) = state {
                 state = .loaded(rules.filter { $0.id != rule.id })
             }
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: nav-away mid-DELETE cancels the response,
+            // but server may have committed. Keep optimistic-removed UI on
+            // next load() — don't restore the row, which would tempt a
+            // re-delete that 404s.
+            if case .loaded(let rules) = state {
+                state = .loaded(rules.filter { $0.id != rule.id })
+            }
+            return
         } catch {
             // Keep existing state; surface error inline in a production build
         }

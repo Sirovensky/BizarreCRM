@@ -81,6 +81,12 @@ final class InstallmentPlanEditorViewModel {
                 as: InstallmentPlan.self
             )
             didSave = true
+        } catch let e where AppError.isCancellation(e) {
+            // BUGHUNT-2026-05-17: sheet dismiss mid-POST cancels the response,
+            // but the server may have committed the plan. Surfacing
+            // "cancelled" tempts a retap that creates a duplicate plan
+            // (multiple installments + autopay double-charges). Stay silent.
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
