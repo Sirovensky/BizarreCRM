@@ -376,9 +376,16 @@ class PosEntryViewModel @Inject constructor(
     private fun runSearch(query: String) {
         _uiState.update { it.copy(isSearching = true) }
         viewModelScope.launch {
-            val customers = runCatching { customerApi.searchCustomers(query) }
-                .getOrNull()?.data
-                ?.map { c ->
+            // BUGHUNT-2026-05-18: was runCatching — keystroke debounce cancel
+            // was caught, then we proceeded to overwrite searchResults with an
+            // empty list, blanking the result rows mid-type.
+            val customers = try {
+                customerApi.searchCustomers(query).data
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }?.map { c ->
                     CustomerResult(
                         id = c.id,
                         name = listOfNotNull(c.firstName, c.lastName).joinToString(" ").ifBlank { "Customer #${c.id}" },
@@ -403,8 +410,19 @@ class PosEntryViewModel @Inject constructor(
 
     private fun loadStoreCredit(customerId: Long) {
         viewModelScope.launch {
-            val cents = runCatching { customerApi.getStoreCredit(customerId) }
-                .getOrNull()?.data?.amountCents ?: 0L
+            // BUGHUNT-2026-05-18: was `runCatching { ... }.getOrNull() ?: 0L`
+            // which swallowed CancellationException too — so a customer
+            // re-select that cancelled the in-flight load would still update
+            // _uiState afterward, painting a phantom "$0 store credit" on the
+            // chip for a customer who actually has a balance. Rewrite as
+            // try/catch so cancel propagates and the stale update is skipped.
+            val cents = try {
+                customerApi.getStoreCredit(customerId).data?.amountCents ?: 0L
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                0L
+            }
             _uiState.update { s ->
                 val existing = s.attachedCustomer ?: return@update s
                 if (existing.id != customerId) return@update s
@@ -422,9 +440,16 @@ class PosEntryViewModel @Inject constructor(
             // compact "Past repairs" list for closed+non-cancelled ones.
             // Pull a single page (size 20) and partition client-side so we
             // don't need two round-trips.
-            val tickets = runCatching { customerApi.getTickets(customerId, pageSize = 20) }
-                .getOrNull()?.data?.tickets
-                ?: return@launch
+            // BUGHUNT-2026-05-18: was runCatching which swallowed Cancellation;
+            // a customer re-select would then update _uiState with empty
+            // ready/past lists for a customer that may actually have history.
+            val tickets = try {
+                customerApi.getTickets(customerId, pageSize = 20).data?.tickets
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            } ?: return@launch
 
             // AUDIT-005: capture the customer name at map time so
             // openReadyForPickup can attach without an extra API call.

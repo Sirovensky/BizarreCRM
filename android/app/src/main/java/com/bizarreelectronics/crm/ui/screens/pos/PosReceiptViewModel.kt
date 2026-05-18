@@ -127,6 +127,15 @@ class PosReceiptViewModel @Inject constructor(
                     }
                 }
                 .onFailure { e ->
+                    // BUGHUNT-2026-05-18: cashDrawerController.printReceipt wraps
+                    // its body in runCatching, so a cancel surfaces as a
+                    // Result.failure(CancellationException). Painting a
+                    // "Print failed" snackbar tempts the cashier to tap Print
+                    // again — but the ESC/POS bytes may have already reached
+                    // the printer before the cancel landed, so the customer
+                    // gets two identical receipts. Re-throw cancel so it
+                    // unwinds and the snackbar stays silent.
+                    if (e is CancellationException) throw e
                     val msg = e.message ?: "Print failed"
                     _uiState.update {
                         it.copy(

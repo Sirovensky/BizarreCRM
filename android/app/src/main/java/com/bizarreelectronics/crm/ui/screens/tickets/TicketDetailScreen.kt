@@ -642,6 +642,11 @@ class TicketDetailViewModel @Inject constructor(
                             loadTicketDetail()
                         }
                         .onFailure { e ->
+                            // BUGHUNT-2026-05-18: a viewModelScope-cancel mid-add
+                            // surfaces as a CancellationException through
+                            // runCatching. Painting "Add failed" tempts the
+                            // user to retap and create a duplicate part row.
+                            if (e is CancellationException) throw e
                             _state.value = _state.value.copy(
                                 isActionInProgress = false,
                                 actionMessage = "Add failed — ${e.message ?: "unknown error"}",

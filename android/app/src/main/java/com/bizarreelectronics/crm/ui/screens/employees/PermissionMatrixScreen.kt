@@ -145,6 +145,11 @@ class PermissionMatrixViewModel @Inject constructor(
                     )
                 }
                 .onFailure { t ->
+                    // BUGHUNT-2026-05-18: viewModel-scope cancel surfaces here
+                    // as CancellationException; painting "Failed to load
+                    // permissions" on a torn-down screen is misleading and a
+                    // re-open would reload anyway.
+                    if (t is CancellationException) throw t
                     _state.value = _state.value.copy(
                         isLoading = false,
                         error = t.message ?: "Failed to load permissions",

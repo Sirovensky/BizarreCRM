@@ -239,6 +239,12 @@ class PosCartViewModel @Inject constructor(
                     _uiState.update { it.copy(scanMessage = "Added: ${item.name ?: "item"}") }
                 }
                 .onFailure { e ->
+                    // BUGHUNT-2026-05-18: runCatching catches CancellationException,
+                    // so a barcode lookup interrupted by viewModelScope cancel
+                    // (sheet dismiss, screen pop) would paint "Scan lookup
+                    // failed: StandaloneCoroutine was cancelled" on a screen
+                    // the user already left. Re-throw cancel before painting.
+                    if (e is CancellationException) throw e
                     _uiState.update {
                         it.copy(scanMessage = "Scan lookup failed: ${e.message ?: "network error"}")
                     }

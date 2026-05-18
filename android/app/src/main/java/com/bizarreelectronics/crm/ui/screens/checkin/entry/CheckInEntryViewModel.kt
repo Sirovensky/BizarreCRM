@@ -171,6 +171,11 @@ class CheckInEntryViewModel @Inject constructor(
                     _step2.update { it.copy(manufacturers = grouped, drillLoading = false) }
                 }
                 .onFailure { t ->
+                    // BUGHUNT-2026-05-18: runCatching catches CancellationException;
+                    // painting drillError on a cancelled load surfaces a
+                    // "StandaloneCoroutine was cancelled" string on a screen
+                    // the user already left.
+                    if (t is CancellationException) throw t
                     _step2.update { it.copy(drillLoading = false, drillError = t.message) }
                 }
         }
@@ -211,6 +216,8 @@ class CheckInEntryViewModel @Inject constructor(
                     _step2.update { it.copy(models = sorted, drillLoading = false) }
                 }
                 .onFailure { t ->
+                    // BUGHUNT-2026-05-18: same as the manufacturer-drill site.
+                    if (t is CancellationException) throw t
                     _step2.update { it.copy(drillLoading = false, drillError = t.message) }
                 }
         }
@@ -360,6 +367,12 @@ class CheckInEntryViewModel @Inject constructor(
                     }
                 }
                 .onFailure {
+                    // BUGHUNT-2026-05-18: don't flip showManualEntry=true on a
+                    // cancelled load — that would surface the manual-entry
+                    // pane for a customer who DOES have on-file devices, just
+                    // because the parent scope teared down before the fetch
+                    // returned. The next open re-fires the load.
+                    if (it is CancellationException) throw it
                     _step2.update { it.copy(onFileDevices = emptyList(), showManualEntry = true) }
                 }
         }

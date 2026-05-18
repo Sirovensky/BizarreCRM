@@ -207,6 +207,12 @@ class InvoiceCreateViewModel @Inject constructor(
                     catalogLoading = false,
                 )
             }.onFailure {
+                // BUGHUNT-2026-05-18: keystroke debounce cancels the prior
+                // catalog search via catalogSearchJob.cancel() — runCatching
+                // catches the resulting CancellationException, then we'd
+                // blank catalogResults on a screen where the next search has
+                // already started.
+                if (it is CancellationException) throw it
                 _state.value = _state.value.copy(
                     catalogResults = emptyList(),
                     catalogLoading = false,
@@ -261,6 +267,10 @@ class InvoiceCreateViewModel @Inject constructor(
                     )
                 }
                 .onFailure {
+                    // BUGHUNT-2026-05-18: same as catalog search — rethrow
+                    // cancel so a debounce-triggered cancel doesn't blank
+                    // results between keystrokes.
+                    if (it is CancellationException) throw it
                     _state.value = _state.value.copy(customerSearchResults = emptyList())
                 }
         }
