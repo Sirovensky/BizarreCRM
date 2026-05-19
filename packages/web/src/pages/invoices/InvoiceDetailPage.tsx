@@ -1106,11 +1106,11 @@ export function InvoiceDetailPage() {
 
           {/* Line Items */}
           <div className="card overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full" aria-label="Invoice line items">
               <thead>
                 <tr className="border-b border-surface-200 dark:border-surface-700">
                   {['Description', 'Qty', 'Unit Price', 'Tax', 'Total'].map((h) => (
-                    <th key={h} className={cn('px-4 py-3 text-xs font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400 bg-surface-50 dark:bg-surface-800/50', h === 'Description' ? 'text-left' : 'text-right')}>{h}</th>
+                    <th key={h} scope="col" className={cn('px-4 py-3 text-xs font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400 bg-surface-50 dark:bg-surface-800/50', h === 'Description' ? 'text-left' : 'text-right')}>{h}</th>
                   ))}
                 </tr>
               </thead>

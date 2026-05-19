@@ -1057,13 +1057,13 @@ export function EstimateDetailPage() {
               <p className="p-4 text-sm text-surface-400">No line items</p>
             ) : (
               <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" aria-label="Estimate line items">
                 <thead>
                   <tr className="border-b border-surface-100 dark:border-surface-800">
-                    <th className="text-left px-4 py-3 font-medium text-surface-500">Item</th>
-                    <th className="text-right px-4 py-3 font-medium text-surface-500">Qty</th>
-                    <th className="text-right px-4 py-3 font-medium text-surface-500">Price</th>
-                    <th className="text-right px-4 py-3 font-medium text-surface-500">Total</th>
+                    <th scope="col" className="text-left px-4 py-3 font-medium text-surface-500">Item</th>
+                    <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">Qty</th>
+                    <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">Price</th>
+                    <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">Total</th>
                   </tr>
                 </thead>
                 <tbody>
