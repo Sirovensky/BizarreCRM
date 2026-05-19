@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { reportApi, missingPartsApi, catalogApi, settingsApi, ticketApi, preferencesApi, smsApi, leadApi, onboardingApi, repairPricingApi, type OnboardingState } from '@/api/endpoints';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { GettingStartedWidget } from '@/components/onboarding/GettingStartedWidget';
 import { ImportLaterReminder } from '@/components/onboarding/ImportLaterReminder';
@@ -1869,6 +1870,7 @@ function DailySalesWidget({ last7Range, employeeId }: { last7Range: { from: stri
  * React's Rules of Hooks (SCAN-967).
  */
 export function DashboardPage() {
+  useDocumentTitle('Dashboard');
   const user = useAuthStore((s) => s.user);
   const role = user?.role ?? 'technician';
   if (role === 'technician' && user?.id) {

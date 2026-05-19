@@ -408,7 +408,7 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
                 ? 'bg-green-600 hover:bg-green-700'
                 : 'bg-red-600 hover:bg-red-700',
             )}
-            title={!employee.has_pin ? 'Set a PIN before clocking in/out' : undefined}
+            title={!employee.has_pin ? 'Set a PIN before clocking in/out' : pin.length < 4 ? 'Enter 4-digit PIN to continue' : lockedUntil ? 'Account locked from failed attempts — wait for cooldown' : undefined}
           >
             {isPending ? (
               <span className="flex items-center gap-2">

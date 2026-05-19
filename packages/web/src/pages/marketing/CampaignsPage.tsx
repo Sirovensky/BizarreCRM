@@ -832,6 +832,13 @@ function CreateCampaignModal({ segments, onClose, onCreated, initialCampaign }: 
           <button
             onClick={() => save.mutate()}
             disabled={save.isPending || !form.name.trim() || !templateBodyIsCompliant(form.template_body, form.channel)}
+            title={
+              !form.name.trim()
+                ? 'Enter a campaign name to save'
+                : !templateBodyIsCompliant(form.template_body, form.channel)
+                  ? 'Template body must include opt-out instructions for compliance'
+                  : undefined
+            }
             className="px-4 py-2 text-sm rounded-lg bg-primary-600 hover:bg-primary-700 text-on-primary font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {save.isPending ? (isEdit ? 'Saving…' : 'Creating…') : (isEdit ? 'Save changes' : 'Create')}

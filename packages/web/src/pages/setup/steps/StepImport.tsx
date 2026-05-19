@@ -343,6 +343,7 @@ export function StepImport({ onComplete, onCancel }: SubStepProps) {
             type="button"
             onClick={startImport}
             disabled={selectedEntities.size === 0}
+            title={selectedEntities.size === 0 ? 'Select at least one entity (customers, inventory, etc.) to import' : undefined}
             className="btn btn-lg rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-on-primary shadow-sm hover:bg-primary-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             Start import

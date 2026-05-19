@@ -368,6 +368,7 @@ export function DunningPage() {
             createMutation.mutate();
           }}
           disabled={!name.trim() || steps.length === 0 || createMutation.isPending}
+          title={!name.trim() ? 'Enter a sequence name to create' : steps.length === 0 ? 'Add at least one step before creating' : undefined}
           className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
         >
           {createMutation.isPending ? 'Creating…' : 'Create'}

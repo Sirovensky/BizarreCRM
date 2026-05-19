@@ -1156,6 +1156,7 @@ function EnrollSubscriptionModal({
                 type="button"
                 disabled={!selectedCustomer || !selectedTierId || submitting}
                 onClick={handleSubmit}
+                title={!selectedCustomer ? 'Select a customer first' : !selectedTierId ? 'Select a membership tier first' : undefined}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-primary-500 px-3 py-2 text-sm font-medium text-on-primary hover:bg-primary-400 disabled:opacity-50"
               >
                 {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}

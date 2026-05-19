@@ -167,6 +167,7 @@ export function MassLabelPrintPage() {
           <button
             onClick={() => printMut.mutate()}
             disabled={selected.size === 0 || printMut.isPending}
+            title={selected.size === 0 ? 'Select at least one item to print labels for' : undefined}
             className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-4 py-1 text-sm font-semibold text-on-primary disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {printMut.isPending ? (

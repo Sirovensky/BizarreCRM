@@ -1366,6 +1366,7 @@ function MembershipCard({ customerId }: { customerId: number }) {
           <button
             onClick={() => setEnrollOpen(true)}
             disabled={tiers.length === 0}
+            title={tiers.length === 0 ? 'No membership tiers configured — add tiers in Memberships > Tiers' : undefined}
             className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-on-primary bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             <Plus className="h-4 w-4" />
