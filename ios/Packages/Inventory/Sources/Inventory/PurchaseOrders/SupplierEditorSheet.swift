@@ -94,6 +94,7 @@ public struct SupplierEditorSheet: View {
                     Section("Basic Info") {
                         TextField("Company name", text: $vm.name)
                             #if canImport(UIKit)
+                            .textContentType(.organizationName)
                             .textInputAutocapitalization(.words)
                             #endif
                             .accessibilityLabel("Company name")

@@ -87,6 +87,10 @@ public struct CompanyInfoPage: View {
         Form {
             Section("Legal") {
                 TextField("Legal name", text: $vm.legalName)
+                    #if canImport(UIKit)
+                    .textContentType(.organizationName)
+                    .textInputAutocapitalization(.words)
+                    #endif
                     .accessibilityLabel("Legal name")
                     .accessibilityIdentifier("company.legalName")
                 TextField("DBA (doing business as)", text: $vm.dba)
@@ -176,7 +180,7 @@ public struct CompanyInfoPage: View {
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") { Task { await vm.save() } }
-                    .disabled(vm.isSaving)
+                    .disabled(vm.isSaving || vm.legalName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityIdentifier("company.save")
             }
         }

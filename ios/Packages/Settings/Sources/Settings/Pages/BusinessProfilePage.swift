@@ -112,6 +112,10 @@ public struct BusinessProfilePage: View {
         Form {
             Section("Business identity") {
                 TextField("Store name", text: $vm.storeName)
+                    #if canImport(UIKit)
+                    .textContentType(.organizationName)
+                    .textInputAutocapitalization(.words)
+                    #endif
                     .accessibilityLabel("Store name")
                     .accessibilityIdentifier("business.storeName")
                 TextField("Address", text: $vm.address)
