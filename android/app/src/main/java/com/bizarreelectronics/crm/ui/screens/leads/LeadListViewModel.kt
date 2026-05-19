@@ -11,6 +11,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import timber.log.Timber
@@ -51,10 +52,12 @@ class LeadListViewModel @Inject constructor(
     private fun collectLeads() {
         collectJob?.cancel()
         collectJob = viewModelScope.launch {
-            _state.value = _state.value.copy(
-                isLoading = _state.value.leads.isEmpty(),
-                error = null,
-            )
+            _state.update {
+                it.copy(
+                    isLoading = _state.value.leads.isEmpty(),
+                    error = null,
+                )
+            }
             val query = _state.value.searchQuery.trim()
             val status = _state.value.selectedStatus
 
@@ -71,22 +74,24 @@ class LeadListViewModel @Inject constructor(
                         it.status.equals(status, ignoreCase = true)
                     }
                 }
-                _state.value = _state.value.copy(
-                    leads = filtered,
-                    isLoading = false,
-                    isRefreshing = false,
-                )
+                _state.update {
+                    it.copy(
+                        leads = filtered,
+                        isLoading = false,
+                        isRefreshing = false,
+                    )
+                }
             }
         }
     }
 
     fun refresh() {
-        _state.value = _state.value.copy(isRefreshing = true)
+        _state.update { it.copy(isRefreshing = true) }
         collectLeads()
     }
 
     fun onSearchChanged(query: String) {
-        _state.value = _state.value.copy(searchQuery = query)
+        _state.update { it.copy(searchQuery = query) }
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             delay(300)
@@ -95,13 +100,13 @@ class LeadListViewModel @Inject constructor(
     }
 
     fun onStatusChanged(status: String) {
-        _state.value = _state.value.copy(selectedStatus = status)
+        _state.update { it.copy(selectedStatus = status) }
         collectLeads()
     }
 
     /** Switch sort order; displayed list is re-sorted reactively in the Screen. */
     fun onSortChanged(sort: LeadSort) {
-        _state.value = _state.value.copy(currentSort = sort)
+        _state.update { it.copy(currentSort = sort) }
     }
 
     // ─── Bulk selection ──────────────────────────────────────────────────────
@@ -109,11 +114,11 @@ class LeadListViewModel @Inject constructor(
     fun toggleSelection(leadId: Long) {
         val current = _state.value.selectedLeadIds
         val updated = if (leadId in current) current - leadId else current + leadId
-        _state.value = _state.value.copy(selectedLeadIds = updated)
+        _state.update { it.copy(selectedLeadIds = updated) }
     }
 
     fun clearSelection() {
-        _state.value = _state.value.copy(selectedLeadIds = emptySet())
+        _state.update { it.copy(selectedLeadIds = emptySet()) }
     }
 
     /**
@@ -133,7 +138,7 @@ class LeadListViewModel @Inject constructor(
                 }
             }
         }
-        _state.value = _state.value.copy(selectedLeadIds = emptySet())
+        _state.update { it.copy(selectedLeadIds = emptySet()) }
     }
 
     /**

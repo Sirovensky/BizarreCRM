@@ -7,6 +7,7 @@ import com.bizarreelectronics.crm.data.remote.dto.DeviceHistoryEntry
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -44,15 +45,17 @@ class DeviceHistoryViewModel @Inject constructor(
     val state: StateFlow<DeviceHistoryUiState> = _state.asStateFlow()
 
     fun onQueryChange(query: String) {
-        _state.value = _state.value.copy(query = query, error = null)
+        _state.update { it.copy(query = query, error = null) }
     }
 
     fun onQueryTypeChange(type: DeviceHistoryQueryType) {
-        _state.value = _state.value.copy(
-            queryType = type,
-            entries = emptyList(),
-            error = null,
-        )
+        _state.update {
+            it.copy(
+                queryType = type,
+                entries = emptyList(),
+                error = null,
+            )
+        }
     }
 
     fun search() {
@@ -67,21 +70,25 @@ class DeviceHistoryViewModel @Inject constructor(
                     DeviceHistoryQueryType.Serial -> ticketApi.getDeviceHistory(serial = q)
                 }
                 val entries = resp.data ?: emptyList()
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    entries = entries,
-                    error = if (entries.isEmpty()) "No repair history found for this device." else null,
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        entries = entries,
+                        error = if (entries.isEmpty()) "No repair history found for this device." else null,
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: re-throw cancellation so back-nav
                 // doesn't paint a fake "Search failed" banner.
                 throw e
             } catch (e: Exception) {
                 val is404 = runCatching { (e as? retrofit2.HttpException)?.code() == 404 }.getOrDefault(false)
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = if (is404) "No repair history found." else "Search failed: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = if (is404) "No repair history found." else "Search failed: ${e.message}",
+                    )
+                }
             }
         }
     }

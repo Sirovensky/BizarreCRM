@@ -8,6 +8,7 @@ import com.bizarreelectronics.crm.data.remote.api.TvQueueItem
 import com.bizarreelectronics.crm.service.WebSocketService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.CancellationException
@@ -80,37 +81,45 @@ class TvQueueBoardViewModel @Inject constructor(
      */
     fun refresh() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            _uiState.update { it.copy(isLoading = true, error = null) }
             try {
                 val response = dashboardApi.getTvQueue()
                 val items = response.data?.items ?: emptyList()
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    groups = groupByStatus(items),
-                )
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        groups = groupByStatus(items),
+                    )
+                }
             } catch (e: HttpException) {
                 if (e.code() == 404) {
                     // Endpoint not yet live — show empty state with instructions.
                     Log.d(TAG, "GET /tv/queue returned 404 — endpoint not live yet")
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        groups = emptyMap(),
-                    )
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            groups = emptyMap(),
+                        )
+                    }
                 } else {
                     Log.w(TAG, "GET /tv/queue HTTP ${e.code()}: ${e.message()}")
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        error = "Server error (${e.code()}). Retrying…",
-                    )
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            error = "Server error (${e.code()}). Retrying…",
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 Log.w(TAG, "GET /tv/queue failed: ${e.message}")
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    error = "Connection error. Retrying…",
-                )
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = "Connection error. Retrying…",
+                    )
+                }
             }
         }
     }

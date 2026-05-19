@@ -7,6 +7,7 @@ import com.bizarreelectronics.crm.data.remote.api.WarrantyApi
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -55,16 +56,16 @@ class DeviceHistoryViewModel @Inject constructor(
     fun initWithPrefill(imei: String?, serial: String?) {
         val q = imei ?: serial ?: return
         val type = if (imei != null) DeviceHistoryQueryType.Imei else DeviceHistoryQueryType.Serial
-        _state.value = _state.value.copy(query = q, queryType = type, prefilledQuery = q)
+        _state.update { it.copy(query = q, queryType = type, prefilledQuery = q) }
         search()
     }
 
     fun onQueryChange(query: String) {
-        _state.value = _state.value.copy(query = query, error = null)
+        _state.update { it.copy(query = query, error = null) }
     }
 
     fun onQueryTypeChange(type: DeviceHistoryQueryType) {
-        _state.value = _state.value.copy(queryType = type, rows = emptyList(), error = null)
+        _state.update { it.copy(queryType = type, rows = emptyList(), error = null) }
     }
 
     fun search() {
@@ -80,20 +81,24 @@ class DeviceHistoryViewModel @Inject constructor(
                     DeviceHistoryQueryType.Serial -> warrantyApi.deviceHistory(serial = q)
                 }
                 val rows = resp.data ?: emptyList()
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    rows = rows,
-                    error = if (rows.isEmpty()) "No repair history found for this device." else null,
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        rows = rows,
+                        error = if (rows.isEmpty()) "No repair history found for this device." else null,
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: re-throw so back-nav / rapid re-search
                 // doesn't paint "History lookup failed: cancelled".
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = "History lookup failed: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = "History lookup failed: ${e.message}",
+                    )
+                }
             }
         }
     }

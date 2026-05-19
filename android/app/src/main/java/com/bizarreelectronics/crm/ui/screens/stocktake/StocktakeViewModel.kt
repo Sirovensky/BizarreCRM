@@ -17,6 +17,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -88,14 +89,16 @@ class StocktakeViewModel @Inject constructor(
         // orphaned but still consuming server resources.
         if (_state.value.isLoading || _state.value.phase != StocktakePhase.DRAFT) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             val sessionId = tryStartOnServer()
-            _state.value = _state.value.copy(
-                phase = StocktakePhase.ACTIVE,
-                sessionId = sessionId,
-                isLoading = false,
-                isOffline = !serverMonitor.isEffectivelyOnline.value,
-            )
+            _state.update {
+                it.copy(
+                    phase = StocktakePhase.ACTIVE,
+                    sessionId = sessionId,
+                    isLoading = false,
+                    isOffline = !serverMonitor.isEffectivelyOnline.value,
+                )
+            }
         }
     }
 
@@ -156,14 +159,16 @@ class StocktakeViewModel @Inject constructor(
         } else {
             _state.value.lines + newLine
         }
-        _state.value = _state.value.copy(lines = updated)
+        _state.update { it.copy(lines = updated) }
     }
 
     /** Remove a line from the count sheet. */
     fun removeLine(itemId: Long) {
-        _state.value = _state.value.copy(
-            lines = _state.value.lines.filter { it.itemId != itemId },
-        )
+        _state.update {
+            it.copy(
+                lines = _state.value.lines.filter { it.itemId != itemId },
+            )
+        }
     }
 
     // ── Barcode scan ──────────────────────────────────────────────────────────
@@ -182,9 +187,11 @@ class StocktakeViewModel @Inject constructor(
                     countedQty = 1, // default 1; operator edits inline
                 )
             } else {
-                _state.value = _state.value.copy(
-                    error = "No item found for barcode: $rawValue",
-                )
+                _state.update {
+                    it.copy(
+                        error = "No item found for barcode: $rawValue",
+                    )
+                }
             }
         }
     }
@@ -202,7 +209,7 @@ class StocktakeViewModel @Inject constructor(
     // ── Search ────────────────────────────────────────────────────────────────
 
     fun onSearchQueryChanged(query: String) {
-        _state.value = _state.value.copy(searchQuery = query)
+        _state.update { it.copy(searchQuery = query) }
         // BUGHUNT-2026-05-17: cancel the previous type-ahead launch before
         // spawning a new one. Otherwise a slow result for "a" would continue
         // to emit and stomp a fast result for "ab" via the long-lived collect.
@@ -210,16 +217,16 @@ class StocktakeViewModel @Inject constructor(
         if (query.length >= 2) {
             searchJob = viewModelScope.launch {
                 inventoryRepository.searchItems(query).collect { results ->
-                    _state.value = _state.value.copy(searchResults = results.take(20))
+                    _state.update { it.copy(searchResults = results.take(20)) }
                 }
             }
         } else {
-            _state.value = _state.value.copy(searchResults = emptyList())
+            _state.update { it.copy(searchResults = emptyList()) }
         }
     }
 
     fun clearSearch() {
-        _state.value = _state.value.copy(searchQuery = "", searchResults = emptyList())
+        _state.update { it.copy(searchQuery = "", searchResults = emptyList()) }
     }
 
     // ── Commit ────────────────────────────────────────────────────────────────
@@ -239,18 +246,20 @@ class StocktakeViewModel @Inject constructor(
         // the launch, but until it does, this guard rejects re-entry.
         if (_state.value.isLoading || _state.value.phase != StocktakePhase.ACTIVE) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             val lines = _state.value.lines.filter { it.variance != 0 }
             val committed = tryCommitOnServer(lines, note)
             if (!committed) {
                 applyAdjustmentsLocally(lines)
             }
-            _state.value = _state.value.copy(
-                phase = StocktakePhase.COMMITTED,
-                isLoading = false,
-                commitSuccess = true,
-                approvalPending = true, // §60.4 — server-side approval not yet implemented
-            )
+            _state.update {
+                it.copy(
+                    phase = StocktakePhase.COMMITTED,
+                    isLoading = false,
+                    commitSuccess = true,
+                    approvalPending = true, // §60.4 — server-side approval not yet implemented
+                )
+            }
         }
     }
 
@@ -351,11 +360,11 @@ class StocktakeViewModel @Inject constructor(
     // ── Misc ──────────────────────────────────────────────────────────────────
 
     fun clearError() {
-        _state.value = _state.value.copy(error = null)
+        _state.update { it.copy(error = null) }
     }
 
     fun consumeCommitSuccess() {
-        _state.value = _state.value.copy(commitSuccess = false)
+        _state.update { it.copy(commitSuccess = false) }
     }
 
     companion object {
