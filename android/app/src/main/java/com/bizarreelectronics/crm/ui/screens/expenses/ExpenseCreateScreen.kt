@@ -94,6 +94,12 @@ data class ExpenseCreateUiState(
     val perDiemRateDollars: String = "75.00",
 )
 
+/** Decimal with up to 2 places — re-used for amount/miles/mileageRate/perDiemRate fields. */
+private val DECIMAL_TWO_PLACES = Regex("^\\d*\\.?\\d{0,2}$")
+
+/** Up to 3-digit integer — re-used for the per-diem days field. */
+private val INTEGER_UP_TO_3 = Regex("^\\d{0,3}$")
+
 @HiltViewModel
 class ExpenseCreateViewModel @Inject constructor(
     private val expenseRepository: ExpenseRepository,
@@ -136,7 +142,7 @@ class ExpenseCreateViewModel @Inject constructor(
      */
     fun updateAmount(value: String) {
         // Allow empty or well-formed decimal
-        if (value.isEmpty() || value.matches(Regex("^\\d*\\.?\\d{0,2}$"))) {
+        if (value.isEmpty() || value.matches(DECIMAL_TWO_PLACES)) {
             _state.update { it.copy(amount = value) }
             onFieldChanged()
         }
@@ -184,14 +190,14 @@ class ExpenseCreateViewModel @Inject constructor(
     }
 
     fun updateMiles(value: String) {
-        if (value.isEmpty() || value.matches(Regex("^\\d*\\.?\\d{0,2}$"))) {
+        if (value.isEmpty() || value.matches(DECIMAL_TWO_PLACES)) {
             _state.update { it.copy(miles = value) }
             onFieldChanged()
         }
     }
 
     fun updateMileageRate(value: String) {
-        if (value.isEmpty() || value.matches(Regex("^\\d*\\.?\\d{0,2}$"))) {
+        if (value.isEmpty() || value.matches(DECIMAL_TWO_PLACES)) {
             _state.update { it.copy(mileageRateDollars = value) }
             onFieldChanged()
         }
@@ -203,14 +209,14 @@ class ExpenseCreateViewModel @Inject constructor(
     }
 
     fun updatePerDiemDays(value: String) {
-        if (value.isEmpty() || value.matches(Regex("^\\d{0,3}$"))) {
+        if (value.isEmpty() || value.matches(INTEGER_UP_TO_3)) {
             _state.update { it.copy(perDiemDays = value) }
             onFieldChanged()
         }
     }
 
     fun updatePerDiemRate(value: String) {
-        if (value.isEmpty() || value.matches(Regex("^\\d*\\.?\\d{0,2}$"))) {
+        if (value.isEmpty() || value.matches(DECIMAL_TWO_PLACES)) {
             _state.update { it.copy(perDiemRateDollars = value) }
             onFieldChanged()
         }
