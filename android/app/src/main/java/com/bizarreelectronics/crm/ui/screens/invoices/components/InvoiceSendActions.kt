@@ -128,7 +128,7 @@ fun sendSms(context: Context, phone: String?, invoiceNumber: String, invoiceLink
         append("Your invoice #$invoiceNumber from Bizarre Electronics is ready.")
         if (invoiceLink != null) append("\n$invoiceLink")
     }
-    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("sms:$target"))
+    val intent = Intent(Intent.ACTION_VIEW, Uri.fromParts("sms", target, null))
         .putExtra("sms_body", body)
     runCatching { context.startActivity(intent) }
 }

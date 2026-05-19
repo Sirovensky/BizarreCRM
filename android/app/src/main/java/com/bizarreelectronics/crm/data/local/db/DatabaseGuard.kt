@@ -5,8 +5,9 @@ import android.content.SharedPreferences
 import android.util.Log
 import timber.log.Timber
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.system.exitProcess
 
@@ -51,7 +52,11 @@ object DatabaseGuard {
     private const val KEY_LAST_KNOWN_VERSION = "last_known_schema_version"
     private const val BACKUP_DIR_NAME = "db-backups"
     private const val MAX_BACKUP_AGE_MS = 7L * 24 * 60 * 60 * 1_000 // 7 days
-    private val BACKUP_DATE_FORMAT = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US)
+    // DateTimeFormatter is thread-safe; the parent SimpleDateFormat was not, and
+    // concurrent backup attempts (e.g. WAL checkpoint racing with migration)
+    // could splice timestamps into "20260518-104503-2026..." style garbage.
+    private val BACKUP_DATE_FORMAT: DateTimeFormatter =
+        DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss", Locale.US)
 
     // -------------------------------------------------------------------------
     // Backup before migrate (Line 219)
@@ -76,7 +81,7 @@ object DatabaseGuard {
         }
 
         val backupDir = File(context.cacheDir, BACKUP_DIR_NAME).also { it.mkdirs() }
-        val timestamp = BACKUP_DATE_FORMAT.format(Date())
+        val timestamp = BACKUP_DATE_FORMAT.format(ZonedDateTime.now(ZoneId.systemDefault()))
         val backupFile = File(backupDir, "pre-migration-$timestamp.db")
 
         return try {

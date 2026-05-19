@@ -171,14 +171,13 @@ fun AccountLockedModal(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 if (dto?.email != null) {
-                                    val emailUri = Uri.parse(
-                                        "mailto:${dto.email}?subject=Account+locked",
-                                    )
+                                    val emailUri = Uri.fromParts("mailto", dto.email, null)
                                     TextButton(
                                         onClick = {
                                             context.startActivity(
                                                 Intent(Intent.ACTION_SENDTO, emailUri).apply {
                                                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                    putExtra(Intent.EXTRA_SUBJECT, "Account locked")
                                                 },
                                             )
                                         },
