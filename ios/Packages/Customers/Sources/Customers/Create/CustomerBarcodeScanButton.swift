@@ -182,9 +182,22 @@ final class BarcodeCameraUIView: UIView, AVCaptureMetadataOutputObjectsDelegate 
         guard let obj = objects.first as? AVMetadataMachineReadableCodeObject,
               let value = obj.stringValue, !value.isEmpty else { return }
         AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
+        // BUGHUNT-2026-05-19: `session.stopRunning()` is documented as
+        // blocking — the sibling `teardown()` already hops to a background
+        // queue (line 197) for that reason. The first-scan callback path
+        // was calling stopRunning() inline on @MainActor, freezing the UI
+        // for the duration of the camera teardown each time a barcode
+        // resolved. Mirror teardown(): grab the session ref on MainActor,
+        // dispatch the blocking stop to a background queue, then fire the
+        // SwiftUI callback. Keeping it as a single @MainActor Task means
+        // the callback still observes session-stopped semantics in order.
         Task { @MainActor [weak self] in
-            self?.session.stopRunning()
-            self?.onCodeDetected?(value)
+            guard let self else { return }
+            let scannedSession = self.session
+            DispatchQueue.global(qos: .userInitiated).async {
+                if scannedSession.isRunning { scannedSession.stopRunning() }
+            }
+            self.onCodeDetected?(value)
         }
     }
 

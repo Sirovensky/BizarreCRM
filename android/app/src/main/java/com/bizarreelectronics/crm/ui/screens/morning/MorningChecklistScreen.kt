@@ -43,6 +43,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -79,8 +80,18 @@ fun MorningChecklistScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    var showCashDialog by remember { mutableStateOf(false) }
-    var cashInput by remember { mutableStateOf("") }
+    var showCashDialog by rememberSaveable { mutableStateOf(false) }
+    // BUGHUNT-2026-05-19: `remember` instead of `rememberSaveable` wipes the
+    // till-float amount on configuration changes — rotating the tablet
+    // mid-count (or any system-driven recreation: dark-mode toggle, language
+    // switch, returning from a system permission prompt) blanked the field
+    // and forced the cashier to recount from zero. The morning checklist is
+    // the first thing run on shop open, and AlertDialog state already
+    // survives recomposition but not config changes. Mirrors the
+    // CashTenderDialog / GiftCardDialog / ManualDrawerDialog fix family —
+    // all dollar-amount inputs in money-handling flows must use
+    // rememberSaveable.
+    var cashInput by rememberSaveable { mutableStateOf("") }
 
     Scaffold(
         topBar = {
