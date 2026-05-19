@@ -545,8 +545,14 @@ export function LoginPage() {
 
   if (autoChecking) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-surface-50 via-primary-50/30 to-surface-100 dark:from-surface-950 dark:via-surface-900 dark:to-surface-950">
-        <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
+      <div
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+        aria-label="Checking session"
+        className="flex min-h-screen items-center justify-center bg-gradient-to-br from-surface-50 via-primary-50/30 to-surface-100 dark:from-surface-950 dark:via-surface-900 dark:to-surface-950"
+      >
+        <Loader2 className="h-8 w-8 animate-spin text-primary-600" aria-hidden="true" />
       </div>
     );
   }
