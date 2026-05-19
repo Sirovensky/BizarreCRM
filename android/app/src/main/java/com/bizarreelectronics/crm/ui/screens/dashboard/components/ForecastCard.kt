@@ -28,11 +28,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import java.text.NumberFormat
-import java.util.Locale
+import com.bizarreelectronics.crm.util.CurrencyFormatter
 
-private fun formatCentsUsd(cents: Long): String =
-    NumberFormat.getCurrencyInstance(Locale.US).format(cents / 100.0)
+// BUGHUNT-2026-05-18: was NumberFormat.getCurrencyInstance(Locale.US) which
+// hard-coded "$" + en-US grouping on a tenant-overridable forecast. Route
+// through CurrencyFormatter so a "MXN"/"GBP" currencyOverride renders MX$/£.
+private fun formatCentsLocal(cents: Long): String =
+    CurrencyFormatter.format(cents / 100.0)
 
 @Composable
 fun ForecastCard(
@@ -44,7 +46,7 @@ fun ForecastCard(
 ) {
     val hasForecast = forecastRevenue != null
     val a11yDesc = if (hasForecast) {
-        "Revenue forecast: ${formatCentsUsd(forecastRevenue!!)} projected over the next 30 days."
+        "Revenue forecast: ${formatCentsLocal(forecastRevenue!!)} projected over the next 30 days."
     } else {
         "Revenue forecast unavailable. Need 90+ days of history."
     }
@@ -84,7 +86,7 @@ fun ForecastCard(
 
             if (hasForecast) {
                 Text(
-                    text = formatCentsUsd(forecastRevenue!!),
+                    text = formatCentsLocal(forecastRevenue!!),
                     style = MaterialTheme.typography.displaySmall.copy(
                         fontWeight = FontWeight.Bold,
                         fontSize = 32.sp,
