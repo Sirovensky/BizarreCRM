@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -48,7 +49,11 @@ fun MembershipListScreen(
     val uiState by viewModel.uiState.collectAsState()
     val enrollState by viewModel.enrollState.collectAsState()
     val cancelState by viewModel.cancelState.collectAsState()
-    var showEnrollDialog by remember { mutableStateOf(false) }
+    // BUGHUNT-2026-05-19: rememberSaveable so a rotation mid-enrollment
+    // doesn't dismiss the dialog. cancelTarget stays on plain remember
+    // because Membership is a class and needs a custom Saver — the
+    // confirm dialog is short-lived anyway.
+    var showEnrollDialog by rememberSaveable { mutableStateOf(false) }
     var cancelTarget by remember { mutableStateOf<Membership?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -362,10 +367,12 @@ private fun EnrollMemberDialog(
     onDismiss: () -> Unit,
     onConfirm: (customerId: Long, tierId: Long, billing: String, paymentMethod: String) -> Unit,
 ) {
-    var customerIdText by remember { mutableStateOf("") }
+    var customerIdText by rememberSaveable { mutableStateOf("") }
+    // selectedTier is a MembershipTier class instance; leave on plain
+    // remember and re-select from the small list on resume.
     var selectedTier by remember { mutableStateOf(tiers.firstOrNull()) }
-    var billing by remember { mutableStateOf("monthly") }
-    var paymentMethod by remember { mutableStateOf("cash") }
+    var billing by rememberSaveable { mutableStateOf("monthly") }
+    var paymentMethod by rememberSaveable { mutableStateOf("cash") }
     val customerIdFocus = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
