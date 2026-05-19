@@ -341,10 +341,10 @@ public struct EstimateDetailView: View {
 
     private func statusBackground(_ status: String) -> Color {
         switch status.lowercased() {
-        case "approved": return Color.green.opacity(0.15)
+        case "approved": return Color.bizarreSuccess.opacity(0.15)
         case "rejected", "expired": return Color.bizarreError.opacity(0.15)
         case "converted": return Color.bizarreOrange.opacity(0.15)
-        case "sent": return Color.blue.opacity(0.15)
+        case "sent": return Color.bizarreInfo.opacity(0.15)
         default: return Color.bizarreSurface2
         }
     }

@@ -164,13 +164,13 @@ public struct EstimatePreviewInspector: View {
                     .foregroundStyle(.bizarreOnSurfaceMuted)
                 Text(isSigned ? "Signed by customer" : "Awaiting signature")
                     .font(.brandBodyMedium())
-                    .foregroundStyle(isSigned ? .green : .bizarreOnSurface)
+                    .foregroundStyle(isSigned ? .bizarreSuccess : .bizarreOnSurface)
             }
             Spacer()
         }
         .padding(BrandSpacing.md)
         .background(
-            isSigned ? Color.green.opacity(0.08) : Color.bizarreSurface1,
+            isSigned ? Color.bizarreSuccess.opacity(0.08) : Color.bizarreSurface1,
             in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
         )
         .accessibilityElement(children: .combine)
@@ -368,7 +368,7 @@ public struct EstimatePreviewInspector: View {
 
     private func statusBackground(_ status: String) -> Color {
         switch status.lowercased() {
-        case "approved":            return Color.green.opacity(0.15)
+        case "approved":            return Color.bizarreSuccess.opacity(0.15)
         case "rejected", "expired": return Color.bizarreError.opacity(0.15)
         case "converted":           return Color.bizarreOrange.opacity(0.15)
         default:                    return Color.bizarreSurface2

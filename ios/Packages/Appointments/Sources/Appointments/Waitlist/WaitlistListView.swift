@@ -260,7 +260,7 @@ private struct StatusBadge: View {
         switch status {
         case .waiting:   return .bizarreOnSurfaceMuted
         case .offered:   return .bizarreOrange
-        case .scheduled: return Color.green
+        case .scheduled: return .bizarreSuccess
         case .canceled:  return .bizarreError
         }
     }

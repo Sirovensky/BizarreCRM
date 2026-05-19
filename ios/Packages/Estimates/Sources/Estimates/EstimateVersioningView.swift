@@ -144,11 +144,11 @@ public struct EstimateVersioningView: View {
             // Version badge
             ZStack {
                 Circle()
-                    .fill(version.isApproved == true ? Color.green.opacity(0.15) : Color.bizarreSurface2)
+                    .fill(version.isApproved == true ? Color.bizarreSuccess.opacity(0.15) : Color.bizarreSurface2)
                     .frame(width: 40, height: 40)
                 Text("v\(version.versionNumber)")
                     .font(.brandMono(size: 13))
-                    .foregroundStyle(version.isApproved == true ? .green : .bizarreOnSurface)
+                    .foregroundStyle(version.isApproved == true ? .bizarreSuccess : .bizarreOnSurface)
             }
             .accessibilityHidden(true)
 
@@ -162,8 +162,8 @@ public struct EstimateVersioningView: View {
                             .font(.brandLabelSmall())
                             .padding(.horizontal, BrandSpacing.xs)
                             .padding(.vertical, 2)
-                            .foregroundStyle(.green)
-                            .background(Color.green.opacity(0.12), in: Capsule())
+                            .foregroundStyle(.bizarreSuccess)
+                            .background(Color.bizarreSuccess.opacity(0.12), in: Capsule())
                     }
                 }
                 if let status = version.status, !status.isEmpty {
