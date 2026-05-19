@@ -188,8 +188,9 @@ function ReloadModal({ cardId, currentBalance, onClose }: ReloadModalProps) {
     >
       <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
         <h2 id="gift-card-reload-title" className="text-base font-semibold text-surface-900 dark:text-surface-100 mb-4">Reload gift card</h2>
-        <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Amount ($)</label>
+        <label htmlFor="gift-card-reload-amount" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Amount ($)</label>
         <input
+          id="gift-card-reload-amount"
           type="number"
           min="0.01"
           max={RELOAD_MAX_AMOUNT}

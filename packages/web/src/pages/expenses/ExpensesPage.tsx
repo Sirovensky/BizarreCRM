@@ -359,10 +359,11 @@ export function ExpensesPage() {
               className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
             {/* WEB-FK-014: receipt upload — attaches after save, uses expenseReceipts route */}
             <div className="sm:col-span-2">
-              <label className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">
+              <label htmlFor="expense-receipt-upload" className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">
                 Receipt (JPEG, PNG, WebP, or PDF — max 10 MB)
               </label>
               <input
+                id="expense-receipt-upload"
                 ref={receiptInputRef}
                 type="file"
                 accept={RECEIPT_UPLOAD_ACCEPT}

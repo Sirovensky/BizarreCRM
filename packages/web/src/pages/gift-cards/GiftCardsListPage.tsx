@@ -381,7 +381,7 @@ function IssueModal({ onClose }: IssueModalProps) {
         <div className="space-y-4">
           <div>
             {/* WEB-UIUX-993: use tenant currency symbol instead of hard-coded "$" */}
-            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
+            <label htmlFor="gc-issue-amount" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
               Initial value ({formatCurrencySymbol()}) <span className="text-red-500">*</span>
             </label>
             {/* WEB-UIUX-1554: denomination preset buttons for common amounts */}
@@ -403,6 +403,7 @@ function IssueModal({ onClose }: IssueModalProps) {
             </div>
             {/* WEB-UIUX-994: max="10000" matches server $10k cap — freeform "Custom" fallback below presets */}
             <input
+              id="gc-issue-amount"
               // WEB-UIUX-1003: autoFocus matches ReloadModal pattern so cashier on
               // quiet POS does not have to tab-stop through DOM to start typing.
               autoFocus
@@ -498,10 +499,11 @@ function IssueModal({ onClose }: IssueModalProps) {
             )}
           </div>
           <div>
-            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
+            <label htmlFor="gc-issue-recipient-name" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
               Recipient name (optional)
             </label>
             <input
+              id="gc-issue-recipient-name"
               type="text"
               value={form.recipient_name}
               onChange={(e) => update('recipient_name', e.target.value)}
@@ -510,10 +512,11 @@ function IssueModal({ onClose }: IssueModalProps) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
+            <label htmlFor="gc-issue-recipient-email" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
               Recipient email (optional, stored only)
             </label>
             <input
+              id="gc-issue-recipient-email"
               type="email"
               value={form.recipient_email}
               onChange={(e) => update('recipient_email', e.target.value)}
@@ -535,10 +538,11 @@ function IssueModal({ onClose }: IssueModalProps) {
             )}
           </div>
           <div>
-            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
+            <label htmlFor="gc-issue-expires-at" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
               Expiry date (optional)
             </label>
             <input
+              id="gc-issue-expires-at"
               type="date"
               min={todayDateInputValue}
               value={form.expires_at}
@@ -555,10 +559,11 @@ function IssueModal({ onClose }: IssueModalProps) {
           </div>
           {/* WEB-UIUX-989: notes field — server validates ≤1000 chars */}
           <div>
-            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
+            <label htmlFor="gc-issue-notes" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
               Notes (optional)
             </label>
             <textarea
+              id="gc-issue-notes"
               value={form.notes}
               onChange={(e) => update('notes', e.target.value)}
               maxLength={1000}
