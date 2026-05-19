@@ -259,21 +259,32 @@ public struct NotificationCard: View {
         return "bell"
     }
 
+    // ISO8601DateFormatter and DateFormatter parse paths are thread-safe;
+    // hoisting them to static eliminates 4 formatter allocations per row
+    // (3 parsers + the fallback MMM-d output formatter).
+    nonisolated(unsafe) private static let isoFullFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    nonisolated(unsafe) private static let isoBasicFormatter = ISO8601DateFormatter()
+    nonisolated(unsafe) private static let sqlFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+    nonisolated(unsafe) private static let monthDayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d"
+        return f
+    }()
+
     private func relativeTime(from raw: String) -> String {
-        let isoFull: ISO8601DateFormatter = {
-            let f = ISO8601DateFormatter()
-            f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            return f
-        }()
-        let isoBasic = ISO8601DateFormatter()
-        let sql: DateFormatter = {
-            let f = DateFormatter()
-            f.dateFormat = "yyyy-MM-dd HH:mm:ss"
-            f.timeZone = TimeZone(identifier: "UTC")
-            f.locale = Locale(identifier: "en_US_POSIX")
-            return f
-        }()
-        let date = isoFull.date(from: raw) ?? isoBasic.date(from: raw) ?? sql.date(from: raw)
+        let date = Self.isoFullFormatter.date(from: raw)
+            ?? Self.isoBasicFormatter.date(from: raw)
+            ?? Self.sqlFormatter.date(from: raw)
         guard let date else { return String(raw.prefix(16)) }
         let seconds = Int(Date().timeIntervalSince(date))
         switch seconds {
@@ -283,9 +294,7 @@ public struct NotificationCard: View {
         case ..<172_800:  return "yesterday"
         case ..<604_800:  return "\(seconds / 86_400)d ago"
         default:
-            let df = DateFormatter()
-            df.dateFormat = "MMM d"
-            return df.string(from: date)
+            return Self.monthDayFormatter.string(from: date)
         }
     }
 }

@@ -386,6 +386,23 @@ public struct NotificationRowView: View {
 
     public init(note: NotificationItem) { self.note = note }
 
+    // ISO8601DateFormatter and DateFormatter are thread-safe for the read-only
+    // parsing path; hoisting them to static avoids 3 allocations per row × 2
+    // call sites (Text body + a11y label) on every list render.
+    nonisolated(unsafe) private static let isoFullFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    nonisolated(unsafe) private static let isoBasicFormatter = ISO8601DateFormatter()
+    nonisolated(unsafe) private static let sqlFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
     public var body: some View {
         HStack(alignment: .top, spacing: BrandSpacing.md) {
             Image(systemName: iconForType(note.type))
@@ -453,20 +470,9 @@ public struct NotificationRowView: View {
 
     /// Relative time string. Same logic as the old `NotificationListView.Row`.
     private func relativeTime(from raw: String) -> String {
-        let isoFull: ISO8601DateFormatter = {
-            let f = ISO8601DateFormatter()
-            f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            return f
-        }()
-        let isoBasic = ISO8601DateFormatter()
-        let sql: DateFormatter = {
-            let f = DateFormatter()
-            f.dateFormat = "yyyy-MM-dd HH:mm:ss"
-            f.timeZone = TimeZone(identifier: "UTC")
-            f.locale = Locale(identifier: "en_US_POSIX")
-            return f
-        }()
-        let date = isoFull.date(from: raw) ?? isoBasic.date(from: raw) ?? sql.date(from: raw)
+        let date = Self.isoFullFormatter.date(from: raw)
+            ?? Self.isoBasicFormatter.date(from: raw)
+            ?? Self.sqlFormatter.date(from: raw)
         guard let date else { return String(raw.prefix(16)) }
 
         let seconds = Int(Date().timeIntervalSince(date))
