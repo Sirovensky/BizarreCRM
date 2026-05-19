@@ -41,6 +41,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.bizarreelectronics.crm.util.CurrencyFormatter
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -606,7 +607,7 @@ private fun DensityPreviewCard(density: DashboardDensity) {
             val ext = LocalExtendedColors.current
             val mockTiles = listOf(
                 Triple("Open", "12", MaterialTheme.colorScheme.primary),
-                Triple("Revenue", "$342", ext.success),
+                Triple("Revenue", "${CurrencyFormatter.currencySymbol()}342", ext.success),
                 Triple("Low Stock", "3", ext.warning),
                 Triple("Pending", "5", MaterialTheme.colorScheme.tertiary),
             ).take(columnCount.coerceAtMost(4))

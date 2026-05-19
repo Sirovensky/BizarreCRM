@@ -1257,14 +1257,14 @@ function ThreadSearchBar({
           <span className="text-xs text-surface-400 shrink-0">
             {matchCount > 0 ? `${matchIndex + 1}/${matchCount}` : '0/0'}
           </span>
-          <button onClick={handlePrev} className="p-0.5 rounded hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-400" title="Previous match">
-            <ChevronUp className="h-3.5 w-3.5" />
+          <button onClick={handlePrev} className="p-0.5 rounded hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-400" title="Previous match" aria-label="Previous match">
+            <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
-          <button onClick={handleNext} className="p-0.5 rounded hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-400" title="Next match">
-            <ChevronDown className="h-3.5 w-3.5" />
+          <button onClick={handleNext} className="p-0.5 rounded hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-400" title="Next match" aria-label="Next match">
+            <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
-          <button onClick={() => setQuery('')} className="p-0.5 rounded hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-400" title="Clear search">
-            <X className="h-3.5 w-3.5" />
+          <button onClick={() => setQuery('')} className="p-0.5 rounded hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-400" title="Clear search" aria-label="Clear search">
+            <X className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
         </>
       )}

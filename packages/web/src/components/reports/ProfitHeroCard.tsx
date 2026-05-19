@@ -114,8 +114,9 @@ export function ProfitHeroCard() {
           onClick={openEditor}
           className="opacity-70 hover:opacity-100 transition"
           title="Edit zone thresholds"
+          aria-label="Edit gross margin zone thresholds"
         >
-          <Settings size={18} />
+          <Settings size={18} aria-hidden="true" />
         </button>
       </div>
 

@@ -267,7 +267,7 @@ fun CartLineBottomSheet(
                         val label = when (chip) {
                             DiscountChip.FIVE_PCT -> "5%"
                             DiscountChip.TEN_PCT -> "10%"
-                            DiscountChip.FLAT -> "$"
+                            DiscountChip.FLAT -> CurrencyFormatter.currencySymbol()
                             DiscountChip.CUSTOM -> "Custom"
                         }
                         toggleableItem(
