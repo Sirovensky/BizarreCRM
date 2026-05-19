@@ -180,9 +180,17 @@ public extension APIClient {
     // MARK: - §4.5 Attach to existing invoice
 
     /// `POST /api/v1/tickets/:id/attach-invoice` — attaches this ticket to an existing invoice.
+    // BUGHUNT-2026-05-19: was `_ = try? await post(...)` which silently converted
+    // every server failure (404 invoice not found, 403 permission, 409 already-
+    // attached, 5xx, transport error) into a no-op return. The function signature
+    // is `async throws`, and callers like TicketAttachInvoiceSheet.attach() wrap
+    // the call in `do { ... } catch { phase = .error(...) }` — but the catch
+    // never fired because the error was swallowed inside try?, so the UI flipped
+    // to `.done` ("Attached successfully") on every failure. Drop the try? so
+    // POSTs actually propagate the error to the caller's catch path.
     func attachTicketToInvoice(ticketId: Int64, invoiceId: Int64) async throws {
         let route = Endpoints.Tickets.attachInvoice(ticketId: ticketId)
-        _ = try? await post(
+        _ = try await post(
             route.path,
             body: TicketAttachInvoiceBody(invoiceId: invoiceId),
             as: CreatedResource.self
@@ -192,9 +200,13 @@ public extension APIClient {
     // MARK: - §4.5 Transfer to another store
 
     /// `POST /api/v1/tickets/:id/transfer` — transfers ticket to another location.
+    // BUGHUNT-2026-05-19: see attachTicketToInvoice above — same `try?` ate every
+    // transfer failure (target location missing, permission, 5xx) and forced the
+    // TicketTransferLocationSheet flow to report success regardless. Drop the
+    // try? to surface real errors.
     func transferTicket(ticketId: Int64, toLocationId: Int64, reason: String?) async throws {
         let route = Endpoints.Tickets.transfer(ticketId: ticketId)
-        _ = try? await post(
+        _ = try await post(
             route.path,
             body: TicketTransferBody(locationId: toLocationId, reason: reason),
             as: CreatedResource.self
