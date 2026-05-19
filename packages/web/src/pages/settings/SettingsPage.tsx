@@ -411,6 +411,7 @@ function StoreInfoTab() {
                   <div className="flex items-center gap-2">
                     <input
                       type="time"
+                      aria-label={`${DAY_LABELS[day]} open time`}
                       value={hours[day]?.from || '09:00'}
                       onChange={(e) => handleHoursChange(day, 'from', e.target.value)}
                       className="px-2 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus:ring-1 focus:ring-blue-500"
@@ -418,6 +419,7 @@ function StoreInfoTab() {
                     <span className="text-xs text-surface-400">to</span>
                     <input
                       type="time"
+                      aria-label={`${DAY_LABELS[day]} close time`}
                       value={hours[day]?.to || '17:00'}
                       onChange={(e) => handleHoursChange(day, 'to', e.target.value)}
                       className="px-2 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus:ring-1 focus:ring-blue-500"

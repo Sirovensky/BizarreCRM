@@ -119,6 +119,7 @@ export function StepBusinessHours({
               </label>
               <input
                 type="time"
+                aria-label={`${label} open time`}
                 value={h.from}
                 onChange={(e) => updateDay(day, { from: e.target.value })}
                 disabled={!h.open}
@@ -127,6 +128,7 @@ export function StepBusinessHours({
               <span className="text-sm text-surface-400">to</span>
               <input
                 type="time"
+                aria-label={`${label} close time`}
                 value={h.to}
                 onChange={(e) => updateDay(day, { to: e.target.value })}
                 disabled={!h.open}

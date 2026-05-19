@@ -191,7 +191,16 @@ function AccordionSection({
       <div className="flex w-full items-center gap-2 px-4 py-3 hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors">
         <div
           role="button"
+          tabIndex={0}
+          aria-expanded={open}
+          aria-label={`Toggle ${title} section`}
           onClick={() => setOpen((v) => !v)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setOpen((v) => !v);
+            }
+          }}
           className="flex items-center gap-2 flex-1 cursor-pointer"
         >
           <ChevronRight className={cn('h-4 w-4 text-surface-400 transition-transform', open && 'rotate-90')} />
