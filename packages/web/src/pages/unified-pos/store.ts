@@ -81,14 +81,31 @@ function getUserPosKey(): string {
  * If no register ID has been minted yet for this session we create one with
  * crypto.randomUUID() (falls back to timestamp+random for older Safari).
  */
+// BUGHUNT-2026-05-19: every persisted-state read/write in this module funnels
+// through getRegisterPosKey(). Safari private-mode (and any browser with
+// storage quota disabled) throws SecurityError / QuotaExceededError on the
+// first `sessionStorage.getItem` — which would propagate out of every Zustand
+// selector and crash the POS at boot before the cashier can even type a price.
+// Fall back to a per-tab in-memory register id so the store still functions,
+// just without survive-the-refresh persistence.
+let inMemoryRegisterId: string | null = null;
 function getRegisterPosKey(): string {
   const REGISTER_ID_KEY = 'pos_register_id';
-  let registerId = sessionStorage.getItem(REGISTER_ID_KEY);
+  let registerId: string | null = null;
+  try {
+    registerId = sessionStorage.getItem(REGISTER_ID_KEY);
+  } catch { /* private mode / storage disabled */ }
   if (!registerId) {
-    registerId =
+    registerId = inMemoryRegisterId ??
       globalThis.crypto?.randomUUID?.() ??
       `reg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    sessionStorage.setItem(REGISTER_ID_KEY, registerId);
+    try {
+      sessionStorage.setItem(REGISTER_ID_KEY, registerId);
+    } catch {
+      // Keep the in-memory copy so the same id is used across calls
+      // within this tab lifetime.
+      inMemoryRegisterId = registerId;
+    }
   }
   const user = useAuthStore.getState().user;
   const userId = user?.id ?? 'anon';
@@ -364,19 +381,23 @@ export const useUnifiedPosStore = create<UnifiedPosState>()(persist((set, get) =
 }), {
   name: 'pos-store', // base name (actual key is user-scoped)
   storage: createJSONStorage(() => ({
+    // BUGHUNT-2026-05-19: same private-mode failure mode as
+    // getRegisterPosKey above. Without these guards, the Zustand persist
+    // adapter would throw on every cart mutation and the cashier would
+    // see a blank checkout. Degrade gracefully to in-memory state.
     getItem: (name: string) => {
       const key = getRegisterPosKey();
-      return sessionStorage.getItem(key) ?? localStorage.getItem(key);
+      try { return sessionStorage.getItem(key) ?? localStorage.getItem(key); } catch { return null; }
     },
     setItem: (name: string, value: string) => {
       const key = getRegisterPosKey();
-      sessionStorage.setItem(key, value);
-      localStorage.removeItem(key);
+      try { sessionStorage.setItem(key, value); } catch { /* private mode / quota */ }
+      try { localStorage.removeItem(key); } catch { /* private mode */ }
     },
     removeItem: (name: string) => {
       const key = getRegisterPosKey();
-      sessionStorage.removeItem(key);
-      localStorage.removeItem(key);
+      try { sessionStorage.removeItem(key); } catch { /* private mode */ }
+      try { localStorage.removeItem(key); } catch { /* private mode */ }
     },
   })),
   // Only persist essential data, not transient UI state
