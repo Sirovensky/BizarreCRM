@@ -141,6 +141,16 @@ public final class SmsVoiceMemoRecorder {
         try session.setCategory(.record, mode: .default)
         try session.setActive(true)
 
+        // BUGHUNT-2026-05-19: if AVAudioFile init or AVAudioEngine.start
+        // throws after setActive(true), the shared AVAudioSession stays in
+        // .record category and any background-audio app remains interrupted
+        // until the next session change. Mirror the stop() teardown and
+        // deactivate before re-throwing.
+        func deactivate() {
+            try? AVAudioSession.sharedInstance()
+                .setActive(false, options: .notifyOthersOnDeactivation)
+        }
+
         let outURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("vm_\(UUID().uuidString).aac")
         outputURL = outURL
@@ -156,7 +166,13 @@ public final class SmsVoiceMemoRecorder {
             AVNumberOfChannelsKey: 1,
             AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue
         ]
-        let audioFile = try AVAudioFile(forWriting: outURL, settings: settings)
+        let audioFile: AVAudioFile
+        do {
+            audioFile = try AVAudioFile(forWriting: outURL, settings: settings)
+        } catch {
+            deactivate()
+            throw error
+        }
         file = audioFile
 
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
@@ -164,7 +180,14 @@ public final class SmsVoiceMemoRecorder {
             _ = self  // retain in closure
         }
 
-        try newEngine.start()
+        do {
+            try newEngine.start()
+        } catch {
+            inputNode.removeTap(onBus: 0)
+            file = nil
+            deactivate()
+            throw error
+        }
         engine = newEngine
     }
 }
