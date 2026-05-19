@@ -362,7 +362,7 @@ export function PaymentLinksPage() {
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={5} className="px-3 py-6 text-center text-surface-500 dark:text-surface-400">Loading...</td></tr>
+              <tr aria-busy="true"><td colSpan={5} className="px-3 py-6 text-center text-surface-500 dark:text-surface-400" role="status" aria-live="polite">Loading...</td></tr>
             ) : !data || data.length === 0 ? (
               <tr><td colSpan={5} className="px-3 py-6 text-center text-surface-500 dark:text-surface-400">No payment requests yet</td></tr>
             ) : (
