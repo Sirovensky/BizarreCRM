@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.bizarreelectronics.crm.data.remote.dto.SupplierRow
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.util.CurrencyFormatter
 import com.bizarreelectronics.crm.viewmodels.purchaseorders.DraftPoItem
 import com.bizarreelectronics.crm.viewmodels.purchaseorders.PurchaseOrderCreateViewModel
 
@@ -423,7 +424,7 @@ private fun LineItemRow(
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Text(
-                        "Cost: $${String.format(java.util.Locale.US, "%.2f", item.costPrice)}",
+                        "Cost: ${CurrencyFormatter.format(item.costPrice)}",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
