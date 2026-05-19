@@ -34,6 +34,7 @@ import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.util.DateFormatter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -67,61 +68,67 @@ class TeamInboxViewModel @Inject constructor(
 
     fun loadInbox() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = _state.value.conversations.isEmpty(), error = null)
+            _state.update { it.copy(isLoading = _state.value.conversations.isEmpty(), error = null) }
             try {
                 val unread = if (_state.value.showUnreadOnly) true else null
                 val resp = inboxApi.getInbox(unread = unread)
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    conversations = resp.data?.conversations ?: emptyList(),
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        conversations = resp.data?.conversations ?: emptyList(),
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 val is404 = (e as? HttpException)?.code() == 404
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    notConfigured = is404,
-                    error = if (is404) null else (e.message ?: "Failed to load inbox"),
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        notConfigured = is404,
+                        error = if (is404) null else (e.message ?: "Failed to load inbox"),
+                    )
+                }
             }
         }
     }
 
     fun refresh() {
-        _state.value = _state.value.copy(isRefreshing = true)
+        _state.update { it.copy(isRefreshing = true) }
         loadInbox()
     }
 
     fun toggleUnreadFilter() {
-        _state.value = _state.value.copy(showUnreadOnly = !_state.value.showUnreadOnly)
+        _state.update { it.copy(showUnreadOnly = !_state.value.showUnreadOnly) }
         loadInbox()
     }
 
     /** Optimistically assign a conversation to [userId]. Pass null to unassign. */
     fun assign(conversationId: Long, userId: Long?, userName: String?) {
         // Optimistic update
-        _state.value = _state.value.copy(
-            conversations = _state.value.conversations.map { c ->
-                if (c.id == conversationId) c.copy(assignedToId = userId, assignedToName = userName)
-                else c
-            },
-        )
+        _state.update {
+            it.copy(
+                conversations = _state.value.conversations.map { c ->
+                    if (c.id == conversationId) c.copy(assignedToId = userId, assignedToName = userName)
+                    else c
+                },
+            )
+        }
         viewModelScope.launch {
             try {
                 inboxApi.assignConversation(conversationId, InboxAssignRequest(userId))
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (_: Exception) {
-                _state.value = _state.value.copy(actionMessage = "Assign failed — please retry")
+                _state.update { it.copy(actionMessage = "Assign failed — please retry") }
             }
         }
     }
 
     fun clearActionMessage() {
-        _state.value = _state.value.copy(actionMessage = null)
+        _state.update { it.copy(actionMessage = null) }
     }
 }
 

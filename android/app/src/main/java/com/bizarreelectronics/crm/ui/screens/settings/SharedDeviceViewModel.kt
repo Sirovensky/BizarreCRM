@@ -33,6 +33,7 @@ import com.bizarreelectronics.crm.util.SessionTimeoutConfig
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.CancellationException
@@ -118,7 +119,7 @@ class SharedDeviceViewModel @Inject constructor(
     fun setInactivityMinutes(minutes: Int) {
         val safe = SessionTimeoutConfig.coerceInactivityMinutes(minutes)
         appPreferences.sharedDeviceInactivityMinutes = safe
-        _state.value = _state.value.copy(inactivityMinutes = safe)
+        _state.update { it.copy(inactivityMinutes = safe) }
     }
 
     // ── staff count ───────────────────────────────────────────────────────────
@@ -133,7 +134,7 @@ class SharedDeviceViewModel @Inject constructor(
      * lock the toggle because of a momentary network hiccup.
      */
     fun loadStaffCount() {
-        _state.value = _state.value.copy(isLoadingStaff = true, staffLoadError = null)
+        _state.update { it.copy(isLoadingStaff = true, staffLoadError = null) }
         viewModelScope.launch {
             try {
                 // /users returns the full list for the tenant.
@@ -160,18 +161,22 @@ class SharedDeviceViewModel @Inject constructor(
                 } else {
                     sessions.distinctBy { it.id }.size >= 2
                 }
-                _state.value = _state.value.copy(
-                    isLoadingStaff = false,
-                    hasEnoughStaff = enoughStaff,
-                    staffLoadError = null,
-                )
+                _state.update {
+                    it.copy(
+                        isLoadingStaff = false,
+                        hasEnoughStaff = enoughStaff,
+                        staffLoadError = null,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoadingStaff = false,
-                    staffLoadError = e.message ?: "Could not verify staff count",
-                )
+                _state.update {
+                    it.copy(
+                        isLoadingStaff = false,
+                        staffLoadError = e.message ?: "Could not verify staff count",
+                    )
+                }
             }
         }
     }

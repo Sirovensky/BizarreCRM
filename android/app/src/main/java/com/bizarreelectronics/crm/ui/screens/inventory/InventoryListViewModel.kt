@@ -16,6 +16,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
@@ -61,7 +62,7 @@ class InventoryListViewModel @Inject constructor(
     fun loadItems() {
         collectJob?.cancel()
         collectJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             val query = _state.value.searchQuery.trim()
             val typeFilter = _state.value.selectedType
             val filter = _state.value.currentFilter
@@ -85,29 +86,33 @@ class InventoryListViewModel @Inject constructor(
                         .let { list -> applyInventorySortOrder(list, sort) }
                 }
                 .catch { e ->
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        isRefreshing = false,
-                        error = "Failed to load inventory. Check your connection and try again.",
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            isRefreshing = false,
+                            error = "Failed to load inventory. Check your connection and try again.",
+                        )
+                    }
                 }
                 .collectLatest { items ->
-                    _state.value = _state.value.copy(
-                        items = items,
-                        isLoading = false,
-                        isRefreshing = false,
-                    )
+                    _state.update {
+                        it.copy(
+                            items = items,
+                            isLoading = false,
+                            isRefreshing = false,
+                        )
+                    }
                 }
         }
     }
 
     fun refresh() {
-        _state.value = _state.value.copy(isRefreshing = true)
+        _state.update { it.copy(isRefreshing = true) }
         loadItems()
     }
 
     fun onSearchChanged(query: String) {
-        _state.value = _state.value.copy(searchQuery = query)
+        _state.update { it.copy(searchQuery = query) }
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             delay(300)
@@ -116,17 +121,17 @@ class InventoryListViewModel @Inject constructor(
     }
 
     fun onTypeChanged(type: String) {
-        _state.value = _state.value.copy(selectedType = type)
+        _state.update { it.copy(selectedType = type) }
         loadItems()
     }
 
     fun onFilterChanged(filter: InventoryFilter) {
-        _state.value = _state.value.copy(currentFilter = filter)
+        _state.update { it.copy(currentFilter = filter) }
         loadItems()
     }
 
     fun onSortChanged(sort: InventorySort) {
-        _state.value = _state.value.copy(currentSort = sort)
+        _state.update { it.copy(currentSort = sort) }
         loadItems()
     }
 
@@ -135,26 +140,32 @@ class InventoryListViewModel @Inject constructor(
     // -----------------------------------------------------------------------
 
     fun enterSelectionMode(id: Long) {
-        _state.value = _state.value.copy(
-            isSelectionMode = true,
-            selectedIds = setOf(id),
-        )
+        _state.update {
+            it.copy(
+                isSelectionMode = true,
+                selectedIds = setOf(id),
+            )
+        }
     }
 
     fun toggleSelection(id: Long) {
         val current = _state.value.selectedIds
         val updated = if (id in current) current - id else current + id
-        _state.value = _state.value.copy(
-            selectedIds = updated,
-            isSelectionMode = updated.isNotEmpty(),
-        )
+        _state.update {
+            it.copy(
+                selectedIds = updated,
+                isSelectionMode = updated.isNotEmpty(),
+            )
+        }
     }
 
     fun clearSelection() {
-        _state.value = _state.value.copy(
-            selectedIds = emptySet(),
-            isSelectionMode = false,
-        )
+        _state.update {
+            it.copy(
+                selectedIds = emptySet(),
+                isSelectionMode = false,
+            )
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -179,7 +190,7 @@ class InventoryListViewModel @Inject constructor(
                 item
             }
         }
-        _state.value = _state.value.copy(items = updated)
+        _state.update { it.copy(items = updated) }
 
         viewModelScope.launch {
             try {
@@ -217,22 +228,22 @@ class InventoryListViewModel @Inject constructor(
             try {
                 val entity = inventoryRepository.lookupBarcode(code)
                 if (entity != null) {
-                    _state.value = _state.value.copy(barcodeLookupId = entity.id, barcodeLookupError = null)
+                    _state.update { it.copy(barcodeLookupId = entity.id, barcodeLookupError = null) }
                 } else {
-                    _state.value = _state.value.copy(barcodeLookupError = "No item found for barcode: $code")
+                    _state.update { it.copy(barcodeLookupError = "No item found for barcode: $code") }
                 }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: don't paint "Barcode lookup failed: ..."
                 // when the scanner screen is just dismissed mid-lookup.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(barcodeLookupError = "Barcode lookup failed: ${e.message}")
+                _state.update { it.copy(barcodeLookupError = "Barcode lookup failed: ${e.message}") }
             }
         }
     }
 
     fun clearBarcodeLookup() {
-        _state.value = _state.value.copy(barcodeLookupId = null, barcodeLookupError = null)
+        _state.update { it.copy(barcodeLookupId = null, barcodeLookupError = null) }
     }
 
     // -----------------------------------------------------------------------
@@ -252,17 +263,21 @@ class InventoryListViewModel @Inject constructor(
      */
     fun runAutoReorder() {
         if (_state.value.isRunningAutoReorder) return
-        _state.value = _state.value.copy(
-            isRunningAutoReorder = true,
-            autoReorderError = null,
-        )
+        _state.update {
+            it.copy(
+                isRunningAutoReorder = true,
+                autoReorderError = null,
+            )
+        }
         viewModelScope.launch {
             try {
                 val result = inventoryRepository.runAutoReorder()
-                _state.value = _state.value.copy(
-                    isRunningAutoReorder = false,
-                    autoReorderResult = result,
-                )
+                _state.update {
+                    it.copy(
+                        isRunningAutoReorder = false,
+                        autoReorderResult = result,
+                    )
+                }
                 // Refresh list so updated stock levels / new POs are visible
                 refresh()
             } catch (e: CancellationException) {
@@ -273,16 +288,18 @@ class InventoryListViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "runAutoReorder failed: ${e.message}")
-                _state.value = _state.value.copy(
-                    isRunningAutoReorder = false,
-                    autoReorderError = "Auto-reorder failed: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isRunningAutoReorder = false,
+                        autoReorderError = "Auto-reorder failed: ${e.message}",
+                    )
+                }
             }
         }
     }
 
     fun clearAutoReorderResult() {
-        _state.value = _state.value.copy(autoReorderResult = null, autoReorderError = null)
+        _state.update { it.copy(autoReorderResult = null, autoReorderError = null) }
     }
 
     companion object {

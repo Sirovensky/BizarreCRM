@@ -27,6 +27,7 @@ import com.bizarreelectronics.crm.util.EmailValidator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -52,7 +53,7 @@ class ForgotPasswordViewModel @Inject constructor(
     val state = _state.asStateFlow()
 
     fun updateEmail(value: String) {
-        _state.value = _state.value.copy(email = value, error = null)
+        _state.update { it.copy(email = value, error = null) }
     }
 
     fun submit() {
@@ -78,14 +79,16 @@ class ForgotPasswordViewModel @Inject constructor(
                 authApi.forgotPassword(ForgotPasswordRequest(email = email))
                 // Always show success — server returns 200 regardless of whether
                 // the email exists (SEC: enumeration prevention).
-                _state.value = _state.value.copy(isLoading = false, success = true)
+                _state.update { it.copy(isLoading = false, success = true) }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow to preserve structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = extractErrorMessage(e),
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = extractErrorMessage(e),
+                    )
+                }
             }
         }
     }

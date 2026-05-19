@@ -41,6 +41,7 @@ import com.bizarreelectronics.crm.util.LocalAppHapticController
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -78,7 +79,7 @@ class PhotoCaptureViewModel @Inject constructor(
     ) {
         if (_state.value.isUploading) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isUploading = true, lastError = null)
+            _state.update { it.copy(isUploading = true, lastError = null) }
             try {
                 ImageUploadPolicy.validate(context, uri, ImageUploadPolicy.GENERAL_IMAGE_MAX_BYTES)?.let {
                     throw IllegalStateException(it)
@@ -111,23 +112,27 @@ class PhotoCaptureViewModel @Inject constructor(
                     ticketDeviceId = deviceIdBody,
                 )
 
-                _state.value = _state.value.copy(
-                    isUploading = false,
-                    uploadedCount = _state.value.uploadedCount + 1,
-                )
+                _state.update {
+                    it.copy(
+                        isUploading = false,
+                        uploadedCount = _state.value.uploadedCount + 1,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isUploading = false,
-                    lastError = e.message ?: "Failed to upload photo",
-                )
+                _state.update {
+                    it.copy(
+                        isUploading = false,
+                        lastError = e.message ?: "Failed to upload photo",
+                    )
+                }
             }
         }
     }
 
     fun clearError() {
-        _state.value = _state.value.copy(lastError = null)
+        _state.update { it.copy(lastError = null) }
     }
 
     /**

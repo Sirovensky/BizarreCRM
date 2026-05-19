@@ -68,6 +68,7 @@ import com.bizarreelectronics.crm.ui.screens.inventory.components.PricePoint
 import com.bizarreelectronics.crm.util.UndoStack
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
@@ -161,7 +162,7 @@ class InventoryDetailViewModel @Inject constructor(
     val undoStack = UndoStack<InventoryEdit>()
 
     init {
-        _state.value = _state.value.copy(isAdmin = authPreferences.userRole == "admin")
+        _state.update { it.copy(isAdmin = authPreferences.userRole == "admin") }
         loadItem()
         observeUndoEvents()
     }
@@ -184,7 +185,7 @@ class InventoryDetailViewModel @Inject constructor(
         // Keep canUndo in sync with the stack so the UI can gate the Undo action.
         viewModelScope.launch {
             undoStack.canUndo.collect { can ->
-                _state.value = _state.value.copy(canUndo = can)
+                _state.update { it.copy(canUndo = can) }
             }
         }
     }
@@ -192,19 +193,23 @@ class InventoryDetailViewModel @Inject constructor(
     fun loadItem() {
         // Collect entity from repository (cached + background refresh)
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             inventoryRepository.getItem(itemId)
                 .catch { e ->
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        error = e.message ?: "Failed to load item",
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            error = e.message ?: "Failed to load item",
+                        )
+                    }
                 }
                 .collectLatest { entity ->
-                    _state.value = _state.value.copy(
-                        item = entity,
-                        isLoading = false,
-                    )
+                    _state.update {
+                        it.copy(
+                            item = entity,
+                            isLoading = false,
+                        )
+                    }
                 }
         }
         // Fetch movements and group prices from API (online-only)
@@ -217,20 +222,24 @@ class InventoryDetailViewModel @Inject constructor(
                 val response = inventoryApi.getItem(itemId)
                 val data = response.data
                 val serials = data?.item?.serials ?: emptyList()
-                _state.value = _state.value.copy(
-                    movements = data?.movements ?: data?.item?.stockMovements ?: emptyList(),
-                    groupPrices = data?.groupPrices ?: data?.item?.groupPrices ?: emptyList(),
-                    serials = serials,
-                    movementsOfflineMessage = null,
-                )
+                _state.update {
+                    it.copy(
+                        movements = data?.movements ?: data?.item?.stockMovements ?: emptyList(),
+                        groupPrices = data?.groupPrices ?: data?.item?.groupPrices ?: emptyList(),
+                        serials = serials,
+                        movementsOfflineMessage = null,
+                    )
+                }
             } catch (_: CancellationException) {
                 throw CancellationException()
             } catch (_: Exception) {
-                _state.value = _state.value.copy(
-                    movements = emptyList(),
-                    groupPrices = emptyList(),
-                    movementsOfflineMessage = "Stock history available when online",
-                )
+                _state.update {
+                    it.copy(
+                        movements = emptyList(),
+                        groupPrices = emptyList(),
+                        movementsOfflineMessage = "Stock history available when online",
+                    )
+                }
             }
         }
         // Load extended panels in parallel — 404s are tolerated.
@@ -245,26 +254,30 @@ class InventoryDetailViewModel @Inject constructor(
     /** L1071: Load the first page of paginated movement history. */
     fun loadMovementHistoryFirstPage() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(
-                movementHistory = emptyList(),
-                movementHistoryCursor = null,
-                movementHistoryHasMore = true,
-                isLoadingMoreMovements = true,
-            )
+            _state.update {
+                it.copy(
+                    movementHistory = emptyList(),
+                    movementHistoryCursor = null,
+                    movementHistoryHasMore = true,
+                    isLoadingMoreMovements = true,
+                )
+            }
             try {
                 val resp = inventoryApi.getMovements(itemId, cursor = null, limit = 25)
                 val page = resp.data
-                _state.value = _state.value.copy(
-                    movementHistory = page?.movements ?: emptyList(),
-                    movementHistoryCursor = page?.nextCursor,
-                    movementHistoryHasMore = page?.hasMore ?: false,
-                    isLoadingMoreMovements = false,
-                )
+                _state.update {
+                    it.copy(
+                        movementHistory = page?.movements ?: emptyList(),
+                        movementHistoryCursor = page?.nextCursor,
+                        movementHistoryHasMore = page?.hasMore ?: false,
+                        isLoadingMoreMovements = false,
+                    )
+                }
             } catch (_: CancellationException) {
-                _state.value = _state.value.copy(isLoadingMoreMovements = false)
+                _state.update { it.copy(isLoadingMoreMovements = false) }
                 throw CancellationException()
             } catch (_: Exception) {
-                _state.value = _state.value.copy(isLoadingMoreMovements = false)
+                _state.update { it.copy(isLoadingMoreMovements = false) }
             }
         }
     }
@@ -273,23 +286,25 @@ class InventoryDetailViewModel @Inject constructor(
     fun loadMoreMovements() {
         if (_state.value.isLoadingMoreMovements || !_state.value.movementHistoryHasMore) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoadingMoreMovements = true)
+            _state.update { it.copy(isLoadingMoreMovements = true) }
             try {
                 val cursor = _state.value.movementHistoryCursor
                 val resp = inventoryApi.getMovements(itemId, cursor = cursor, limit = 25)
                 val page = resp.data
                 val combined = _state.value.movementHistory + (page?.movements ?: emptyList())
-                _state.value = _state.value.copy(
-                    movementHistory = combined,
-                    movementHistoryCursor = page?.nextCursor,
-                    movementHistoryHasMore = page?.hasMore ?: false,
-                    isLoadingMoreMovements = false,
-                )
+                _state.update {
+                    it.copy(
+                        movementHistory = combined,
+                        movementHistoryCursor = page?.nextCursor,
+                        movementHistoryHasMore = page?.hasMore ?: false,
+                        isLoadingMoreMovements = false,
+                    )
+                }
             } catch (_: CancellationException) {
-                _state.value = _state.value.copy(isLoadingMoreMovements = false)
+                _state.update { it.copy(isLoadingMoreMovements = false) }
                 throw CancellationException()
             } catch (_: Exception) {
-                _state.value = _state.value.copy(isLoadingMoreMovements = false)
+                _state.update { it.copy(isLoadingMoreMovements = false) }
             }
         }
     }
@@ -311,11 +326,11 @@ class InventoryDetailViewModel @Inject constructor(
                         retailCents = Math.round((p.retailPrice ?: 0.0) * 100),
                     )
                 } ?: emptyList()
-                _state.value = _state.value.copy(priceHistory = points)
+                _state.update { it.copy(priceHistory = points) }
             } catch (_: CancellationException) {
                 throw CancellationException()
             } catch (_: Exception) {
-                _state.value = _state.value.copy(priceHistory = emptyList())
+                _state.update { it.copy(priceHistory = emptyList()) }
             }
         }
     }
@@ -326,7 +341,7 @@ class InventoryDetailViewModel @Inject constructor(
             try {
                 val resp = inventoryApi.getSalesHistory(itemId, days = 30)
                 val data = resp.data
-                _state.value = _state.value.copy(soldLast30d = data?.sold)
+                _state.update { it.copy(soldLast30d = data?.sold) }
             } catch (_: CancellationException) {
                 throw CancellationException()
             } catch (_: Exception) {
@@ -340,7 +355,7 @@ class InventoryDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val resp = inventoryApi.getBins()
-                _state.value = _state.value.copy(availableBins = resp.data?.bins ?: emptyList())
+                _state.update { it.copy(availableBins = resp.data?.bins ?: emptyList()) }
             } catch (_: CancellationException) {
                 throw CancellationException()
             } catch (_: Exception) {
@@ -354,7 +369,7 @@ class InventoryDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val resp = inventoryApi.getUsageInTickets(itemId, limit = 10)
-                _state.value = _state.value.copy(ticketUsage = resp.data?.tickets ?: emptyList())
+                _state.update { it.copy(ticketUsage = resp.data?.tickets ?: emptyList()) }
             } catch (_: CancellationException) {
                 throw CancellationException()
             } catch (_: Exception) {
@@ -369,7 +384,7 @@ class InventoryDetailViewModel @Inject constructor(
             try {
                 val resp = inventoryApi.getPhotos(itemId)
                 val urls = resp.data?.photos?.map { it.url } ?: emptyList()
-                _state.value = _state.value.copy(photoUrls = urls)
+                _state.update { it.copy(photoUrls = urls) }
             } catch (_: CancellationException) {
                 throw CancellationException()
             } catch (_: Exception) {
@@ -395,7 +410,7 @@ class InventoryDetailViewModel @Inject constructor(
     fun uploadPhoto(context: Context, uri: Uri) {
         if (_state.value.isUploadingPhoto) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isUploadingPhoto = true, uploadPhotoError = null)
+            _state.update { it.copy(isUploadingPhoto = true, uploadPhotoError = null) }
             try {
                 val imageUrl = withContext(Dispatchers.IO) {
                     ImageUploadPolicy.validate(context, uri, ImageUploadPolicy.SMALL_IMAGE_MAX_BYTES)?.let {
@@ -427,11 +442,13 @@ class InventoryDetailViewModel @Inject constructor(
                 }
                 // Resolve to full URL if server returns a relative path
                 val fullUrl = if (imageUrl.startsWith("http")) imageUrl else imageUrl
-                _state.value = _state.value.copy(
-                    isUploadingPhoto = false,
-                    photoUrls = listOf(fullUrl),
-                    actionMessage = "Photo uploaded",
-                )
+                _state.update {
+                    it.copy(
+                        isUploadingPhoto = false,
+                        photoUrls = listOf(fullUrl),
+                        actionMessage = "Photo uploaded",
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: photo upload is a real POST. Don't paint
                 // "Upload failed" on back-nav, the user may re-tap and upload
@@ -441,22 +458,24 @@ class InventoryDetailViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Timber.tag("InventoryPhoto").e(e, "Photo upload failed for item $itemId")
-                _state.value = _state.value.copy(
-                    isUploadingPhoto = false,
-                    uploadPhotoError = "Upload failed: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isUploadingPhoto = false,
+                        uploadPhotoError = "Upload failed: ${e.message}",
+                    )
+                }
             }
         }
     }
 
     fun clearUploadPhotoError() {
-        _state.value = _state.value.copy(uploadPhotoError = null)
+        _state.update { it.copy(uploadPhotoError = null) }
     }
 
     /** L1075: Save auto-reorder configuration. */
     fun saveAutoReorder(threshold: Int, qty: Int, supplier: String) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSavingAutoReorder = true)
+            _state.update { it.copy(isSavingAutoReorder = true) }
             try {
                 inventoryApi.setAutoReorder(
                     itemId,
@@ -466,20 +485,24 @@ class InventoryDetailViewModel @Inject constructor(
                         preferredSupplier = supplier.takeIf { it.isNotBlank() },
                     ),
                 )
-                _state.value = _state.value.copy(
-                    isSavingAutoReorder = false,
-                    actionMessage = "Auto-reorder saved",
-                )
+                _state.update {
+                    it.copy(
+                        isSavingAutoReorder = false,
+                        actionMessage = "Auto-reorder saved",
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: setAutoReorder is idempotent server-side
                 // but the false "Failed to save auto-reorder" message tempts
                 // a re-tap that creates redundant audit trail entries.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSavingAutoReorder = false,
-                    actionMessage = "Failed to save auto-reorder: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isSavingAutoReorder = false,
+                        actionMessage = "Failed to save auto-reorder: ${e.message}",
+                    )
+                }
             }
         }
     }
@@ -487,51 +510,59 @@ class InventoryDetailViewModel @Inject constructor(
     /** L1076: Update the bin location for this item. */
     fun saveBin(bin: String) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSavingBin = true)
+            _state.update { it.copy(isSavingBin = true) }
             // Bin update — stub until a dedicated PATCH /inventory/{id}/bin endpoint exists.
-            _state.value = _state.value.copy(
-                isSavingBin = false,
-                actionMessage = "Bin updated to \"$bin\"",
-            )
+            _state.update {
+                it.copy(
+                    isSavingBin = false,
+                    actionMessage = "Bin updated to \"$bin\"",
+                )
+            }
         }
     }
 
     /** L1084: Show / dismiss deactivate confirm dialog. */
     fun setShowDeactivateDialog(show: Boolean) {
-        _state.value = _state.value.copy(showDeactivateDialog = show)
+        _state.update { it.copy(showDeactivateDialog = show) }
     }
 
     /** §6.4 / L1084: Confirm deactivation via DELETE /inventory/:id (soft deactivate). */
     fun confirmDeactivate() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(
-                showDeactivateDialog = false,
-                isDeletingItem = true,
-            )
+            _state.update {
+                it.copy(
+                    showDeactivateDialog = false,
+                    isDeletingItem = true,
+                )
+            }
             try {
                 val warning = inventoryRepository.deleteItem(itemId)
                 val msg = if (warning != null) warning else "Item deactivated"
-                _state.value = _state.value.copy(
-                    isDeletingItem = false,
-                    actionMessage = msg,
-                    deletedAndShouldPop = true,
-                )
+                _state.update {
+                    it.copy(
+                        isDeletingItem = false,
+                        actionMessage = msg,
+                        deletedAndShouldPop = true,
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: delete is idempotent server-side so a
                 // re-tap is harmless, but the false error message is misleading.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isDeletingItem = false,
-                    actionMessage = "Failed to deactivate: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isDeletingItem = false,
+                        actionMessage = "Failed to deactivate: ${e.message}",
+                    )
+                }
             }
         }
     }
 
     /** §6.4: Show / dismiss hard-delete confirm dialog. */
     fun setShowDeleteDialog(show: Boolean) {
-        _state.value = _state.value.copy(showDeleteDialog = show)
+        _state.update { it.copy(showDeleteDialog = show) }
     }
 
     fun adjustStock(quantity: Int, type: String, reason: String?) {
@@ -539,7 +570,7 @@ class InventoryDetailViewModel @Inject constructor(
         // button cannot enqueue two POST /inventory/{id}/adjust-stock requests.
         if (_state.value.isActionInProgress) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
+            _state.update { it.copy(isActionInProgress = true) }
             try {
                 val oldQty = _state.value.item?.inStock ?: 0
                 val newQty = oldQty + quantity
@@ -566,16 +597,20 @@ class InventoryDetailViewModel @Inject constructor(
                         apply = {
                             // Re-do: optimistically restore newQty in the local entity.
                             val current = _state.value.item ?: return@Entry
-                            _state.value = _state.value.copy(
-                                item = current.copy(inStock = newQty),
-                            )
+                            _state.update {
+                                it.copy(
+                                    item = current.copy(inStock = newQty),
+                                )
+                            }
                         },
                         reverse = {
                             // Undo: optimistically restore oldQty in the local entity.
                             val current = _state.value.item ?: return@Entry
-                            _state.value = _state.value.copy(
-                                item = current.copy(inStock = oldQty),
-                            )
+                            _state.update {
+                                it.copy(
+                                    item = current.copy(inStock = oldQty),
+                                )
+                            }
                         },
                         auditDescription = auditDesc,
                         compensatingSync = {
@@ -595,11 +630,13 @@ class InventoryDetailViewModel @Inject constructor(
                     ),
                 )
 
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    undoMessage = "Stock adjusted by $adjustLabel",
-                    adjustSuccessCounter = _state.value.adjustSuccessCounter + 1,
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        undoMessage = "Stock adjusted by $adjustLabel",
+                        adjustSuccessCounter = _state.value.adjustSuccessCounter + 1,
+                    )
+                }
                 loadOnlineDetails()
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: bare catch (e: Exception) below painted
@@ -611,10 +648,12 @@ class InventoryDetailViewModel @Inject constructor(
                 // VM teardown or next loadOnlineDetails() reconcile.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Failed to adjust stock: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Failed to adjust stock: ${e.message}",
+                    )
+                }
             }
         }
     }
@@ -624,19 +663,21 @@ class InventoryDetailViewModel @Inject constructor(
         viewModelScope.launch {
             val ok = undoStack.undo()
             if (!ok) {
-                _state.value = _state.value.copy(
-                    actionMessage = "Nothing to undo",
-                )
+                _state.update {
+                    it.copy(
+                        actionMessage = "Nothing to undo",
+                    )
+                }
             }
         }
     }
 
     fun clearActionMessage() {
-        _state.value = _state.value.copy(actionMessage = null)
+        _state.update { it.copy(actionMessage = null) }
     }
 
     fun clearUndoMessage() {
-        _state.value = _state.value.copy(undoMessage = null)
+        _state.update { it.copy(undoMessage = null) }
     }
 }
 

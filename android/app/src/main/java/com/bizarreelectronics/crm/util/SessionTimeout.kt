@@ -8,6 +8,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
@@ -204,11 +205,13 @@ open class SessionTimeoutCore(
      * from background workers, FCM handlers, or sync routines (line 398).
      */
     fun onActivity() {
-        _state.value = _state.value.copy(
-            level = ReAuthLevel.None,
-            lastActivityMs = nowMs(),
-            warningRemainingMs = null,
-        )
+        _state.update {
+            it.copy(
+                level = ReAuthLevel.None,
+                lastActivityMs = nowMs(),
+                warningRemainingMs = null,
+            )
+        }
     }
 
     /**
@@ -245,10 +248,12 @@ open class SessionTimeoutCore(
      */
     fun requireReAuthNow(level: ReAuthLevel) {
         if (level == ReAuthLevel.None) return
-        _state.value = _state.value.copy(
-            level = level,
-            warningRemainingMs = null,
-        )
+        _state.update {
+            it.copy(
+                level = level,
+                warningRemainingMs = null,
+            )
+        }
     }
 
     /**
@@ -305,10 +310,12 @@ open class SessionTimeoutCore(
             else                         -> null
         }
 
-        _state.value = _state.value.copy(
-            level = newLevel,
-            warningRemainingMs = warningRemainingMs,
-        )
+        _state.update {
+            it.copy(
+                level = newLevel,
+                warningRemainingMs = warningRemainingMs,
+            )
+        }
     }
 
     // -------------------------------------------------------------------------

@@ -38,6 +38,7 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -102,7 +103,7 @@ class InventoryCreateViewModel @Inject constructor(
             try {
                 val suppliersResponse = purchaseOrderApi.listSuppliers()
                 if (suppliersResponse.success) {
-                    _state.value = _state.value.copy(suppliers = suppliersResponse.data ?: emptyList())
+                    _state.update { it.copy(suppliers = suppliersResponse.data ?: emptyList()) }
                 }
             } catch (_: Exception) { /* list remains empty — pickers still operable as free text */ }
         }
@@ -110,57 +111,61 @@ class InventoryCreateViewModel @Inject constructor(
             try {
                 val taxResponse = inventoryApi.getTaxClasses()
                 if (taxResponse.success) {
-                    _state.value = _state.value.copy(taxClasses = taxResponse.data ?: emptyList())
+                    _state.update { it.copy(taxClasses = taxResponse.data ?: emptyList()) }
                 }
             } catch (_: Exception) { /* list remains empty */ }
         }
     }
 
-    fun updateName(value: String) { _state.value = _state.value.copy(name = value) }
-    fun updateSku(value: String) { _state.value = _state.value.copy(sku = value) }
-    fun updateUpcCode(value: String) { _state.value = _state.value.copy(upcCode = value) }
-    fun updateItemType(value: String) { _state.value = _state.value.copy(itemType = value) }
+    fun updateName(value: String) { _state.update { it.copy(name = value) } }
+    fun updateSku(value: String) { _state.update { it.copy(sku = value) } }
+    fun updateUpcCode(value: String) { _state.update { it.copy(upcCode = value) } }
+    fun updateItemType(value: String) { _state.update { it.copy(itemType = value) } }
     fun updateCostPrice(value: String) {
         if (value.isEmpty() || value.matches(Regex("^\\d*\\.?\\d*$"))) {
-            _state.value = _state.value.copy(costPrice = value)
+            _state.update { it.copy(costPrice = value) }
         }
     }
     fun updateRetailPrice(value: String) {
         if (value.isEmpty() || value.matches(Regex("^\\d*\\.?\\d*$"))) {
-            _state.value = _state.value.copy(retailPrice = value)
+            _state.update { it.copy(retailPrice = value) }
         }
     }
     fun updateInStock(value: String) {
         if (value.isEmpty() || value.matches(Regex("^\\d*$"))) {
-            _state.value = _state.value.copy(inStock = value)
+            _state.update { it.copy(inStock = value) }
         }
     }
     fun updateReorderLevel(value: String) {
         if (value.isEmpty() || value.matches(Regex("^\\d*$"))) {
-            _state.value = _state.value.copy(reorderLevel = value)
+            _state.update { it.copy(reorderLevel = value) }
         }
     }
-    fun updateDescription(value: String) { _state.value = _state.value.copy(description = value) }
+    fun updateDescription(value: String) { _state.update { it.copy(description = value) } }
 
     // §6.3: supplier picker selection
     fun selectSupplier(supplier: SupplierRow?) {
-        _state.value = _state.value.copy(
-            selectedSupplierId = supplier?.id,
-            selectedSupplierName = supplier?.name ?: "",
-        )
+        _state.update {
+            it.copy(
+                selectedSupplierId = supplier?.id,
+                selectedSupplierName = supplier?.name ?: "",
+            )
+        }
     }
 
     // §6.3: tax class picker selection
     fun selectTaxClass(taxClass: TaxClassOption?) {
-        _state.value = _state.value.copy(
-            selectedTaxClassId = taxClass?.id,
-            selectedTaxClassName = taxClass?.name ?: "",
-        )
+        _state.update {
+            it.copy(
+                selectedTaxClassId = taxClass?.id,
+                selectedTaxClassName = taxClass?.name ?: "",
+            )
+        }
     }
 
     // §6.3: tax-inclusive toggle
     fun toggleTaxInclusive() {
-        _state.value = _state.value.copy(taxInclusive = !_state.value.taxInclusive)
+        _state.update { it.copy(taxInclusive = !_state.value.taxInclusive) }
     }
 
     /**
@@ -173,15 +178,17 @@ class InventoryCreateViewModel @Inject constructor(
      */
     fun lookupAndApplyScannedBarcode(code: String) {
         if (code.isBlank()) return
-        _state.value = _state.value.copy(barcodeLookup = BarcodeLookupState.Lookup(code))
+        _state.update { it.copy(barcodeLookup = BarcodeLookupState.Lookup(code)) }
         viewModelScope.launch {
             try {
                 val response = inventoryApi.lookupBarcode(code)
                 val item = if (response.success) response.data?.item else null
                 if (item != null) {
-                    _state.value = _state.value.copy(
-                        barcodeLookup = BarcodeLookupState.MatchFound(rawCode = code, item = item),
-                    )
+                    _state.update {
+                        it.copy(
+                            barcodeLookup = BarcodeLookupState.MatchFound(rawCode = code, item = item),
+                        )
+                    }
                 } else {
                     // No match in inventory — just fill the code fields.
                     applyRawCode(code)
@@ -197,17 +204,19 @@ class InventoryCreateViewModel @Inject constructor(
     fun acceptBarcodeMatch() {
         val match = _state.value.barcodeLookup as? BarcodeLookupState.MatchFound ?: return
         val item = match.item
-        _state.value = _state.value.copy(
-            barcodeLookup = BarcodeLookupState.Idle,
-            // Only overwrite fields that are currently blank to avoid clobbering user edits.
-            name = _state.value.name.ifBlank { item.name ?: "" },
-            sku = _state.value.sku.ifBlank { item.sku ?: "" },
-            upcCode = _state.value.upcCode.ifBlank { item.upcCode ?: match.rawCode },
-            itemType = if (_state.value.itemType == "product") item.itemType ?: "product" else _state.value.itemType,
-            costPrice = _state.value.costPrice.ifBlank { item.costPrice?.toBigDecimal()?.toPlainString() ?: "" },
-            retailPrice = _state.value.retailPrice.ifBlank { item.price?.toBigDecimal()?.toPlainString() ?: "" },
-            description = _state.value.description.ifBlank { item.description ?: "" },
-        )
+        _state.update {
+            it.copy(
+                barcodeLookup = BarcodeLookupState.Idle,
+                // Only overwrite fields that are currently blank to avoid clobbering user edits.
+                name = _state.value.name.ifBlank { item.name ?: "" },
+                sku = _state.value.sku.ifBlank { item.sku ?: "" },
+                upcCode = _state.value.upcCode.ifBlank { item.upcCode ?: match.rawCode },
+                itemType = if (_state.value.itemType == "product") item.itemType ?: "product" else _state.value.itemType,
+                costPrice = _state.value.costPrice.ifBlank { item.costPrice?.toBigDecimal()?.toPlainString() ?: "" },
+                retailPrice = _state.value.retailPrice.ifBlank { item.price?.toBigDecimal()?.toPlainString() ?: "" },
+                description = _state.value.description.ifBlank { item.description ?: "" },
+            )
+        }
     }
 
     /** User dismissed the barcode-match autofill dialog. Falls back to raw code fill. */
@@ -227,7 +236,7 @@ class InventoryCreateViewModel @Inject constructor(
     }
 
     fun clearError() {
-        _state.value = _state.value.copy(error = null)
+        _state.update { it.copy(error = null) }
     }
 
     private fun validateForm(): String? {
@@ -247,7 +256,7 @@ class InventoryCreateViewModel @Inject constructor(
     fun save(addAnother: Boolean = false) {
         val validationError = validateForm()
         if (validationError != null) {
-            _state.value = _state.value.copy(error = validationError)
+            _state.update { it.copy(error = validationError) }
             return
         }
         val current = _state.value
@@ -258,7 +267,7 @@ class InventoryCreateViewModel @Inject constructor(
         val retail = current.retailPrice.toDouble()
 
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSubmitting = true, error = null)
+            _state.update { it.copy(isSubmitting = true, error = null) }
             try {
                 val request = CreateInventoryRequest(
                     name = current.name.trim(),
@@ -286,10 +295,12 @@ class InventoryCreateViewModel @Inject constructor(
                         taxClasses = current.taxClasses,
                     )
                 } else {
-                    _state.value = _state.value.copy(
-                        isSubmitting = false,
-                        createdId = createdId,
-                    )
+                    _state.update {
+                        it.copy(
+                            isSubmitting = false,
+                            createdId = createdId,
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: bare catch (e: Exception) below would
@@ -297,16 +308,18 @@ class InventoryCreateViewModel @Inject constructor(
                 // a re-tap that creates a duplicate inventory row.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSubmitting = false,
-                    error = e.message ?: "Failed to create inventory item",
-                )
+                _state.update {
+                    it.copy(
+                        isSubmitting = false,
+                        error = e.message ?: "Failed to create inventory item",
+                    )
+                }
             }
         }
     }
 
     fun clearSavedAndAddAnother() {
-        _state.value = _state.value.copy(savedAndAddAnother = false)
+        _state.update { it.copy(savedAndAddAnother = false) }
     }
 }
 

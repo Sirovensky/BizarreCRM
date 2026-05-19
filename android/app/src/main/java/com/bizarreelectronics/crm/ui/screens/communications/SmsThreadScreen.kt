@@ -69,6 +69,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -151,10 +152,12 @@ class SmsThreadViewModel @Inject constructor(
         collectJob?.cancel()
         collectJob = viewModelScope.launch {
             smsRepository.getThread(phone).collect { entities ->
-                _state.value = _state.value.copy(
-                    messages = entities.map { it.toSmsMessageItem() },
-                    isLoading = false,
-                )
+                _state.update {
+                    it.copy(
+                        messages = entities.map { it.toSmsMessageItem() },
+                        isLoading = false,
+                    )
+                }
             }
         }
     }
@@ -172,12 +175,14 @@ class SmsThreadViewModel @Inject constructor(
                     val subject = t["subject"] as? String ?: "Ticket #$id"
                     SmsEntityRef.TicketRef(id, subject)
                 } ?: emptyList()
-                _state.value = _state.value.copy(
-                    customer = data.customer,
-                    recentTickets = data.recentTickets,
-                    hasNoCustomer = data.customer == null,
-                    entityTickets = ticketRefs,
-                )
+                _state.update {
+                    it.copy(
+                        customer = data.customer,
+                        recentTickets = data.recentTickets,
+                        hasNoCustomer = data.customer == null,
+                        entityTickets = ticketRefs,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow to preserve structured concurrency
             } catch (_: Exception) {}
@@ -203,10 +208,12 @@ class SmsThreadViewModel @Inject constructor(
             )
             // Reload online details so the header reflects the new customer.
             loadOnlineDetails()
-            _state.value = _state.value.copy(
-                hasNoCustomer = false,
-                actionMessage = "Customer created",
-            )
+            _state.update {
+                it.copy(
+                    hasNoCustomer = false,
+                    actionMessage = "Customer created",
+                )
+            }
             true
         } catch (e: CancellationException) {
             // BUGHUNT-2026-05-17: re-throw cancellation. POST /customers may
@@ -217,9 +224,11 @@ class SmsThreadViewModel @Inject constructor(
             // same phone, but two rows in the customers table).
             throw e
         } catch (e: Exception) {
-            _state.value = _state.value.copy(
-                actionMessage = "Failed to create customer: ${e.message}",
-            )
+            _state.update {
+                it.copy(
+                    actionMessage = "Failed to create customer: ${e.message}",
+                )
+            }
             false
         }
     }
@@ -244,15 +253,17 @@ class SmsThreadViewModel @Inject constructor(
 
     fun sendMessage(text: String) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSending = true)
+            _state.update { it.copy(isSending = true) }
             try {
                 val body = applyComplianceFooter(text)
                 smsRepository.sendMessage(phone, body)
                 discardDraft()
-                _state.value = _state.value.copy(
-                    isSending = false,
-                    actionMessage = if (serverMonitor.isEffectivelyOnline.value) "Message sent" else "Message queued for sending",
-                )
+                _state.update {
+                    it.copy(
+                        isSending = false,
+                        actionMessage = if (serverMonitor.isEffectivelyOnline.value) "Message sent" else "Message queued for sending",
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: re-throw cancellation. SMS sends cost
                 // real money via the SMS gateway and may have already been
@@ -262,26 +273,28 @@ class SmsThreadViewModel @Inject constructor(
                 // the recipient.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSending = false,
-                    actionMessage = "Failed to send: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isSending = false,
+                        actionMessage = "Failed to send: ${e.message}",
+                    )
+                }
             }
         }
     }
 
     fun toggleFlag() {
         smsRepository.toggleFlag(phone)
-        _state.value = _state.value.copy(isFlagged = !_state.value.isFlagged)
+        _state.update { it.copy(isFlagged = !_state.value.isFlagged) }
     }
 
     fun togglePin() {
         smsRepository.togglePin(phone)
-        _state.value = _state.value.copy(isPinned = !_state.value.isPinned)
+        _state.update { it.copy(isPinned = !_state.value.isPinned) }
     }
 
     fun clearActionMessage() {
-        _state.value = _state.value.copy(actionMessage = null)
+        _state.update { it.copy(actionMessage = null) }
     }
 
     // ── Draft autosave ───────────────────────────────────────────────
@@ -333,16 +346,18 @@ class SmsThreadViewModel @Inject constructor(
     fun loadTemplates() {
         if (_state.value.templates.isNotEmpty() || _state.value.isLoadingTemplates) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoadingTemplates = true)
+            _state.update { it.copy(isLoadingTemplates = true) }
             try {
                 val response = smsApi.getTemplates()
                 val list = response.data?.templates ?: emptyList()
-                _state.value = _state.value.copy(
-                    templates = list,
-                    isLoadingTemplates = false,
-                )
+                _state.update {
+                    it.copy(
+                        templates = list,
+                        isLoadingTemplates = false,
+                    )
+                }
             } catch (_: Exception) {
-                _state.value = _state.value.copy(isLoadingTemplates = false)
+                _state.update { it.copy(isLoadingTemplates = false) }
             }
         }
     }
@@ -354,11 +369,11 @@ class SmsThreadViewModel @Inject constructor(
      * Shows the indicator for 3 seconds then auto-hides.
      */
     fun onRemoteTyping() {
-        _state.value = _state.value.copy(isRemoteTyping = true)
+        _state.update { it.copy(isRemoteTyping = true) }
         typingJob?.cancel()
         typingJob = viewModelScope.launch {
             delay(3_000L)
-            _state.value = _state.value.copy(isRemoteTyping = false)
+            _state.update { it.copy(isRemoteTyping = false) }
         }
     }
 

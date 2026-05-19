@@ -31,6 +31,7 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandPrimaryButton
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -62,11 +63,11 @@ class ResetPasswordViewModel @Inject constructor(
     val state = _state.asStateFlow()
 
     fun updateNewPassword(value: String) {
-        _state.value = _state.value.copy(newPassword = value, error = null)
+        _state.update { it.copy(newPassword = value, error = null) }
     }
 
     fun updateConfirmPassword(value: String) {
-        _state.value = _state.value.copy(confirmPassword = value, error = null)
+        _state.update { it.copy(confirmPassword = value, error = null) }
     }
 
     fun submit() {
@@ -89,16 +90,18 @@ class ResetPasswordViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 authApi.resetPassword(ResetPasswordRequest(token = token, password = s.newPassword))
-                _state.value = _state.value.copy(isLoading = false, success = true)
+                _state.update { it.copy(isLoading = false, success = true) }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow to preserve structured concurrency
             } catch (e: Exception) {
                 val (msg, expired) = classifyError(e)
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = msg,
-                    tokenExpired = expired,
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = msg,
+                        tokenExpired = expired,
+                    )
+                }
             }
         }
     }

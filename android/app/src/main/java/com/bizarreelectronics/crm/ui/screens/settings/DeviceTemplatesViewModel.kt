@@ -8,6 +8,7 @@ import com.bizarreelectronics.crm.data.remote.api.UpsertDeviceTemplateRequest
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -43,12 +44,12 @@ class DeviceTemplatesViewModel @Inject constructor(
     /** Reload templates from the server, optionally filtered by [category]. */
     fun loadTemplates(category: String? = _state.value.selectedCategory) {
         if (!serverMonitor.isEffectivelyOnline.value) {
-            _state.value = _state.value.copy(isLoading = false, offline = true)
+            _state.update { it.copy(isLoading = false, offline = true) }
             return
         }
 
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null, offline = false)
+            _state.update { it.copy(isLoading = true, error = null, offline = false) }
             try {
                 val response = deviceTemplateApi.getTemplates(
                     category = category?.takeIf { it.isNotBlank() },
@@ -60,35 +61,41 @@ class DeviceTemplatesViewModel @Inject constructor(
                     .filter { it.isNotBlank() }
                     .distinct()
                     .sorted()
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    templates = templates,
-                    availableCategories = categories,
-                    selectedCategory = category,
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        templates = templates,
+                        availableCategories = categories,
+                        selectedCategory = category,
+                    )
+                }
             } catch (e: HttpException) {
                 if (e.code() == 404) {
-                    _state.value = _state.value.copy(isLoading = false, templates = emptyList())
+                    _state.update { it.copy(isLoading = false, templates = emptyList()) }
                 } else {
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        error = "Failed to load templates (${e.code()})",
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            error = "Failed to load templates (${e.code()})",
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Failed to load templates",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = e.message ?: "Failed to load templates",
+                    )
+                }
             }
         }
     }
 
     /** Select or deselect a category filter chip. */
     fun selectCategory(category: String?) {
-        _state.value = _state.value.copy(selectedCategory = category)
+        _state.update { it.copy(selectedCategory = category) }
         loadTemplates(category)
     }
 
@@ -119,7 +126,7 @@ class DeviceTemplatesViewModel @Inject constructor(
         warrantyDays: Int,
     ) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSaving = true, saveError = null)
+            _state.update { it.copy(isSaving = true, saveError = null) }
             val body = UpsertDeviceTemplateRequest(
                 name = name.trim(),
                 deviceCategory = deviceCategory?.trim()?.takeIf { it.isNotBlank() },
@@ -137,21 +144,25 @@ class DeviceTemplatesViewModel @Inject constructor(
                 } else {
                     deviceTemplateApi.createTemplate(body)
                 }
-                _state.value = _state.value.copy(isSaving = false)
+                _state.update { it.copy(isSaving = false) }
                 loadTemplates()
             } catch (e: HttpException) {
-                _state.value = _state.value.copy(
-                    isSaving = false,
-                    saveError = "Save failed (${e.code()})",
-                )
+                _state.update {
+                    it.copy(
+                        isSaving = false,
+                        saveError = "Save failed (${e.code()})",
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: optimistic — server may have committed
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSaving = false,
-                    saveError = e.message ?: "Save failed",
-                )
+                _state.update {
+                    it.copy(
+                        isSaving = false,
+                        saveError = e.message ?: "Save failed",
+                    )
+                }
             }
         }
     }
@@ -166,48 +177,54 @@ class DeviceTemplatesViewModel @Inject constructor(
      */
     fun deleteTemplate(id: Long) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isDeleting = true, deleteError = null)
+            _state.update { it.copy(isDeleting = true, deleteError = null) }
             try {
                 deviceTemplateApi.deleteTemplate(id)
-                _state.value = _state.value.copy(
-                    isDeleting = false,
-                    pendingDeleteId = null,
-                )
+                _state.update {
+                    it.copy(
+                        isDeleting = false,
+                        pendingDeleteId = null,
+                    )
+                }
                 loadTemplates()
             } catch (e: HttpException) {
                 val msg = if (e.code() == 404) null else "Delete failed (${e.code()})"
-                _state.value = _state.value.copy(
-                    isDeleting = false,
-                    pendingDeleteId = null,
-                    deleteError = msg,
-                )
+                _state.update {
+                    it.copy(
+                        isDeleting = false,
+                        pendingDeleteId = null,
+                        deleteError = msg,
+                    )
+                }
                 if (e.code() == 404) loadTemplates() // already gone
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: optimistic — server may have committed
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isDeleting = false,
-                    pendingDeleteId = null,
-                    deleteError = e.message ?: "Delete failed",
-                )
+                _state.update {
+                    it.copy(
+                        isDeleting = false,
+                        pendingDeleteId = null,
+                        deleteError = e.message ?: "Delete failed",
+                    )
+                }
             }
         }
     }
 
     /** Stage a template for deletion, showing the ConfirmDialog. */
     fun requestDelete(id: Long) {
-        _state.value = _state.value.copy(pendingDeleteId = id)
+        _state.update { it.copy(pendingDeleteId = id) }
     }
 
     /** Cancel the pending delete (ConfirmDialog dismissed). */
     fun cancelDelete() {
-        _state.value = _state.value.copy(pendingDeleteId = null)
+        _state.update { it.copy(pendingDeleteId = null) }
     }
 
     /** Clear a previously shown delete error snackbar. */
     fun clearDeleteError() {
-        _state.value = _state.value.copy(deleteError = null)
+        _state.update { it.copy(deleteError = null) }
     }
 }
 

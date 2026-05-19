@@ -70,6 +70,7 @@ import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -108,18 +109,22 @@ class BinLocationsViewModel @Inject constructor(
 
     fun load(isRefresh: Boolean = false) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(
-                isLoading = !isRefresh,
-                isRefreshing = isRefresh,
-                error = null,
-            )
+            _state.update {
+                it.copy(
+                    isLoading = !isRefresh,
+                    isRefreshing = isRefresh,
+                    error = null,
+                )
+            }
             try {
                 val resp = inventoryApi.getBinLocations()
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    bins = resp.data ?: emptyList(),
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        bins = resp.data ?: emptyList(),
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (ex: Exception) {
@@ -128,40 +133,44 @@ class BinLocationsViewModel @Inject constructor(
                         null // endpoint not deployed; show empty list gracefully
                     else -> ex.message ?: "Failed to load bin locations"
                 }
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    error = msg,
-                    bins = if (msg == null) emptyList() else _state.value.bins,
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        error = msg,
+                        bins = if (msg == null) emptyList() else _state.value.bins,
+                    )
+                }
             }
         }
     }
 
     fun requestDelete(bin: BinLocationItem) {
-        _state.value = _state.value.copy(pendingDelete = bin)
+        _state.update { it.copy(pendingDelete = bin) }
     }
 
     fun cancelDelete() {
-        _state.value = _state.value.copy(pendingDelete = null)
+        _state.update { it.copy(pendingDelete = null) }
     }
 
     fun confirmDelete() {
         val target = _state.value.pendingDelete ?: return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isDeleting = true)
+            _state.update { it.copy(isDeleting = true) }
             try {
                 inventoryApi.deleteBinLocation(target.id)
-                _state.value = _state.value.copy(
-                    isDeleting = false,
-                    pendingDelete = null,
-                    bins = _state.value.bins.filterNot { it.id == target.id },
-                )
+                _state.update {
+                    it.copy(
+                        isDeleting = false,
+                        pendingDelete = null,
+                        bins = _state.value.bins.filterNot { it.id == target.id },
+                    )
+                }
                 snackMessages.emit("Bin \"${target.code}\" removed")
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (ex: Exception) {
-                _state.value = _state.value.copy(isDeleting = false, pendingDelete = null)
+                _state.update { it.copy(isDeleting = false, pendingDelete = null) }
                 snackMessages.emit("Could not remove bin: ${ex.message}")
             }
         }
@@ -170,7 +179,7 @@ class BinLocationsViewModel @Inject constructor(
     fun createBin(code: String, description: String, aisle: String, shelf: String, bin: String) {
         if (code.isBlank()) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isCreating = true)
+            _state.update { it.copy(isCreating = true) }
             try {
                 val resp = inventoryApi.createBinLocation(
                     CreateBinLocationRequest(
@@ -182,15 +191,17 @@ class BinLocationsViewModel @Inject constructor(
                     )
                 )
                 val created = resp.data
-                _state.value = _state.value.copy(
-                    isCreating = false,
-                    bins = if (created != null) _state.value.bins + created else _state.value.bins,
-                )
+                _state.update {
+                    it.copy(
+                        isCreating = false,
+                        bins = if (created != null) _state.value.bins + created else _state.value.bins,
+                    )
+                }
                 snackMessages.emit("Bin \"${code.trim()}\" created")
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (ex: Exception) {
-                _state.value = _state.value.copy(isCreating = false)
+                _state.update { it.copy(isCreating = false) }
                 val msg = when {
                     ex is HttpException && ex.code() == 409 -> "Code \"${code.trim()}\" is already taken"
                     else -> "Could not create bin: ${ex.message}"

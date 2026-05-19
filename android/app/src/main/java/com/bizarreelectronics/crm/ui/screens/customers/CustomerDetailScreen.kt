@@ -84,6 +84,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -273,7 +274,7 @@ class CustomerDetailViewModel @Inject constructor(
                         hashTagToColor(hex)
                     }
                 }
-                _state.value = _state.value.copy(tagPalette = palette)
+                _state.update { it.copy(tagPalette = palette) }
             } catch (_: HttpException) {
                 // 404 → use hash-cycle defaults
             } catch (_: CancellationException) {
@@ -309,10 +310,10 @@ class CustomerDetailViewModel @Inject constructor(
     fun loadCustomer() {
         collectJob?.cancel()
         collectJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             try {
                 customerRepository.getCustomer(customerId).collectLatest { customer ->
-                    _state.value = _state.value.copy(customer = customer, isLoading = false)
+                    _state.update { it.copy(customer = customer, isLoading = false) }
                 }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: re-throw cancellation. The previous
@@ -325,10 +326,12 @@ class CustomerDetailViewModel @Inject constructor(
                 // pattern as CustomerListViewModel.loadCustomers.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = "Failed to load customer details. Check your connection and try again.",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = "Failed to load customer details. Check your connection and try again.",
+                    )
+                }
             }
         }
         loadAnalytics()
@@ -355,7 +358,7 @@ class CustomerDetailViewModel @Inject constructor(
             try {
                 val response = customerApi.getAnalytics(customerId)
                 val analytics = response.data ?: return@launch
-                _state.value = _state.value.copy(analytics = analytics)
+                _state.update { it.copy(analytics = analytics) }
             } catch (_: CancellationException) {
                 throw CancellationException()
             } catch (_: Exception) {
@@ -376,7 +379,7 @@ class CustomerDetailViewModel @Inject constructor(
             try {
                 val response = customerApi.getTickets(customerId)
                 val tickets = response.data?.tickets ?: return@launch
-                _state.value = _state.value.copy(recentTickets = tickets)
+                _state.update { it.copy(recentTickets = tickets) }
             } catch (_: CancellationException) {
                 throw CancellationException()
             } catch (_: Exception) {
@@ -396,7 +399,7 @@ class CustomerDetailViewModel @Inject constructor(
             try {
                 val response = customerApi.getNotes(customerId)
                 val notes = response.data ?: return@launch
-                _state.value = _state.value.copy(notes = notes)
+                _state.update { it.copy(notes = notes) }
             } catch (_: CancellationException) {
                 throw CancellationException()
             } catch (_: Exception) {
@@ -414,11 +417,11 @@ class CustomerDetailViewModel @Inject constructor(
         addressesJob = viewModelScope.launch {
             try {
                 val response = customerApi.getAddresses(customerId)
-                _state.value = _state.value.copy(addresses = response.data ?: emptyList())
+                _state.update { it.copy(addresses = response.data ?: emptyList()) }
             } catch (_: CancellationException) {
                 throw CancellationException()
             } catch (_: Exception) {
-                _state.value = _state.value.copy(addresses = emptyList())
+                _state.update { it.copy(addresses = emptyList()) }
             }
         }
     }
@@ -430,7 +433,7 @@ class CustomerDetailViewModel @Inject constructor(
         healthScoreJob = viewModelScope.launch {
             try {
                 val response = customerApi.getHealthScore(customerId)
-                _state.value = _state.value.copy(healthScore = response.data)
+                _state.update { it.copy(healthScore = response.data) }
             } catch (_: CancellationException) { throw CancellationException() } catch (_: Exception) { /* silent — 404 tolerated */ }
         }
     }
@@ -439,7 +442,7 @@ class CustomerDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val response = customerApi.recalculateHealthScore(customerId)
-                _state.value = _state.value.copy(healthScore = response.data)
+                _state.update { it.copy(healthScore = response.data) }
             } catch (_: CancellationException) { throw CancellationException() } catch (_: Exception) { /* silent */ }
         }
     }
@@ -451,7 +454,7 @@ class CustomerDetailViewModel @Inject constructor(
         ltvTierJob = viewModelScope.launch {
             try {
                 val response = customerApi.getLtvTier(customerId)
-                _state.value = _state.value.copy(ltvTier = response.data)
+                _state.update { it.copy(ltvTier = response.data) }
             } catch (_: CancellationException) { throw CancellationException() } catch (_: Exception) { /* silent — 404 tolerated */ }
         }
     }
@@ -463,7 +466,7 @@ class CustomerDetailViewModel @Inject constructor(
         invoicesJob = viewModelScope.launch {
             try {
                 val response = customerApi.getInvoices(customerId)
-                _state.value = _state.value.copy(invoices = response.data?.invoices ?: emptyList())
+                _state.update { it.copy(invoices = response.data?.invoices ?: emptyList()) }
             } catch (_: CancellationException) { throw CancellationException() } catch (_: Exception) { /* silent */ }
         }
     }
@@ -473,14 +476,14 @@ class CustomerDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val response = customerApi.getAssets(customerId)
-                _state.value = _state.value.copy(assets = response.data ?: emptyList())
+                _state.update { it.copy(assets = response.data ?: emptyList()) }
             } catch (_: CancellationException) {
                 throw CancellationException()
             } catch (_: Exception) {
                 // Fall back to assets embedded in the customer detail payload
                 try {
                     val detailResponse = customerApi.getCustomer(customerId)
-                    _state.value = _state.value.copy(assets = detailResponse.data?.assets ?: emptyList())
+                    _state.update { it.copy(assets = detailResponse.data?.assets ?: emptyList()) }
                 } catch (_: CancellationException) { throw CancellationException() } catch (_: Exception) { /* silent */ }
             }
         }
@@ -493,7 +496,7 @@ class CustomerDetailViewModel @Inject constructor(
         membershipJob = viewModelScope.launch {
             membershipRepository.getCustomerMembership(customerId).fold(
                 onSuccess = { membership ->
-                    _state.value = _state.value.copy(membership = membership)
+                    _state.update { it.copy(membership = membership) }
                 },
                 onFailure = { /* 404 / NotAvailable = no membership; silent degrade */ },
             )
@@ -502,11 +505,11 @@ class CustomerDetailViewModel @Inject constructor(
 
     // plan:L905 — delete
     fun requestDelete() {
-        _state.value = _state.value.copy(showDeleteConfirm = true)
+        _state.update { it.copy(showDeleteConfirm = true) }
     }
 
     fun cancelDelete() {
-        _state.value = _state.value.copy(showDeleteConfirm = false)
+        _state.update { it.copy(showDeleteConfirm = false) }
     }
 
     fun confirmDelete(onDeleted: () -> Unit) {
@@ -519,10 +522,12 @@ class CustomerDetailViewModel @Inject constructor(
                 // cancellation does not paint "Delete failed" and tempt a re-confirmation.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    showDeleteConfirm = false,
-                    saveMessage = "Delete failed: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        showDeleteConfirm = false,
+                        saveMessage = "Delete failed: ${e.message}",
+                    )
+                }
             }
         }
     }
@@ -530,50 +535,52 @@ class CustomerDetailViewModel @Inject constructor(
     // ─── 5.5 Merge ────────────────────────────────────────────────────────────
 
     fun openMergeSheet() {
-        _state.value = _state.value.copy(showMergeSheet = true, mergeCandidate = null, mergeAcknowledged = false)
+        _state.update { it.copy(showMergeSheet = true, mergeCandidate = null, mergeAcknowledged = false) }
     }
 
     fun closeMergeSheet() {
-        _state.value = _state.value.copy(showMergeSheet = false, mergeCandidate = null, mergeAcknowledged = false)
+        _state.update { it.copy(showMergeSheet = false, mergeCandidate = null, mergeAcknowledged = false) }
     }
 
     fun selectMergeCandidate(candidate: com.bizarreelectronics.crm.data.remote.dto.CustomerListItem) {
-        _state.value = _state.value.copy(mergeCandidate = candidate, showMergeSheet = false)
+        _state.update { it.copy(mergeCandidate = candidate, showMergeSheet = false) }
     }
 
     fun setMergeAcknowledged(ack: Boolean) {
-        _state.value = _state.value.copy(mergeAcknowledged = ack)
+        _state.update { it.copy(mergeAcknowledged = ack) }
     }
 
     fun confirmMerge(onMerged: () -> Unit) {
         val candidate = _state.value.mergeCandidate ?: return
         if (!_state.value.mergeAcknowledged) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isMerging = true)
+            _state.update { it.copy(isMerging = true) }
             try {
                 customerApi.mergeCustomers(
                     CustomerMergeRequest(keepId = customerId, mergeId = candidate.id)
                 )
-                _state.value = _state.value.copy(isMerging = false, mergeCandidate = null)
+                _state.update { it.copy(isMerging = false, mergeCandidate = null) }
                 loadCustomer()
                 onMerged()
             } catch (e: CancellationException) {
                 // DOUBLE-ACTION RISK: mergeCustomers is destructive and non-idempotent.
                 // Rethrow so a back-nav cancellation cannot produce a false "Merge failed"
                 // that tempts the user to confirm the merge a second time.
-                _state.value = _state.value.copy(isMerging = false)
+                _state.update { it.copy(isMerging = false) }
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isMerging = false,
-                    saveMessage = "Merge failed: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isMerging = false,
+                        saveMessage = "Merge failed: ${e.message}",
+                    )
+                }
             }
         }
     }
 
     fun cancelMergeCandidate() {
-        _state.value = _state.value.copy(mergeCandidate = null, mergeAcknowledged = false)
+        _state.update { it.copy(mergeCandidate = null, mergeAcknowledged = false) }
     }
 
     /**
@@ -594,59 +601,61 @@ class CustomerDetailViewModel @Inject constructor(
     // ─── 5.7 Asset tracking ───────────────────────────────────────────────────
 
     fun openAddAssetSheet() {
-        _state.value = _state.value.copy(showAddAssetSheet = true)
+        _state.update { it.copy(showAddAssetSheet = true) }
     }
 
     fun closeAddAssetSheet() {
-        _state.value = _state.value.copy(showAddAssetSheet = false)
+        _state.update { it.copy(showAddAssetSheet = false) }
     }
 
     fun addAsset(templateId: Long?, serial: String?, imei: String?, notes: String?) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isAddingAsset = true)
+            _state.update { it.copy(isAddingAsset = true) }
             try {
                 customerApi.addAsset(
                     customerId,
                     AddCustomerAssetRequest(templateId = templateId, serial = serial, imei = imei, notes = notes)
                 )
-                _state.value = _state.value.copy(isAddingAsset = false, showAddAssetSheet = false)
+                _state.update { it.copy(isAddingAsset = false, showAddAssetSheet = false) }
                 // Reload assets after successful add
                 loadAssets()
             } catch (e: CancellationException) {
-                _state.value = _state.value.copy(isAddingAsset = false)
+                _state.update { it.copy(isAddingAsset = false) }
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isAddingAsset = false,
-                    saveMessage = "Failed to add asset: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isAddingAsset = false,
+                        saveMessage = "Failed to add asset: ${e.message}",
+                    )
+                }
             }
         }
     }
 
     fun openAssetHistory(asset: CustomerAsset) {
-        _state.value = _state.value.copy(assetHistoryFor = asset, assetHistory = null)
+        _state.update { it.copy(assetHistoryFor = asset, assetHistory = null) }
         viewModelScope.launch {
             try {
                 val response = ticketApi.getDeviceHistory(
                     imei = asset.imei?.takeIf { it.isNotBlank() },
                     serial = asset.serial?.takeIf { it.isNotBlank() },
                 )
-                _state.value = _state.value.copy(assetHistory = response.data ?: emptyList())
+                _state.update { it.copy(assetHistory = response.data ?: emptyList()) }
             } catch (_: CancellationException) {
                 throw CancellationException()
             } catch (_: Exception) {
-                _state.value = _state.value.copy(assetHistory = emptyList())
+                _state.update { it.copy(assetHistory = emptyList()) }
             }
         }
     }
 
     fun closeAssetHistory() {
-        _state.value = _state.value.copy(assetHistoryFor = null, assetHistory = null)
+        _state.update { it.copy(assetHistoryFor = null, assetHistory = null) }
     }
 
     fun updateNoteDraft(value: String) {
-        _state.value = _state.value.copy(noteDraft = value)
+        _state.update { it.copy(noteDraft = value) }
     }
 
     /**
@@ -664,7 +673,7 @@ class CustomerDetailViewModel @Inject constructor(
         if (draft.isBlank() || _state.value.isPostingNote) return
 
         viewModelScope.launch {
-            _state.value = _state.value.copy(isPostingNote = true)
+            _state.update { it.copy(isPostingNote = true) }
             try {
                 val response = customerApi.postNote(
                     customerId,
@@ -673,11 +682,13 @@ class CustomerDetailViewModel @Inject constructor(
                 val note = response.data
                 val noteId = note?.id ?: -1L
                 val existing = _state.value.notes ?: emptyList()
-                _state.value = _state.value.copy(
-                    notes = if (note != null) listOf(note) + existing else existing,
-                    noteDraft = "",
-                    isPostingNote = false,
-                )
+                _state.update {
+                    it.copy(
+                        notes = if (note != null) listOf(note) + existing else existing,
+                        noteDraft = "",
+                        isPostingNote = false,
+                    )
+                }
 
                 // Push undo entry — compensatingSync calls deleteNote to
                 // roll back the server row (CROSS9b / B19 undo gap closed).
@@ -691,9 +702,11 @@ class CustomerDetailViewModel @Inject constructor(
                         },
                         reverse = {
                             // Optimistically remove the note from local list
-                            _state.value = _state.value.copy(
-                                notes = _state.value.notes?.filter { it.id != noteId },
-                            )
+                            _state.update {
+                                it.copy(
+                                    notes = _state.value.notes?.filter { it.id != noteId },
+                                )
+                            }
                         },
                         auditDescription = "Note added: \"${draft.take(60)}${if (draft.length > 60) "…" else ""}\"",
                         compensatingSync = {
@@ -715,55 +728,59 @@ class CustomerDetailViewModel @Inject constructor(
                     )
                 )
             } catch (e: CancellationException) {
-                _state.value = _state.value.copy(isPostingNote = false)
+                _state.update { it.copy(isPostingNote = false) }
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isPostingNote = false,
-                    saveMessage = e.message ?: "Failed to save note",
-                )
+                _state.update {
+                    it.copy(
+                        isPostingNote = false,
+                        saveMessage = e.message ?: "Failed to save note",
+                    )
+                }
             }
         }
     }
 
     fun startEditing() {
         val c = _state.value.customer ?: return
-        _state.value = _state.value.copy(
-            isEditing = true,
-            editFirstName = c.firstName ?: "",
-            editLastName = c.lastName ?: "",
-            editPhone = c.mobile ?: c.phone ?: "",
-            editEmail = c.email ?: "",
-            editOrganization = c.organization ?: "",
-            editAddress = c.address1 ?: "",
-            editCity = c.city ?: "",
-            editState = c.state ?: "",
-            editZip = c.postcode ?: "",
-            editTags = c.tags ?: "",
-            editGroupId = c.groupId,
-            editGroupName = c.groupName,
-        )
+        _state.update {
+            it.copy(
+                isEditing = true,
+                editFirstName = c.firstName ?: "",
+                editLastName = c.lastName ?: "",
+                editPhone = c.mobile ?: c.phone ?: "",
+                editEmail = c.email ?: "",
+                editOrganization = c.organization ?: "",
+                editAddress = c.address1 ?: "",
+                editCity = c.city ?: "",
+                editState = c.state ?: "",
+                editZip = c.postcode ?: "",
+                editTags = c.tags ?: "",
+                editGroupId = c.groupId,
+                editGroupName = c.groupName,
+            )
+        }
     }
 
     fun cancelEditing() {
-        _state.value = _state.value.copy(isEditing = false)
+        _state.update { it.copy(isEditing = false) }
     }
 
-    fun updateEditFirstName(value: String) { _state.value = _state.value.copy(editFirstName = value) }
-    fun updateEditLastName(value: String) { _state.value = _state.value.copy(editLastName = value) }
-    fun updateEditPhone(value: String) { _state.value = _state.value.copy(editPhone = value) }
-    fun updateEditEmail(value: String) { _state.value = _state.value.copy(editEmail = value) }
-    fun updateEditOrganization(value: String) { _state.value = _state.value.copy(editOrganization = value) }
-    fun updateEditAddress(value: String) { _state.value = _state.value.copy(editAddress = value) }
-    fun updateEditCity(value: String) { _state.value = _state.value.copy(editCity = value) }
-    fun updateEditState(value: String) { _state.value = _state.value.copy(editState = value) }
-    fun updateEditZip(value: String) { _state.value = _state.value.copy(editZip = value) }
-    fun updateEditTags(value: String) { _state.value = _state.value.copy(editTags = value) }
-    fun clearEditGroup() { _state.value = _state.value.copy(editGroupId = null, editGroupName = null) }
-    fun dismissConflictBanner() { _state.value = _state.value.copy(showConflictBanner = false) }
+    fun updateEditFirstName(value: String) { _state.update { it.copy(editFirstName = value) } }
+    fun updateEditLastName(value: String) { _state.update { it.copy(editLastName = value) } }
+    fun updateEditPhone(value: String) { _state.update { it.copy(editPhone = value) } }
+    fun updateEditEmail(value: String) { _state.update { it.copy(editEmail = value) } }
+    fun updateEditOrganization(value: String) { _state.update { it.copy(editOrganization = value) } }
+    fun updateEditAddress(value: String) { _state.update { it.copy(editAddress = value) } }
+    fun updateEditCity(value: String) { _state.update { it.copy(editCity = value) } }
+    fun updateEditState(value: String) { _state.update { it.copy(editState = value) } }
+    fun updateEditZip(value: String) { _state.update { it.copy(editZip = value) } }
+    fun updateEditTags(value: String) { _state.update { it.copy(editTags = value) } }
+    fun clearEditGroup() { _state.update { it.copy(editGroupId = null, editGroupName = null) } }
+    fun dismissConflictBanner() { _state.update { it.copy(showConflictBanner = false) } }
 
     fun clearSaveMessage() {
-        _state.value = _state.value.copy(saveMessage = null)
+        _state.update { it.copy(saveMessage = null) }
     }
 
     fun saveCustomer() {
@@ -778,7 +795,7 @@ class CustomerDetailViewModel @Inject constructor(
 
         viewModelScope.launch {
             // OPTIMISTIC-SAVE: show "Saving…" chip immediately; hide on result.
-            _state.value = _state.value.copy(isSaving = true, savingChipVisible = true)
+            _state.update { it.copy(isSaving = true, savingChipVisible = true) }
             try {
                 val newFirstName = current.editFirstName.trim()
                 val newLastName = current.editLastName.trim().ifBlank { null }
@@ -831,11 +848,13 @@ class CustomerDetailViewModel @Inject constructor(
                 }
 
                 customerRepository.updateCustomer(customerId, request)
-                _state.value = _state.value.copy(
-                    isEditing = false,
-                    isSaving = false,
-                    savingChipVisible = false,
-                )
+                _state.update {
+                    it.copy(
+                        isEditing = false,
+                        isSaving = false,
+                        savingChipVisible = false,
+                    )
+                }
 
                 // Push undo entries for each field that changed.
                 if (oldCustomer != null) {
@@ -934,25 +953,29 @@ class CustomerDetailViewModel @Inject constructor(
                     }
                 }
             } catch (e: CancellationException) {
-                _state.value = _state.value.copy(isSaving = false, savingChipVisible = false)
+                _state.update { it.copy(isSaving = false, savingChipVisible = false) }
                 throw e
             } catch (e: Exception) {
                 val is409 = e is HttpException && e.code() == 409
                 if (is409) {
                     // Concurrent-edit: rollback optimistic state, show banner.
-                    _state.value = _state.value.copy(
-                        isSaving = false,
-                        savingChipVisible = false,
-                        showConflictBanner = true,
-                    )
+                    _state.update {
+                        it.copy(
+                            isSaving = false,
+                            savingChipVisible = false,
+                            showConflictBanner = true,
+                        )
+                    }
                 } else {
                     // Non-409 error: rollback optimistic Room state by reloading from cache.
                     oldCustomer?.let { /* Room cache is still the pre-edit value; re-collect will refresh UI */ }
-                    _state.value = _state.value.copy(
-                        isSaving = false,
-                        savingChipVisible = false,
-                        saveMessage = "Save failed; reverted",
-                    )
+                    _state.update {
+                        it.copy(
+                            isSaving = false,
+                            savingChipVisible = false,
+                            saveMessage = "Save failed; reverted",
+                        )
+                    }
                 }
             }
         }

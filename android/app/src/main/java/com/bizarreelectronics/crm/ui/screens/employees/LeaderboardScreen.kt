@@ -26,6 +26,7 @@ import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -69,31 +70,35 @@ class LeaderboardViewModel @Inject constructor(
     init { load() }
 
     fun setPeriod(period: String) {
-        _state.value = _state.value.copy(period = period)
+        _state.update { it.copy(period = period) }
         load()
     }
 
     fun load() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = _state.value.entries.isEmpty(), error = null)
+            _state.update { it.copy(isLoading = _state.value.entries.isEmpty(), error = null) }
             try {
                 val resp = reportApi.getTechLeaderboard(period = _state.value.period)
                 val entries = parseEntries(resp.data)
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    entries = entries,
-                    serverUnsupported = false,
-                    error = null,
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        entries = entries,
+                        serverUnsupported = false,
+                        error = null,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (t: Exception) {
                 val is404 = t is retrofit2.HttpException && t.code() == 404
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    serverUnsupported = is404,
-                    error = if (is404) null else (t.message ?: "Failed to load leaderboard"),
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        serverUnsupported = is404,
+                        error = if (is404) null else (t.message ?: "Failed to load leaderboard"),
+                    )
+                }
             }
         }
     }

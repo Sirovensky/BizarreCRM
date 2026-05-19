@@ -10,6 +10,7 @@ import com.bizarreelectronics.crm.data.repository.PurchaseOrderRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -53,36 +54,38 @@ class PurchaseOrderCreateViewModel @Inject constructor(
 
     private fun loadSuppliers() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(suppliersLoading = true)
+            _state.update { it.copy(suppliersLoading = true) }
             val suppliers = repository.listSuppliers()
-            _state.value = _state.value.copy(suppliers = suppliers, suppliersLoading = false)
+            _state.update { it.copy(suppliers = suppliers, suppliersLoading = false) }
         }
     }
 
     fun onSupplierSelected(supplierId: Long, supplierName: String) {
-        _state.value = _state.value.copy(
-            selectedSupplierId = supplierId,
-            selectedSupplierName = supplierName,
-        )
+        _state.update {
+            it.copy(
+                selectedSupplierId = supplierId,
+                selectedSupplierName = supplierName,
+            )
+        }
     }
 
     fun onNotesChanged(notes: String) {
-        _state.value = _state.value.copy(notes = notes)
+        _state.update { it.copy(notes = notes) }
     }
 
     fun onExpectedDateChanged(date: String) {
-        _state.value = _state.value.copy(expectedDate = date)
+        _state.update { it.copy(expectedDate = date) }
     }
 
     fun addLineItem(item: DraftPoItem) {
-        _state.value = _state.value.copy(lineItems = _state.value.lineItems + item)
+        _state.update { it.copy(lineItems = _state.value.lineItems + item) }
     }
 
     fun updateLineItem(index: Int, item: DraftPoItem) {
         val updated = _state.value.lineItems.toMutableList()
         if (index in updated.indices) {
             updated[index] = item
-            _state.value = _state.value.copy(lineItems = updated)
+            _state.update { it.copy(lineItems = updated) }
         }
     }
 
@@ -90,7 +93,7 @@ class PurchaseOrderCreateViewModel @Inject constructor(
         val updated = _state.value.lineItems.toMutableList()
         if (index in updated.indices) {
             updated.removeAt(index)
-            _state.value = _state.value.copy(lineItems = updated)
+            _state.update { it.copy(lineItems = updated) }
         }
     }
 
@@ -102,7 +105,7 @@ class PurchaseOrderCreateViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSubmitting = true, submitError = null)
+            _state.update { it.copy(isSubmitting = true, submitError = null) }
             try {
                 val request = PurchaseOrderCreateRequest(
                     supplierId = supplierId,
@@ -117,27 +120,29 @@ class PurchaseOrderCreateViewModel @Inject constructor(
                     },
                 )
                 val po = repository.createPurchaseOrder(request)
-                _state.value = _state.value.copy(isSubmitting = false, createdPoId = po.id)
+                _state.update { it.copy(isSubmitting = false, createdPoId = po.id) }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: purchase orders are real spending
                 // commitments to a supplier and the create endpoint has no
                 // idempotency key. A "Failed" banner tempted a re-tap that
                 // produced a duplicate PO. Clear in-progress state without
                 // an actionable error so the user must reopen the sheet.
-                _state.value = _state.value.copy(isSubmitting = false)
+                _state.update { it.copy(isSubmitting = false) }
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "submit failed: ${e.message}")
-                _state.value = _state.value.copy(
-                    isSubmitting = false,
-                    submitError = e.message ?: "Failed to create purchase order",
-                )
+                _state.update {
+                    it.copy(
+                        isSubmitting = false,
+                        submitError = e.message ?: "Failed to create purchase order",
+                    )
+                }
             }
         }
     }
 
     fun clearSubmitError() {
-        _state.value = _state.value.copy(submitError = null)
+        _state.update { it.copy(submitError = null) }
     }
 
     companion object {

@@ -20,6 +20,7 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -55,7 +56,7 @@ class AssignRoleViewModel @Inject constructor(
     val state = _state.asStateFlow()
 
     fun selectRole(role: String) {
-        _state.value = _state.value.copy(selectedRole = role)
+        _state.update { it.copy(selectedRole = role) }
     }
 
     fun save() {
@@ -65,25 +66,27 @@ class AssignRoleViewModel @Inject constructor(
         if (_state.value.isSaving) return
         val role = _state.value.selectedRole
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSaving = true, error = null)
+            _state.update { it.copy(isSaving = true, error = null) }
             try {
                 settingsApi.updateEmployee(employeeId, mapOf("role" to role))
-                _state.value = _state.value.copy(isSaving = false, saved = true, currentRole = role)
+                _state.update { it.copy(isSaving = false, saved = true, currentRole = role) }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: runCatching swallowed CancellationException
                 // and painted "Failed to assign role" on back-nav, tempting a
                 // re-tap. Re-throw lets the launch die cleanly.
                 throw e
             } catch (t: Throwable) {
-                _state.value = _state.value.copy(
-                    isSaving = false,
-                    error = t.message ?: "Failed to assign role",
-                )
+                _state.update {
+                    it.copy(
+                        isSaving = false,
+                        error = t.message ?: "Failed to assign role",
+                    )
+                }
             }
         }
     }
 
-    fun clearError() { _state.value = _state.value.copy(error = null) }
+    fun clearError() { _state.update { it.copy(error = null) } }
 }
 
 // ─── Screen ──────────────────────────────────────────────────────────────────

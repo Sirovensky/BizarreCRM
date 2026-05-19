@@ -33,6 +33,7 @@ import com.bizarreelectronics.crm.util.CurrencyFormatter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -98,41 +99,41 @@ class LeadCreateViewModel @Inject constructor(
             try {
                 val response = settingsApi.getEmployees()
                 val list = response.data ?: emptyList()
-                _state.value = _state.value.copy(employees = list)
+                _state.update { it.copy(employees = list) }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (_: Exception) { /* offline or auth — leave employees empty */ }
         }
     }
 
-    fun updateFirstName(value: String) { _state.value = _state.value.copy(firstName = value) }
-    fun updateLastName(value: String) { _state.value = _state.value.copy(lastName = value) }
-    fun updatePhone(value: String) { _state.value = _state.value.copy(phone = value) }
-    fun updateEmail(value: String) { _state.value = _state.value.copy(email = value) }
-    fun updateAddress(value: String) { _state.value = _state.value.copy(address = value) }
-    fun updateZipCode(value: String) { _state.value = _state.value.copy(zipCode = value) }
+    fun updateFirstName(value: String) { _state.update { it.copy(firstName = value) } }
+    fun updateLastName(value: String) { _state.update { it.copy(lastName = value) } }
+    fun updatePhone(value: String) { _state.update { it.copy(phone = value) } }
+    fun updateEmail(value: String) { _state.update { it.copy(email = value) } }
+    fun updateAddress(value: String) { _state.update { it.copy(address = value) } }
+    fun updateZipCode(value: String) { _state.update { it.copy(zipCode = value) } }
 
-    fun updateSource(value: String) { _state.value = _state.value.copy(source = value) }
-    fun updateNotes(value: String) { _state.value = _state.value.copy(notes = value) }
-    fun updateStatus(value: String) { _state.value = _state.value.copy(status = value) }
+    fun updateSource(value: String) { _state.update { it.copy(source = value) } }
+    fun updateNotes(value: String) { _state.update { it.copy(notes = value) } }
+    fun updateStatus(value: String) { _state.update { it.copy(status = value) } }
 
     // Extended field updaters ──────────────────────────────────────────────────
 
     /** Only digits, 0-100. Rejects characters that would make the string invalid. */
     fun updateScoreInput(value: String) {
         if (value.isEmpty() || (value.all { it.isDigit() } && value.toIntOrNull() ?: 0 <= 100)) {
-            _state.value = _state.value.copy(scoreInput = value)
+            _state.update { it.copy(scoreInput = value) }
         }
     }
 
     fun updateValueInput(value: String) {
         if (value.isEmpty() || value.matches(Regex("^\\d*\\.?\\d{0,2}$"))) {
-            _state.value = _state.value.copy(valueInput = value)
+            _state.update { it.copy(valueInput = value) }
         }
     }
 
-    fun updateStage(value: String) { _state.value = _state.value.copy(stage = value) }
-    fun updateAssignedTo(id: Long?) { _state.value = _state.value.copy(assignedTo = id) }
+    fun updateStage(value: String) { _state.update { it.copy(stage = value) } }
+    fun updateAssignedTo(id: Long?) { _state.update { it.copy(assignedTo = id) } }
 
     /** Called from DatePickerDialog confirmation. */
     fun updateFollowUpDateMillis(millis: Long) {
@@ -142,13 +143,15 @@ class LeadCreateViewModel @Inject constructor(
         val localDate = Instant.ofEpochMilli(millis)
             .atZone(java.time.ZoneOffset.UTC)
             .toLocalDate()
-        _state.value = _state.value.copy(
-            followUpDateMillis = millis,
-            followUpDate = localDate.toString(),
-        )
+        _state.update {
+            it.copy(
+                followUpDateMillis = millis,
+                followUpDate = localDate.toString(),
+            )
+        }
     }
 
-    fun updateTagInput(value: String) { _state.value = _state.value.copy(tagInput = value) }
+    fun updateTagInput(value: String) { _state.update { it.copy(tagInput = value) } }
 
     fun addTag() {
         val tag = _state.value.tagInput.trim()
@@ -162,13 +165,13 @@ class LeadCreateViewModel @Inject constructor(
     }
 
     fun removeTag(tag: String) {
-        _state.value = _state.value.copy(tags = _state.value.tags - tag)
+        _state.update { it.copy(tags = _state.value.tags - tag) }
     }
 
     // ──────────────────────────────────────────────────────────────────────────
 
-    fun clearError() { _state.value = _state.value.copy(error = null) }
-    fun clearSavedOffline() { _state.value = _state.value.copy(savedOffline = false) }
+    fun clearError() { _state.update { it.copy(error = null) } }
+    fun clearSavedOffline() { _state.update { it.copy(savedOffline = false) } }
 
     fun save() {
         val current = _state.value
@@ -187,7 +190,7 @@ class LeadCreateViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSubmitting = true, error = null)
+            _state.update { it.copy(isSubmitting = true, error = null) }
             try {
                 val request = CreateLeadRequest(
                     firstName = current.firstName.trim(),
@@ -211,18 +214,22 @@ class LeadCreateViewModel @Inject constructor(
                 // returns a negative tempId.
                 val createdId = leadRepository.createLead(request)
                 val wasOffline = createdId < 0
-                _state.value = _state.value.copy(
-                    isSubmitting = false,
-                    createdId = createdId,
-                    savedOffline = wasOffline,
-                )
+                _state.update {
+                    it.copy(
+                        isSubmitting = false,
+                        createdId = createdId,
+                        savedOffline = wasOffline,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSubmitting = false,
-                    error = e.message ?: "Failed to create lead",
-                )
+                _state.update {
+                    it.copy(
+                        isSubmitting = false,
+                        error = e.message ?: "Failed to create lead",
+                    )
+                }
             }
         }
     }

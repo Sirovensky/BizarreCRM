@@ -46,6 +46,7 @@ import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.CancellationException
@@ -81,35 +82,41 @@ class RecurringInvoicesViewModel @Inject constructor(
 
     fun load(isRefresh: Boolean = false) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(
-                isLoading = !isRefresh,
-                isRefreshing = isRefresh,
-                error = null,
-                notAvailable = false,
-            )
+            _state.update {
+                it.copy(
+                    isLoading = !isRefresh,
+                    isRefreshing = isRefresh,
+                    error = null,
+                    notAvailable = false,
+                )
+            }
             try {
                 val response = api.listTemplates(status = _state.value.statusFilter)
-                _state.value = _state.value.copy(
-                    templates = response.data?.templates ?: emptyList(),
-                    isLoading = false,
-                    isRefreshing = false,
-                )
+                _state.update {
+                    it.copy(
+                        templates = response.data?.templates ?: emptyList(),
+                        isLoading = false,
+                        isRefreshing = false,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 val is404 = (e as? HttpException)?.code() == 404
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    notAvailable = is404,
-                    error = if (is404) null else (e.message ?: "Failed to load recurring invoices"),
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        notAvailable = is404,
+                        error = if (is404) null else (e.message ?: "Failed to load recurring invoices"),
+                    )
+                }
             }
         }
     }
 
     fun setStatusFilter(status: String?) {
-        _state.value = _state.value.copy(statusFilter = status)
+        _state.update { it.copy(statusFilter = status) }
         load(isRefresh = false)
     }
 
@@ -125,22 +132,24 @@ class RecurringInvoicesViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 call()
-                _state.value = _state.value.copy(actionMessage = "Template ${action}d")
+                _state.update { it.copy(actionMessage = "Template ${action}d") }
                 load(isRefresh = true)
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 val is404 = (e as? HttpException)?.code() == 404
-                _state.value = _state.value.copy(
-                    actionMessage = if (is404) "Action not available on this server"
-                    else (e.message ?: "Action failed"),
-                )
+                _state.update {
+                    it.copy(
+                        actionMessage = if (is404) "Action not available on this server"
+                        else (e.message ?: "Action failed"),
+                    )
+                }
             }
         }
     }
 
     fun clearActionMessage() {
-        _state.value = _state.value.copy(actionMessage = null)
+        _state.update { it.copy(actionMessage = null) }
     }
 }
 

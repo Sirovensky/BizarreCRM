@@ -27,6 +27,7 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -63,48 +64,48 @@ class RmaCreateViewModel @Inject constructor(
     val state = _state.asStateFlow()
 
     fun onSupplierNameChanged(v: String) {
-        _state.value = _state.value.copy(supplierName = v)
+        _state.update { it.copy(supplierName = v) }
     }
 
     fun onReasonChanged(v: String) {
-        _state.value = _state.value.copy(reason = v)
+        _state.update { it.copy(reason = v) }
     }
 
     fun onNotesChanged(v: String) {
-        _state.value = _state.value.copy(notes = v)
+        _state.update { it.copy(notes = v) }
     }
 
     fun onItemNameChanged(index: Int, v: String) {
         val updated = _state.value.lineItems.toMutableList()
         updated[index] = updated[index].copy(name = v)
-        _state.value = _state.value.copy(lineItems = updated)
+        _state.update { it.copy(lineItems = updated) }
     }
 
     fun onItemQtyChanged(index: Int, v: String) {
         val updated = _state.value.lineItems.toMutableList()
         updated[index] = updated[index].copy(quantity = v)
-        _state.value = _state.value.copy(lineItems = updated)
+        _state.update { it.copy(lineItems = updated) }
     }
 
     fun onItemReasonChanged(index: Int, v: String) {
         val updated = _state.value.lineItems.toMutableList()
         updated[index] = updated[index].copy(reason = v)
-        _state.value = _state.value.copy(lineItems = updated)
+        _state.update { it.copy(lineItems = updated) }
     }
 
     fun addLineItem() {
         val updated = _state.value.lineItems + DraftRmaItem()
-        _state.value = _state.value.copy(lineItems = updated)
+        _state.update { it.copy(lineItems = updated) }
     }
 
     fun removeLineItem(index: Int) {
         if (_state.value.lineItems.size <= 1) return   // keep at least one item
         val updated = _state.value.lineItems.toMutableList().also { it.removeAt(index) }
-        _state.value = _state.value.copy(lineItems = updated)
+        _state.update { it.copy(lineItems = updated) }
     }
 
     fun clearSubmitError() {
-        _state.value = _state.value.copy(submitError = null)
+        _state.update { it.copy(submitError = null) }
     }
 
     fun submit() {
@@ -143,15 +144,19 @@ class RmaCreateViewModel @Inject constructor(
                 )
                 val response = api.createRma(request)
                 if (response.success && response.data != null) {
-                    _state.value = _state.value.copy(
-                        isSubmitting = false,
-                        createdRmaId = response.data.id,
-                    )
+                    _state.update {
+                        it.copy(
+                            isSubmitting = false,
+                            createdRmaId = response.data.id,
+                        )
+                    }
                 } else {
-                    _state.value = _state.value.copy(
-                        isSubmitting = false,
-                        submitError = response.message ?: "Failed to create return.",
-                    )
+                    _state.update {
+                        it.copy(
+                            isSubmitting = false,
+                            submitError = response.message ?: "Failed to create return.",
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: bare catch (e: Exception) below would
@@ -162,10 +167,12 @@ class RmaCreateViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "submit failed: ${e.message}")
-                _state.value = _state.value.copy(
-                    isSubmitting = false,
-                    submitError = e.message ?: "Failed to create return.",
-                )
+                _state.update {
+                    it.copy(
+                        isSubmitting = false,
+                        submitError = e.message ?: "Failed to create return.",
+                    )
+                }
             }
         }
     }

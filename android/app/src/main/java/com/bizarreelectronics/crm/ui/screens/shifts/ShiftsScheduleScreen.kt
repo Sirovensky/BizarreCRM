@@ -74,6 +74,7 @@ import com.bizarreelectronics.crm.ui.theme.SuccessGreen
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
@@ -125,7 +126,7 @@ class ShiftsScheduleViewModel @Inject constructor(
     private fun loadEmployees() {
         viewModelScope.launch {
             runCatching { settingsApi.getEmployees() }
-                .onSuccess { _state.value = _state.value.copy(employees = it.data ?: emptyList()) }
+                .onSuccess { _state.update { it.copy(employees = it.data ?: emptyList()) } }
         }
     }
 
@@ -133,58 +134,70 @@ class ShiftsScheduleViewModel @Inject constructor(
         viewModelScope.launch {
             val ws = _state.value.weekStart
             val we = ws.plusDays(6)
-            _state.value = _state.value.copy(
-                isLoading = _state.value.shifts.isEmpty(),
-                error = null,
-            )
+            _state.update {
+                it.copy(
+                    isLoading = _state.value.shifts.isEmpty(),
+                    error = null,
+                )
+            }
             try {
                 val response = shiftsApi.getShifts(
                     fromDate = ws.toString(),
                     toDate = we.toString(),
                 )
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    shifts = response.data ?: emptyList(),
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        shifts = response.data ?: emptyList(),
+                    )
+                }
             } catch (e: retrofit2.HttpException) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    error = if (e.code() == 404) "Shift schedule not configured on this server" else "Failed to load shifts (${e.code()})",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        error = if (e.code() == 404) "Shift schedule not configured on this server" else "Failed to load shifts (${e.code()})",
+                    )
+                }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    error = e.message ?: "Failed to load shifts",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        error = e.message ?: "Failed to load shifts",
+                    )
+                }
             }
         }
     }
 
     fun prevWeek() {
-        _state.value = _state.value.copy(
-            weekStart = _state.value.weekStart.minusWeeks(1),
-            isLoading = true,
-        )
+        _state.update {
+            it.copy(
+                weekStart = _state.value.weekStart.minusWeeks(1),
+                isLoading = true,
+            )
+        }
         loadShifts()
     }
 
     fun nextWeek() {
-        _state.value = _state.value.copy(
-            weekStart = _state.value.weekStart.plusWeeks(1),
-            isLoading = true,
-        )
+        _state.update {
+            it.copy(
+                weekStart = _state.value.weekStart.plusWeeks(1),
+                isLoading = true,
+            )
+        }
         loadShifts()
     }
 
     fun showAddShiftForDay(day: LocalDate) {
-        _state.value = _state.value.copy(showAddShift = true, addShiftForDay = day)
+        _state.update { it.copy(showAddShift = true, addShiftForDay = day) }
     }
 
     fun dismissAddShift() {
-        _state.value = _state.value.copy(showAddShift = false, addShiftForDay = null)
+        _state.update { it.copy(showAddShift = false, addShiftForDay = null) }
     }
 
     /** Create a shift. startTime / endTime are "HH:mm" local times; combined with [day]. */
@@ -193,7 +206,7 @@ class ShiftsScheduleViewModel @Inject constructor(
             val fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")
             val startAt = "${day}T${startTime}:00"
             val endAt = "${day}T${endTime}:00"
-            _state.value = _state.value.copy(showAddShift = false)
+            _state.update { it.copy(showAddShift = false) }
             try {
                 shiftsApi.createShift(
                     CreateShiftBody(
@@ -203,7 +216,7 @@ class ShiftsScheduleViewModel @Inject constructor(
                         notes = notes.ifBlank { null },
                     ),
                 )
-                _state.value = _state.value.copy(actionMessage = "Shift added")
+                _state.update { it.copy(actionMessage = "Shift added") }
                 loadShifts()
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: runCatching swallowed CancellationException
@@ -213,28 +226,30 @@ class ShiftsScheduleViewModel @Inject constructor(
                 // server-side dedup. Re-throw so the launch dies cleanly.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    actionMessage = e.message ?: "Failed to add shift",
-                )
+                _state.update {
+                    it.copy(
+                        actionMessage = e.message ?: "Failed to add shift",
+                    )
+                }
             }
         }
     }
 
     fun confirmDeleteShift(shiftId: Long) {
-        _state.value = _state.value.copy(pendingDeleteId = shiftId)
+        _state.update { it.copy(pendingDeleteId = shiftId) }
     }
 
     fun dismissDeleteShift() {
-        _state.value = _state.value.copy(pendingDeleteId = null)
+        _state.update { it.copy(pendingDeleteId = null) }
     }
 
     fun deleteShift() {
         val id = _state.value.pendingDeleteId ?: return
         viewModelScope.launch {
-            _state.value = _state.value.copy(pendingDeleteId = null)
+            _state.update { it.copy(pendingDeleteId = null) }
             try {
                 shiftsApi.deleteShift(id)
-                _state.value = _state.value.copy(actionMessage = "Shift deleted")
+                _state.update { it.copy(actionMessage = "Shift deleted") }
                 loadShifts()
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: runCatching swallowed CancellationException
@@ -243,13 +258,13 @@ class ShiftsScheduleViewModel @Inject constructor(
                 // toast is misleading. Re-throw so the launch dies cleanly.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(actionMessage = e.message ?: "Failed to delete shift")
+                _state.update { it.copy(actionMessage = e.message ?: "Failed to delete shift") }
             }
         }
     }
 
     fun clearActionMessage() {
-        _state.value = _state.value.copy(actionMessage = null)
+        _state.update { it.copy(actionMessage = null) }
     }
 }
 

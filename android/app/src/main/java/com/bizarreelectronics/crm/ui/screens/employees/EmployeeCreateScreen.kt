@@ -41,6 +41,7 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
@@ -77,38 +78,38 @@ class EmployeeCreateViewModel @Inject constructor(
     val state = _state.asStateFlow()
 
     fun updateUsername(value: String) {
-        _state.value = _state.value.copy(username = value)
+        _state.update { it.copy(username = value) }
     }
 
     fun updateFirstName(value: String) {
-        _state.value = _state.value.copy(firstName = value)
+        _state.update { it.copy(firstName = value) }
     }
 
     fun updateLastName(value: String) {
-        _state.value = _state.value.copy(lastName = value)
+        _state.update { it.copy(lastName = value) }
     }
 
     fun updateEmail(value: String) {
-        _state.value = _state.value.copy(email = value)
+        _state.update { it.copy(email = value) }
     }
 
     fun updateRole(value: String) {
-        _state.value = _state.value.copy(role = value)
+        _state.update { it.copy(role = value) }
     }
 
     fun updatePassword(value: String) {
-        _state.value = _state.value.copy(password = value)
+        _state.update { it.copy(password = value) }
     }
 
     fun updatePin(value: String) {
         // Restrict to digits; trim to 4 so the input cannot overflow a
         // traditional PIN length even if the IME allows longer entries.
         val digits = value.filter { it.isDigit() }.take(4)
-        _state.value = _state.value.copy(pin = digits)
+        _state.update { it.copy(pin = digits) }
     }
 
     fun clearError() {
-        _state.value = _state.value.copy(error = null)
+        _state.update { it.copy(error = null) }
     }
 
     fun save() {
@@ -154,7 +155,7 @@ class EmployeeCreateViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSubmitting = true, error = null)
+            _state.update { it.copy(isSubmitting = true, error = null) }
             try {
                 val request = CreateEmployeeRequest(
                     username = username,
@@ -166,10 +167,12 @@ class EmployeeCreateViewModel @Inject constructor(
                     pin = pin.ifBlank { null },
                 )
                 settingsApi.createEmployee(request)
-                _state.value = _state.value.copy(
-                    isSubmitting = false,
-                    created = true,
-                )
+                _state.update {
+                    it.copy(
+                        isSubmitting = false,
+                        created = true,
+                    )
+                }
             } catch (e: HttpException) {
                 // Surface server-side validation / duplicate-username / role
                 // errors to the user without leaking raw HTML or stack traces.
@@ -179,7 +182,7 @@ class EmployeeCreateViewModel @Inject constructor(
                     409 -> "That username is already taken"
                     else -> e.message() ?: "Failed to create employee"
                 }
-                _state.value = _state.value.copy(isSubmitting = false, error = message)
+                _state.update { it.copy(isSubmitting = false, error = message) }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: bare catch (e: Exception) below would
                 // have painted a fake "Failed to create employee" snackbar on
@@ -188,10 +191,12 @@ class EmployeeCreateViewModel @Inject constructor(
                 // 409 on the username. Re-throw so the launch dies cleanly.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSubmitting = false,
-                    error = e.message ?: "Failed to create employee",
-                )
+                _state.update {
+                    it.copy(
+                        isSubmitting = false,
+                        error = e.message ?: "Failed to create employee",
+                    )
+                }
             }
         }
     }

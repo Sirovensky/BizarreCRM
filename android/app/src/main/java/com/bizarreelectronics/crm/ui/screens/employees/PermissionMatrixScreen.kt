@@ -36,6 +36,7 @@ import com.bizarreelectronics.crm.util.isMediumOrExpandedWidth
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -122,14 +123,16 @@ class PermissionMatrixViewModel @Inject constructor(
 
     fun load() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             runCatching { rolesApi.getRolePermissions(roleId) }
                 .onSuccess { resp ->
                     val data = resp.data ?: run {
-                        _state.value = _state.value.copy(
-                            isLoading = false,
-                            error = "Empty server response",
-                        )
+                        _state.update {
+                            it.copy(
+                                isLoading = false,
+                                error = "Empty server response",
+                            )
+                        }
                         return@onSuccess
                     }
                     val role = data.role
@@ -138,14 +141,16 @@ class PermissionMatrixViewModel @Inject constructor(
                     val pending = serverMatrix.associate { it.key to it.allowed }
                     val categories = buildCategories(serverMatrix)
 
-                    _state.value = _state.value.copy(
-                        roleName = role.name,
-                        isSystemRole = role.name in SYSTEM_ROLE_NAMES,
-                        categories = categories,
-                        pending = pending,
-                        isLoading = false,
-                        isDirty = false,
-                    )
+                    _state.update {
+                        it.copy(
+                            roleName = role.name,
+                            isSystemRole = role.name in SYSTEM_ROLE_NAMES,
+                            categories = categories,
+                            pending = pending,
+                            isLoading = false,
+                            isDirty = false,
+                        )
+                    }
                 }
                 .onFailure { t ->
                     // BUGHUNT-2026-05-18: viewModel-scope cancel surfaces here
@@ -153,10 +158,12 @@ class PermissionMatrixViewModel @Inject constructor(
                     // permissions" on a torn-down screen is misleading and a
                     // re-open would reload anyway.
                     if (t is CancellationException) throw t
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        error = t.message ?: "Failed to load permissions",
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            error = t.message ?: "Failed to load permissions",
+                        )
+                    }
                 }
         }
     }
@@ -164,18 +171,20 @@ class PermissionMatrixViewModel @Inject constructor(
     fun toggle(key: String, allowed: Boolean) {
         if (_state.value.isSystemRole) return   // UI disables but guard anyway
         val updated = _state.value.pending + (key to allowed)
-        _state.value = _state.value.copy(
-            pending = updated,
-            isDirty = true,
-        )
+        _state.update {
+            it.copy(
+                pending = updated,
+                isDirty = true,
+            )
+        }
     }
 
     fun requestReset() {
-        _state.value = _state.value.copy(showResetConfirm = true)
+        _state.update { it.copy(showResetConfirm = true) }
     }
 
     fun cancelReset() {
-        _state.value = _state.value.copy(showResetConfirm = false)
+        _state.update { it.copy(showResetConfirm = false) }
     }
 
     /**
@@ -184,7 +193,7 @@ class PermissionMatrixViewModel @Inject constructor(
      * This avoids embedding the ROLE_PERMISSIONS table on the client.
      */
     fun confirmReset() {
-        _state.value = _state.value.copy(showResetConfirm = false)
+        _state.update { it.copy(showResetConfirm = false) }
         load()
     }
 
@@ -193,14 +202,16 @@ class PermissionMatrixViewModel @Inject constructor(
         if (pending.isEmpty() || _state.value.isSaving) return
         val updates = pending.map { (k, v) -> PermissionEntryDto(key = k, allowed = v) }
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSaving = true, error = null)
+            _state.update { it.copy(isSaving = true, error = null) }
             try {
                 rolesApi.updateRolePermissions(roleId, UpdatePermissionsBody(updates = updates))
-                _state.value = _state.value.copy(
-                    isSaving = false,
-                    isDirty = false,
-                    snackMessage = "Permissions saved",
-                )
+                _state.update {
+                    it.copy(
+                        isSaving = false,
+                        isDirty = false,
+                        snackMessage = "Permissions saved",
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: runCatching swallowed CancellationException
                 // and painted "Failed to save permissions" on back-nav. The
@@ -211,16 +222,18 @@ class PermissionMatrixViewModel @Inject constructor(
                 // load() the matrix reflects the persisted state.
                 throw e
             } catch (t: Throwable) {
-                _state.value = _state.value.copy(
-                    isSaving = false,
-                    snackMessage = t.message ?: "Failed to save permissions",
-                )
+                _state.update {
+                    it.copy(
+                        isSaving = false,
+                        snackMessage = t.message ?: "Failed to save permissions",
+                    )
+                }
             }
         }
     }
 
     fun clearSnack() {
-        _state.value = _state.value.copy(snackMessage = null)
+        _state.update { it.copy(snackMessage = null) }
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────

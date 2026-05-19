@@ -33,6 +33,7 @@ import com.bizarreelectronics.crm.ui.theme.WarningAmber
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -117,23 +118,25 @@ class EmployeeDetailViewModel @Inject constructor(
 
     fun load() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val response = settingsApi.getEmployees()
                 val match = response.data?.firstOrNull { it.id == employeeId }
                 if (match == null) {
-                    _state.value = _state.value.copy(isLoading = false, error = "Employee not found")
+                    _state.update { it.copy(isLoading = false, error = "Employee not found") }
                 } else {
-                    _state.value = _state.value.copy(isLoading = false, employee = match, error = null)
+                    _state.update { it.copy(isLoading = false, employee = match, error = null) }
                     loadPerformance()
                     loadTimesheet()
                     loadSchedule()
                 }
             } catch (t: Throwable) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = t.message ?: "Failed to load employee",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = t.message ?: "Failed to load employee",
+                    )
+                }
             }
         }
     }
@@ -141,7 +144,7 @@ class EmployeeDetailViewModel @Inject constructor(
     /** §14.2 L1617/L1618 — load performance + commission; stub on 404. */
     private fun loadPerformance() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(performanceLoading = true)
+            _state.update { it.copy(performanceLoading = true) }
             val perf = runCatching { employeeApi.getPerformance(employeeId) }
                 .getOrNull()
             val commission = runCatching { employeeApi.getCommissions(employeeId) }
@@ -157,22 +160,24 @@ class EmployeeDetailViewModel @Inject constructor(
             val commCents = (commission?.data as? Map<*, *>)?.get("commissionCents")
                 .let { (it as? Number)?.toLong() ?: 0L }
 
-            _state.value = _state.value.copy(
-                performanceLoading = false,
-                performance = EmployeePerformanceData(
-                    ticketsClosedThisWeek = tickets,
-                    avgTimeToCloseMinutes = avgTime,
-                    revenueCents = revenue,
-                    commissionCents = commCents,
-                ),
-            )
+            _state.update {
+                it.copy(
+                    performanceLoading = false,
+                    performance = EmployeePerformanceData(
+                        ticketsClosedThisWeek = tickets,
+                        avgTimeToCloseMinutes = avgTime,
+                        revenueCents = revenue,
+                        commissionCents = commCents,
+                    ),
+                )
+            }
         }
     }
 
     /** §14.3 L1629 — load weekly timesheet; stub Mon-Sun with 0 h on 404. */
     private fun loadTimesheet() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(timesheetLoading = true)
+            _state.update { it.copy(timesheetLoading = true) }
             val response = runCatching { employeeApi.getWeeklyTimesheet(employeeId) }.getOrNull()
             val dayLabels = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
             val dayKeys = listOf("mon", "tue", "wed", "thu", "fri", "sat", "sun")
@@ -181,19 +186,19 @@ class EmployeeDetailViewModel @Inject constructor(
                 val hours = raw?.get(dayKeys[i]).let { (it as? Number)?.toDouble() ?: 0.0 }
                 TimesheetDay(label = label, hoursWorked = hours)
             }
-            _state.value = _state.value.copy(timesheetLoading = false, weeklyTimesheet = days)
+            _state.update { it.copy(timesheetLoading = false, weeklyTimesheet = days) }
         }
     }
 
     /** §14.2 L1619 — load upcoming shifts for this employee; stub empty on 404. */
     private fun loadSchedule() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(shiftsLoading = true)
+            _state.update { it.copy(shiftsLoading = true) }
             val response = runCatching {
                 shiftScheduleApi.getShifts(userId = employeeId)
             }.getOrNull()
             val shifts = parseUpcomingShifts(response?.data)
-            _state.value = _state.value.copy(shiftsLoading = false, upcomingShifts = shifts)
+            _state.update { it.copy(shiftsLoading = false, upcomingShifts = shifts) }
         }
     }
 
@@ -226,19 +231,19 @@ class EmployeeDetailViewModel @Inject constructor(
     // region — admin actions
 
     fun showDeactivateDialog() {
-        _state.value = _state.value.copy(showDeactivateDialog = true)
+        _state.update { it.copy(showDeactivateDialog = true) }
     }
 
     fun hideDeactivateDialog() {
-        _state.value = _state.value.copy(showDeactivateDialog = false)
+        _state.update { it.copy(showDeactivateDialog = false) }
     }
 
     fun confirmDeactivate() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(showDeactivateDialog = false)
+            _state.update { it.copy(showDeactivateDialog = false) }
             try {
                 employeeApi.deactivate(employeeId)
-                _state.value = _state.value.copy(actionMessage = "Employee deactivated")
+                _state.update { it.copy(actionMessage = "Employee deactivated") }
                 load()
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: runCatching swallowed CancellationException
@@ -246,27 +251,29 @@ class EmployeeDetailViewModel @Inject constructor(
                 // tempting a re-tap. Re-throw lets the launch die cleanly.
                 throw e
             } catch (t: Throwable) {
-                _state.value = _state.value.copy(
-                    actionMessage = t.message ?: "Deactivate failed",
-                )
+                _state.update {
+                    it.copy(
+                        actionMessage = t.message ?: "Deactivate failed",
+                    )
+                }
             }
         }
     }
 
     fun showResetPinDialog() {
-        _state.value = _state.value.copy(showResetPinDialog = true)
+        _state.update { it.copy(showResetPinDialog = true) }
     }
 
     fun hideResetPinDialog() {
-        _state.value = _state.value.copy(showResetPinDialog = false)
+        _state.update { it.copy(showResetPinDialog = false) }
     }
 
     fun confirmResetPin() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(showResetPinDialog = false)
+            _state.update { it.copy(showResetPinDialog = false) }
             try {
                 employeeApi.resetPin(employeeId)
-                _state.value = _state.value.copy(actionMessage = "PIN reset sent")
+                _state.update { it.copy(actionMessage = "PIN reset sent") }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: runCatching swallowed cancellation and
                 // painted "PIN reset failed" on back-nav. That tempts the admin
@@ -274,35 +281,39 @@ class EmployeeDetailViewModel @Inject constructor(
                 // staff member. Re-throw so the launch dies cleanly.
                 throw e
             } catch (t: Throwable) {
-                _state.value = _state.value.copy(
-                    actionMessage = t.message ?: "PIN reset failed",
-                )
+                _state.update {
+                    it.copy(
+                        actionMessage = t.message ?: "PIN reset failed",
+                    )
+                }
             }
         }
     }
 
     fun clearActionMessage() {
-        _state.value = _state.value.copy(actionMessage = null)
+        _state.update { it.copy(actionMessage = null) }
     }
 
     // §2.15 L388 — manager sends a PIN-reset email on behalf of a staff member.
 
     fun showSendResetLinkDialog() {
-        _state.value = _state.value.copy(showSendResetLinkDialog = true)
+        _state.update { it.copy(showSendResetLinkDialog = true) }
     }
 
     fun hideSendResetLinkDialog() {
-        _state.value = _state.value.copy(showSendResetLinkDialog = false)
+        _state.update { it.copy(showSendResetLinkDialog = false) }
     }
 
     fun confirmSendResetLink() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(showSendResetLinkDialog = false)
+            _state.update { it.copy(showSendResetLinkDialog = false) }
             try {
                 employeeApi.triggerForgotPin(employeeId)
-                _state.value = _state.value.copy(
-                    actionMessage = "Reset link sent to the staff member's email.",
-                )
+                _state.update {
+                    it.copy(
+                        actionMessage = "Reset link sent to the staff member's email.",
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: runCatching swallowed cancellation and
                 // painted "Failed to send reset link" on back-nav. That tempts
@@ -315,7 +326,7 @@ class EmployeeDetailViewModel @Inject constructor(
                 } else {
                     t.message ?: "Failed to send reset link."
                 }
-                _state.value = _state.value.copy(actionMessage = msg)
+                _state.update { it.copy(actionMessage = msg) }
             }
         }
     }

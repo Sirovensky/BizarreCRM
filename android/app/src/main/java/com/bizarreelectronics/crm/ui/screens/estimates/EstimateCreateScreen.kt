@@ -43,6 +43,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -149,7 +150,7 @@ class EstimateCreateViewModel @Inject constructor(
 
     private fun prefillFromLead(leadId: Long) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(prefillLoading = true)
+            _state.update { it.copy(prefillLoading = true) }
             try {
                 val resp = leadApi.getLead(leadId)
                 val lead = resp.data
@@ -186,22 +187,24 @@ class EstimateCreateViewModel @Inject constructor(
 
                     val leadName = listOfNotNull(lead.firstName, lead.lastName)
                         .joinToString(" ").ifBlank { null }
-                    _state.value = _state.value.copy(
-                        prefillLoading = false,
-                        selectedCustomer = prefillCustomer,
-                        customerQuery = prefillCustomer?.let {
-                            listOfNotNull(it.firstName, it.lastName).joinToString(" ").ifBlank { it.organization ?: "" }
-                        } ?: leadName ?: "",
-                        notes = notesPrefill ?: "",
-                        lineItems = valueLine,
-                    )
+                    _state.update {
+                        it.copy(
+                            prefillLoading = false,
+                            selectedCustomer = prefillCustomer,
+                            customerQuery = prefillCustomer?.let {
+                                listOfNotNull(it.firstName, it.lastName).joinToString(" ").ifBlank { it.organization ?: "" }
+                            } ?: leadName ?: "",
+                            notes = notesPrefill ?: "",
+                            lineItems = valueLine,
+                        )
+                    }
                 } else {
-                    _state.value = _state.value.copy(prefillLoading = false)
+                    _state.update { it.copy(prefillLoading = false) }
                 }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (_: Exception) {
-                _state.value = _state.value.copy(prefillLoading = false)
+                _state.update { it.copy(prefillLoading = false) }
             }
         }
     }
@@ -209,44 +212,50 @@ class EstimateCreateViewModel @Inject constructor(
     // ── Customer picker ──────────────────────────────────────────────────────
 
     fun onCustomerQueryChanged(query: String) {
-        _state.value = _state.value.copy(
-            customerQuery = query,
-            selectedCustomer = null,
-            showCustomerDropdown = query.isNotBlank(),
-        )
+        _state.update {
+            it.copy(
+                customerQuery = query,
+                selectedCustomer = null,
+                showCustomerDropdown = query.isNotBlank(),
+            )
+        }
         customerSearchJob?.cancel()
         if (query.isBlank()) {
-            _state.value = _state.value.copy(customerResults = emptyList())
+            _state.update { it.copy(customerResults = emptyList()) }
             return
         }
         customerSearchJob = viewModelScope.launch {
             delay(300)
             try {
                 val resp = customerApi.searchCustomers(query)
-                _state.value = _state.value.copy(
-                    customerResults = resp.data ?: emptyList(),
-                    showCustomerDropdown = true,
-                )
+                _state.update {
+                    it.copy(
+                        customerResults = resp.data ?: emptyList(),
+                        showCustomerDropdown = true,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (_: Exception) {
-                _state.value = _state.value.copy(customerResults = emptyList())
+                _state.update { it.copy(customerResults = emptyList()) }
             }
         }
     }
 
     fun onCustomerSelected(customer: CustomerListItem) {
-        _state.value = _state.value.copy(
-            selectedCustomer = customer,
-            customerQuery = listOfNotNull(customer.firstName, customer.lastName)
-                .joinToString(" ").ifBlank { customer.organization ?: "" },
-            showCustomerDropdown = false,
-            customerResults = emptyList(),
-        )
+        _state.update {
+            it.copy(
+                selectedCustomer = customer,
+                customerQuery = listOfNotNull(customer.firstName, customer.lastName)
+                    .joinToString(" ").ifBlank { customer.organization ?: "" },
+                showCustomerDropdown = false,
+                customerResults = emptyList(),
+            )
+        }
     }
 
     fun onDismissCustomerDropdown() {
-        _state.value = _state.value.copy(showCustomerDropdown = false)
+        _state.update { it.copy(showCustomerDropdown = false) }
     }
 
     // ── Validity window ──────────────────────────────────────────────────────
@@ -261,67 +270,73 @@ class EstimateCreateViewModel @Inject constructor(
             val d = cal.get(Calendar.DAY_OF_MONTH).toString().padStart(2, '0')
             "$y-$m-$d"
         } else ""
-        _state.value = _state.value.copy(validForDays = days, validUntilDate = isoDate)
+        _state.update { it.copy(validForDays = days, validUntilDate = isoDate) }
     }
 
     fun onValidUntilDatePicked(isoDate: String) {
-        _state.value = _state.value.copy(validUntilDate = isoDate, validForDays = "")
+        _state.update { it.copy(validUntilDate = isoDate, validForDays = "") }
     }
 
     // ── Line items ───────────────────────────────────────────────────────────
 
     fun onLineDescChanged(index: Int, value: String) {
-        _state.value = _state.value.copy(
-            lineItems = _state.value.lineItems.mapIndexed { i, r ->
-                if (i == index) r.copy(description = value) else r
-            },
-        )
+        _state.update {
+            it.copy(
+                lineItems = _state.value.lineItems.mapIndexed { i, r ->
+                    if (i == index) r.copy(description = value) else r
+                },
+            )
+        }
     }
 
     fun onLineQtyChanged(index: Int, value: String) {
-        _state.value = _state.value.copy(
-            lineItems = _state.value.lineItems.mapIndexed { i, r ->
-                if (i == index) r.copy(qty = value) else r
-            },
-        )
+        _state.update {
+            it.copy(
+                lineItems = _state.value.lineItems.mapIndexed { i, r ->
+                    if (i == index) r.copy(qty = value) else r
+                },
+            )
+        }
     }
 
     fun onLinePriceChanged(index: Int, value: String) {
-        _state.value = _state.value.copy(
-            lineItems = _state.value.lineItems.mapIndexed { i, r ->
-                if (i == index) r.copy(unitPrice = value) else r
-            },
-        )
+        _state.update {
+            it.copy(
+                lineItems = _state.value.lineItems.mapIndexed { i, r ->
+                    if (i == index) r.copy(unitPrice = value) else r
+                },
+            )
+        }
     }
 
     fun removeLineItem(index: Int) {
         val updated = _state.value.lineItems.toMutableList().also { it.removeAt(index) }
-        _state.value = _state.value.copy(lineItems = updated.ifEmpty { listOf(EstimateLineItemRow()) })
+        _state.update { it.copy(lineItems = updated.ifEmpty { listOf(EstimateLineItemRow()) }) }
     }
 
     fun addLineItem() {
-        _state.value = _state.value.copy(lineItems = _state.value.lineItems + EstimateLineItemRow())
+        _state.update { it.copy(lineItems = _state.value.lineItems + EstimateLineItemRow()) }
     }
 
     // ── Notes ────────────────────────────────────────────────────────────────
 
     fun onNotesChanged(value: String) {
-        _state.value = _state.value.copy(notes = value)
+        _state.update { it.copy(notes = value) }
     }
 
     // ── Add-line bottom sheet ─────────────────────────────────────────────────
 
     fun openAddLineSheet() {
-        _state.value = _state.value.copy(showAddLineSheet = true, addLineTab = 0)
+        _state.update { it.copy(showAddLineSheet = true, addLineTab = 0) }
         loadServices()
     }
 
     fun closeAddLineSheet() {
-        _state.value = _state.value.copy(showAddLineSheet = false)
+        _state.update { it.copy(showAddLineSheet = false) }
     }
 
     fun onAddLineTabChanged(tab: Int) {
-        _state.value = _state.value.copy(addLineTab = tab)
+        _state.update { it.copy(addLineTab = tab) }
         when (tab) {
             0 -> if (_state.value.serviceItems.isEmpty()) loadServices()
             1 -> if (_state.value.partItems.isEmpty()) loadParts(_state.value.partQuery)
@@ -331,22 +346,22 @@ class EstimateCreateViewModel @Inject constructor(
     private fun loadServices(query: String? = null) {
         serviceSearchJob?.cancel()
         serviceSearchJob = viewModelScope.launch {
-            _state.value = _state.value.copy(servicesLoading = true)
+            _state.update { it.copy(servicesLoading = true) }
             try {
                 val resp = repairPricingApi.getServices(query = query)
                 val items = resp.data ?: DEFAULT_SERVICES
-                _state.value = _state.value.copy(serviceItems = items, servicesLoading = false)
+                _state.update { it.copy(serviceItems = items, servicesLoading = false) }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (_: Exception) {
                 // 404 or network: fall back to hardcoded defaults
-                _state.value = _state.value.copy(serviceItems = DEFAULT_SERVICES, servicesLoading = false)
+                _state.update { it.copy(serviceItems = DEFAULT_SERVICES, servicesLoading = false) }
             }
         }
     }
 
     fun onServiceQueryChanged(q: String) {
-        _state.value = _state.value.copy(serviceQuery = q)
+        _state.update { it.copy(serviceQuery = q) }
         serviceSearchJob?.cancel()
         serviceSearchJob = viewModelScope.launch {
             delay(300)
@@ -355,7 +370,7 @@ class EstimateCreateViewModel @Inject constructor(
     }
 
     fun onPartQueryChanged(q: String) {
-        _state.value = _state.value.copy(partQuery = q)
+        _state.update { it.copy(partQuery = q) }
         loadParts(q)
     }
 
@@ -363,28 +378,30 @@ class EstimateCreateViewModel @Inject constructor(
         partSearchJob?.cancel()
         partSearchJob = viewModelScope.launch {
             if (query.isBlank()) {
-                _state.value = _state.value.copy(partItems = emptyList())
+                _state.update { it.copy(partItems = emptyList()) }
                 return@launch
             }
             delay(300)
-            _state.value = _state.value.copy(partsLoading = true)
+            _state.update { it.copy(partsLoading = true) }
             try {
                 val resp = inventoryApi.getItems(mapOf("search" to query, "pagesize" to "20"))
-                _state.value = _state.value.copy(
-                    partItems = resp.data?.items ?: emptyList(),
-                    partsLoading = false,
-                )
+                _state.update {
+                    it.copy(
+                        partItems = resp.data?.items ?: emptyList(),
+                        partsLoading = false,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (_: Exception) {
-                _state.value = _state.value.copy(partsLoading = false)
+                _state.update { it.copy(partsLoading = false) }
             }
         }
     }
 
-    fun onFreeFormDescChanged(v: String) { _state.value = _state.value.copy(freeFormDesc = v) }
-    fun onFreeFormQtyChanged(v: String) { _state.value = _state.value.copy(freeFormQty = v) }
-    fun onFreeFormPriceChanged(v: String) { _state.value = _state.value.copy(freeFormPrice = v) }
+    fun onFreeFormDescChanged(v: String) { _state.update { it.copy(freeFormDesc = v) } }
+    fun onFreeFormQtyChanged(v: String) { _state.update { it.copy(freeFormQty = v) } }
+    fun onFreeFormPriceChanged(v: String) { _state.update { it.copy(freeFormPrice = v) } }
 
     fun addServiceLine(service: RepairServiceItem, price: Double) {
         val row = EstimateLineItemRow(
@@ -392,10 +409,12 @@ class EstimateCreateViewModel @Inject constructor(
             qty = "1",
             unitPrice = "%.2f".format(price),
         )
-        _state.value = _state.value.copy(
-            lineItems = _state.value.lineItems + row,
-            showAddLineSheet = false,
-        )
+        _state.update {
+            it.copy(
+                lineItems = _state.value.lineItems + row,
+                showAddLineSheet = false,
+            )
+        }
     }
 
     fun addPartLine(part: InventoryListItem) {
@@ -405,10 +424,12 @@ class EstimateCreateViewModel @Inject constructor(
             unitPrice = "%.2f".format(part.price ?: 0.0),
             inventoryItemId = part.id,
         )
-        _state.value = _state.value.copy(
-            lineItems = _state.value.lineItems + row,
-            showAddLineSheet = false,
-        )
+        _state.update {
+            it.copy(
+                lineItems = _state.value.lineItems + row,
+                showAddLineSheet = false,
+            )
+        }
     }
 
     fun addFreeFormLine() {
@@ -419,13 +440,15 @@ class EstimateCreateViewModel @Inject constructor(
             qty = _state.value.freeFormQty.ifBlank { "1" },
             unitPrice = _state.value.freeFormPrice,
         )
-        _state.value = _state.value.copy(
-            lineItems = _state.value.lineItems + row,
-            showAddLineSheet = false,
-            freeFormDesc = "",
-            freeFormQty = "1",
-            freeFormPrice = "",
-        )
+        _state.update {
+            it.copy(
+                lineItems = _state.value.lineItems + row,
+                showAddLineSheet = false,
+                freeFormDesc = "",
+                freeFormQty = "1",
+                freeFormPrice = "",
+            )
+        }
     }
 
     // ── Submit ───────────────────────────────────────────────────────────────
@@ -449,7 +472,7 @@ class EstimateCreateViewModel @Inject constructor(
 
         val validUntil = s.validUntilDate.ifBlank { null }
 
-        _state.value = _state.value.copy(loading = true, error = null)
+        _state.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
             try {
                 val resp = estimateApi.createEstimate(
@@ -463,26 +486,30 @@ class EstimateCreateViewModel @Inject constructor(
                     ),
                 )
                 if (resp.success && resp.data != null) {
-                    _state.value = _state.value.copy(loading = false, createdId = resp.data.id)
+                    _state.update { it.copy(loading = false, createdId = resp.data.id) }
                 } else {
-                    _state.value = _state.value.copy(
-                        loading = false,
-                        error = resp.message ?: "Failed to create estimate",
-                    )
+                    _state.update {
+                        it.copy(
+                            loading = false,
+                            error = resp.message ?: "Failed to create estimate",
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (ex: Exception) {
-                _state.value = _state.value.copy(
-                    loading = false,
-                    error = ex.message ?: "Network error - please try again",
-                )
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        error = ex.message ?: "Network error - please try again",
+                    )
+                }
             }
         }
     }
 
     fun clearError() {
-        _state.value = _state.value.copy(error = null)
+        _state.update { it.copy(error = null) }
     }
 
     // ── Defaults ───────────────────────────────���───────────────────────���─────

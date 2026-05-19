@@ -47,6 +47,7 @@ import com.bizarreelectronics.crm.util.ImageUploadPolicy
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -87,13 +88,15 @@ class ProfileViewModel @Inject constructor(
 
     private fun loadProfile() {
         // Start with cached prefs for instant display
-        _state.value = _state.value.copy(
-            username = authPreferences.username.orEmpty(),
-            firstName = authPreferences.userFirstName.orEmpty(),
-            lastName = authPreferences.userLastName.orEmpty(),
-            role = authPreferences.userRole.orEmpty(),
-            isLoading = true,
-        )
+        _state.update {
+            it.copy(
+                username = authPreferences.username.orEmpty(),
+                firstName = authPreferences.userFirstName.orEmpty(),
+                lastName = authPreferences.userLastName.orEmpty(),
+                role = authPreferences.userRole.orEmpty(),
+                isLoading = true,
+            )
+        }
 
         // Then refresh from server
         viewModelScope.launch {
@@ -101,17 +104,19 @@ class ProfileViewModel @Inject constructor(
                 val response = authApi.getMe()
                 val user = response.data
                 if (user != null) {
-                    _state.value = _state.value.copy(
-                        username = user.username,
-                        firstName = user.firstName.orEmpty(),
-                        lastName = user.lastName.orEmpty(),
-                        email = user.email.orEmpty(),
-                        role = user.role,
-                        avatarUrl = user.avatarUrl,
-                        isLoading = false,
-                    )
+                    _state.update {
+                        it.copy(
+                            username = user.username,
+                            firstName = user.firstName.orEmpty(),
+                            lastName = user.lastName.orEmpty(),
+                            email = user.email.orEmpty(),
+                            role = user.role,
+                            avatarUrl = user.avatarUrl,
+                            isLoading = false,
+                        )
+                    }
                 } else {
-                    _state.value = _state.value.copy(isLoading = false)
+                    _state.update { it.copy(isLoading = false) }
                 }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: re-throw cancellation so back-nav
@@ -119,10 +124,12 @@ class ProfileViewModel @Inject constructor(
                 // the user already left.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Failed to load profile",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = e.message ?: "Failed to load profile",
+                    )
+                }
             }
         }
     }
@@ -132,7 +139,7 @@ class ProfileViewModel @Inject constructor(
     fun changePassword(currentPassword: String, newPassword: String) {
         if (_state.value.isSubmitting) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSubmitting = true)
+            _state.update { it.copy(isSubmitting = true) }
             try {
                 val response = authApi.changePassword(
                     mapOf(
@@ -141,16 +148,20 @@ class ProfileViewModel @Inject constructor(
                     ),
                 )
                 if (response.success) {
-                    _state.value = _state.value.copy(
-                        isSubmitting = false,
-                        snackbarMessage = "Password changed successfully",
-                        passwordChangeSuccessCounter = _state.value.passwordChangeSuccessCounter + 1,
-                    )
+                    _state.update {
+                        it.copy(
+                            isSubmitting = false,
+                            snackbarMessage = "Password changed successfully",
+                            passwordChangeSuccessCounter = _state.value.passwordChangeSuccessCounter + 1,
+                        )
+                    }
                 } else {
-                    _state.value = _state.value.copy(
-                        isSubmitting = false,
-                        snackbarMessage = response.message ?: "Failed to change password",
-                    )
+                    _state.update {
+                        it.copy(
+                            isSubmitting = false,
+                            snackbarMessage = response.message ?: "Failed to change password",
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: re-throw cancellation. A cancelled
@@ -159,10 +170,12 @@ class ProfileViewModel @Inject constructor(
                 // "Failed" message tempts a retry with the OLD password.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSubmitting = false,
-                    snackbarMessage = "Failed to change password: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isSubmitting = false,
+                        snackbarMessage = "Failed to change password: ${e.message}",
+                    )
+                }
             }
         }
     }
@@ -171,7 +184,7 @@ class ProfileViewModel @Inject constructor(
     fun changePin(currentPin: String, newPin: String) {
         if (_state.value.isSubmitting) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSubmitting = true)
+            _state.update { it.copy(isSubmitting = true) }
             try {
                 val response = authApi.changePin(
                     mapOf(
@@ -180,32 +193,38 @@ class ProfileViewModel @Inject constructor(
                     ),
                 )
                 if (response.success) {
-                    _state.value = _state.value.copy(
-                        isSubmitting = false,
-                        snackbarMessage = "PIN changed successfully",
-                        pinChangeSuccessCounter = _state.value.pinChangeSuccessCounter + 1,
-                    )
+                    _state.update {
+                        it.copy(
+                            isSubmitting = false,
+                            snackbarMessage = "PIN changed successfully",
+                            pinChangeSuccessCounter = _state.value.pinChangeSuccessCounter + 1,
+                        )
+                    }
                 } else {
-                    _state.value = _state.value.copy(
-                        isSubmitting = false,
-                        snackbarMessage = response.message ?: "Failed to change PIN",
-                    )
+                    _state.update {
+                        it.copy(
+                            isSubmitting = false,
+                            snackbarMessage = response.message ?: "Failed to change PIN",
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: re-throw — PIN change is security-
                 // sensitive, don't tempt retry with stale state.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSubmitting = false,
-                    snackbarMessage = "Failed to change PIN: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isSubmitting = false,
+                        snackbarMessage = "Failed to change PIN: ${e.message}",
+                    )
+                }
             }
         }
     }
 
     fun clearSnackbar() {
-        _state.value = _state.value.copy(snackbarMessage = null)
+        _state.update { it.copy(snackbarMessage = null) }
     }
 
     /**
@@ -223,28 +242,34 @@ class ProfileViewModel @Inject constructor(
     fun uploadAvatar(context: android.content.Context, uri: Uri) {
         if (_state.value.isSubmitting) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSubmitting = true)
+            _state.update { it.copy(isSubmitting = true) }
             try {
                 ImageUploadPolicy.validate(context, uri, ImageUploadPolicy.SMALL_IMAGE_MAX_BYTES)?.let {
-                    _state.value = _state.value.copy(
-                        isSubmitting = false,
-                        snackbarMessage = it,
-                    )
+                    _state.update {
+                        it.copy(
+                            isSubmitting = false,
+                            snackbarMessage = it,
+                        )
+                    }
                     return@launch
                 }
                 val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 if (bytes == null) {
-                    _state.value = _state.value.copy(
-                        isSubmitting = false,
-                        snackbarMessage = "Could not read selected image",
-                    )
+                    _state.update {
+                        it.copy(
+                            isSubmitting = false,
+                            snackbarMessage = "Could not read selected image",
+                        )
+                    }
                     return@launch
                 }
                 if (bytes.size > ImageUploadPolicy.SMALL_IMAGE_MAX_BYTES) {
-                    _state.value = _state.value.copy(
-                        isSubmitting = false,
-                        snackbarMessage = "Image exceeds the ${ImageUploadPolicy.formatSize(ImageUploadPolicy.SMALL_IMAGE_MAX_BYTES)} size limit.",
-                    )
+                    _state.update {
+                        it.copy(
+                            isSubmitting = false,
+                            snackbarMessage = "Image exceeds the ${ImageUploadPolicy.formatSize(ImageUploadPolicy.SMALL_IMAGE_MAX_BYTES)} size limit.",
+                        )
+                    }
                     return@launch
                 }
                 val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
@@ -257,24 +282,30 @@ class ProfileViewModel @Inject constructor(
                 val response = settingsApi.uploadAvatar(part)
                 if (response.success) {
                     val newUrl = response.data?.avatarUrl
-                    _state.value = _state.value.copy(
-                        isSubmitting = false,
-                        avatarUrl = newUrl ?: _state.value.avatarUrl,
-                        snackbarMessage = "Avatar updated",
-                    )
+                    _state.update {
+                        it.copy(
+                            isSubmitting = false,
+                            avatarUrl = newUrl ?: _state.value.avatarUrl,
+                            snackbarMessage = "Avatar updated",
+                        )
+                    }
                 } else {
-                    _state.value = _state.value.copy(
-                        isSubmitting = false,
-                        snackbarMessage = response.message ?: "Failed to upload avatar",
-                    )
+                    _state.update {
+                        it.copy(
+                            isSubmitting = false,
+                            snackbarMessage = response.message ?: "Failed to upload avatar",
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSubmitting = false,
-                    snackbarMessage = "Avatar upload failed: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isSubmitting = false,
+                        snackbarMessage = "Avatar upload failed: ${e.message}",
+                    )
+                }
             }
         }
     }

@@ -34,6 +34,7 @@ import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
@@ -94,17 +95,19 @@ class ShiftScheduleViewModel @Inject constructor(
 
     fun loadShifts() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = _state.value.shifts.isEmpty(), error = null)
+            _state.update { it.copy(isLoading = _state.value.shifts.isEmpty(), error = null) }
             val weekStart = _state.value.weekStart
             runCatching { shiftScheduleApi.getShifts(weekStart = weekFmt.format(weekStart)) }
                 .onSuccess { resp ->
                     val parsed = parseShifts(resp.data, weekStart)
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        shifts = parsed,
-                        serverUnsupported = false,
-                        error = null,
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            shifts = parsed,
+                            serverUnsupported = false,
+                            error = null,
+                        )
+                    }
                 }
                 .onFailure { t ->
                     // BUGHUNT-2026-05-18: rethrow cancel so we don't paint a
@@ -112,40 +115,42 @@ class ShiftScheduleViewModel @Inject constructor(
                     // (week-flip rapidly cancels and re-issues this load).
                     if (t is CancellationException) throw t
                     val is404 = t is retrofit2.HttpException && t.code() == 404
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        serverUnsupported = is404,
-                        error = if (is404) null else (t.message ?: "Failed to load shifts"),
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            serverUnsupported = is404,
+                            error = if (is404) null else (t.message ?: "Failed to load shifts"),
+                        )
+                    }
                 }
         }
     }
 
     fun previousWeek() {
-        _state.value = _state.value.copy(weekStart = _state.value.weekStart.minusWeeks(1))
+        _state.update { it.copy(weekStart = _state.value.weekStart.minusWeeks(1)) }
         loadShifts()
     }
 
     fun nextWeek() {
-        _state.value = _state.value.copy(weekStart = _state.value.weekStart.plusWeeks(1))
+        _state.update { it.copy(weekStart = _state.value.weekStart.plusWeeks(1)) }
         loadShifts()
     }
 
     fun requestDeleteShift(shift: ScheduledShift) {
-        _state.value = _state.value.copy(pendingDeleteShift = shift)
+        _state.update { it.copy(pendingDeleteShift = shift) }
     }
 
     fun cancelDelete() {
-        _state.value = _state.value.copy(pendingDeleteShift = null)
+        _state.update { it.copy(pendingDeleteShift = null) }
     }
 
     fun confirmDelete() {
         val shift = _state.value.pendingDeleteShift ?: return
-        _state.value = _state.value.copy(pendingDeleteShift = null)
+        _state.update { it.copy(pendingDeleteShift = null) }
         viewModelScope.launch {
             try {
                 shiftScheduleApi.deleteShift(shift.id)
-                _state.value = _state.value.copy(toastMessage = "Shift removed")
+                _state.update { it.copy(toastMessage = "Shift removed") }
                 loadShifts()
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: runCatching swallowed CancellationException
@@ -153,13 +158,13 @@ class ShiftScheduleViewModel @Inject constructor(
                 // re-tap. Delete is idempotent server-side, but bad UX.
                 throw e
             } catch (t: Throwable) {
-                _state.value = _state.value.copy(toastMessage = "Failed to remove shift")
+                _state.update { it.copy(toastMessage = "Failed to remove shift") }
             }
         }
     }
 
-    fun showAddDialog() { _state.value = _state.value.copy(showAddDialog = true) }
-    fun dismissAddDialog() { _state.value = _state.value.copy(showAddDialog = false) }
+    fun showAddDialog() { _state.update { it.copy(showAddDialog = true) } }
+    fun dismissAddDialog() { _state.update { it.copy(showAddDialog = false) } }
 
     fun createShift(employeeId: Long, startIso: String, endIso: String, notes: String) {
         viewModelScope.launch {
@@ -171,7 +176,7 @@ class ShiftScheduleViewModel @Inject constructor(
             }
             try {
                 shiftScheduleApi.createShift(body)
-                _state.value = _state.value.copy(showAddDialog = false, toastMessage = "Shift added")
+                _state.update { it.copy(showAddDialog = false, toastMessage = "Shift added") }
                 loadShifts()
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: runCatching swallowed cancellation and
@@ -181,12 +186,12 @@ class ShiftScheduleViewModel @Inject constructor(
                 // server-side dedup.
                 throw e
             } catch (t: Throwable) {
-                _state.value = _state.value.copy(toastMessage = "Failed to add shift")
+                _state.update { it.copy(toastMessage = "Failed to add shift") }
             }
         }
     }
 
-    fun clearToast() { _state.value = _state.value.copy(toastMessage = null) }
+    fun clearToast() { _state.update { it.copy(toastMessage = null) } }
 
     // ── parser ────────────────────────────────────────────────────────────────
 

@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -100,7 +101,7 @@ class DataExportViewModel @Inject constructor(
         get() = authPreferences.userRole?.lowercase() in setOf("manager", "admin", "owner")
 
     init {
-        _state.value = _state.value.copy(canExport = canExport)
+        _state.update { it.copy(canExport = canExport) }
     }
 
     // ── Configuration mutations ────────────────────────────────────────────────
@@ -108,80 +109,84 @@ class DataExportViewModel @Inject constructor(
     fun toggleEntity(entity: ExportEntity) {
         val current = _state.value.selectedEntities
         val updated = if (entity in current) current - entity else current + entity
-        _state.value = _state.value.copy(selectedEntities = updated.ifEmpty { setOf(entity) })
+        _state.update { it.copy(selectedEntities = updated.ifEmpty { setOf(entity) }) }
     }
 
     fun setFormat(format: ExportFormat) {
-        _state.value = _state.value.copy(selectedFormat = format)
+        _state.update { it.copy(selectedFormat = format) }
     }
 
     fun setDateFrom(date: String) {
-        _state.value = _state.value.copy(dateFrom = date, error = null)
+        _state.update { it.copy(dateFrom = date, error = null) }
     }
 
     fun setDateTo(date: String) {
-        _state.value = _state.value.copy(dateTo = date, error = null)
+        _state.update { it.copy(dateTo = date, error = null) }
     }
 
     fun setActiveOnly(value: Boolean) {
-        _state.value = _state.value.copy(activeOnly = value)
+        _state.update { it.copy(activeOnly = value) }
     }
 
     fun setEmailOnReady(value: Boolean) {
-        _state.value = _state.value.copy(emailOnReady = value)
+        _state.update { it.copy(emailOnReady = value) }
     }
 
     // §51.4 — ZIP password controls
 
     /** Toggle whether the downloaded archive will be AES-256 password protected. */
     fun setZipPasswordEnabled(enabled: Boolean) {
-        _state.value = _state.value.copy(
-            zipPasswordEnabled = enabled,
-            // Reset password text when toggling off so stale secrets aren't kept in state.
-            zipPassword = if (enabled) _state.value.zipPassword else "",
-            zipPasswordVisible = false,
-        )
+        _state.update {
+            it.copy(
+                zipPasswordEnabled = enabled,
+                // Reset password text when toggling off so stale secrets aren't kept in state.
+                zipPassword = if (enabled) _state.value.zipPassword else "",
+                zipPasswordVisible = false,
+            )
+        }
     }
 
     /** Update the plaintext password as the user types. */
     fun setZipPassword(password: String) {
-        _state.value = _state.value.copy(zipPassword = password)
+        _state.update { it.copy(zipPassword = password) }
     }
 
     /** Toggle show/hide of the password field. */
     fun toggleZipPasswordVisibility() {
-        _state.value = _state.value.copy(zipPasswordVisible = !_state.value.zipPasswordVisible)
+        _state.update { it.copy(zipPasswordVisible = !_state.value.zipPasswordVisible) }
     }
 
     fun clearToast() {
-        _state.value = _state.value.copy(toastMessage = null)
+        _state.update { it.copy(toastMessage = null) }
     }
 
     fun resetJob() {
         pollJob?.cancel()
-        _state.value = _state.value.copy(
-            jobId = null,
-            jobStatus = ExportJobStatus.QUEUED,
-            progress = 0,
-            downloadUrl = null,
-            isLoading = false,
-            isPollActive = false,
-            isDownloading = false,
-            error = null,
-            showCancelConfirm = false,
-        )
+        _state.update {
+            it.copy(
+                jobId = null,
+                jobStatus = ExportJobStatus.QUEUED,
+                progress = 0,
+                downloadUrl = null,
+                isLoading = false,
+                isPollActive = false,
+                isDownloading = false,
+                error = null,
+                showCancelConfirm = false,
+            )
+        }
     }
 
     // ── Cancel export ──────────────────────────────────────────────────────────
 
     /** Show the "Cancel export?" confirmation dialog. */
     fun promptCancelExport() {
-        _state.value = _state.value.copy(showCancelConfirm = true)
+        _state.update { it.copy(showCancelConfirm = true) }
     }
 
     /** User dismissed the cancel dialog without confirming. */
     fun dismissCancelExport() {
-        _state.value = _state.value.copy(showCancelConfirm = false)
+        _state.update { it.copy(showCancelConfirm = false) }
     }
 
     /** User confirmed cancellation — stop polling and reset to config form. */
@@ -208,7 +213,7 @@ class DataExportViewModel @Inject constructor(
         val url = _state.value.downloadUrl ?: return
         val snap = _state.value
         viewModelScope.launch {
-            _state.value = _state.value.copy(isDownloading = true, error = null)
+            _state.update { it.copy(isDownloading = true, error = null) }
             try {
                 withContext(Dispatchers.IO) {
                     val request = Request.Builder().url(url).build()
@@ -249,15 +254,19 @@ class DataExportViewModel @Inject constructor(
                 } else {
                     "Export saved."
                 }
-                _state.value = _state.value.copy(
-                    isDownloading = false,
-                    toastMessage = savedMsg,
-                )
+                _state.update {
+                    it.copy(
+                        isDownloading = false,
+                        toastMessage = savedMsg,
+                    )
+                }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isDownloading = false,
-                    error = e.message ?: "Download failed",
-                )
+                _state.update {
+                    it.copy(
+                        isDownloading = false,
+                        error = e.message ?: "Download failed",
+                    )
+                }
             }
         }
     }
@@ -269,11 +278,11 @@ class DataExportViewModel @Inject constructor(
 
     fun requestExport() {
         if (!serverMonitor.isEffectivelyOnline.value) {
-            _state.value = _state.value.copy(error = "Device is offline")
+            _state.update { it.copy(error = "Device is offline") }
             return
         }
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val body = buildMap<String, Any> {
                     put("entity_types", _state.value.selectedEntities.map { it.apiValue })
@@ -289,27 +298,33 @@ class DataExportViewModel @Inject constructor(
                 val jobId = ((response.data as? Map<*, *>)?.get("job_id") as? String)
                     ?: throw IllegalStateException("Server did not return job_id")
 
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    jobId = jobId,
-                    isPollActive = true,
-                    jobStatus = ExportJobStatus.QUEUED,
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        jobId = jobId,
+                        isPollActive = true,
+                        jobStatus = ExportJobStatus.QUEUED,
+                    )
+                }
                 startPolling(jobId)
             } catch (e: HttpException) {
                 if (e.code() == 404) {
-                    _state.value = _state.value.copy(isLoading = false, serverUnsupported = true)
+                    _state.update { it.copy(isLoading = false, serverUnsupported = true) }
                 } else {
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        error = "Export request failed (${e.code()})",
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            error = "Export request failed (${e.code()})",
+                        )
+                    }
                 }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Export failed",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = e.message ?: "Export failed",
+                    )
+                }
             }
         }
     }
@@ -329,25 +344,31 @@ class DataExportViewModel @Inject constructor(
                         .getOrDefault(ExportJobStatus.RUNNING)
                     val progress = (data["progress"] as? Number)?.toInt() ?: 0
                     val downloadUrl = data["download_url"] as? String
-                    _state.value = _state.value.copy(
-                        jobStatus = status,
-                        progress = progress,
-                        downloadUrl = downloadUrl,
-                    )
+                    _state.update {
+                        it.copy(
+                            jobStatus = status,
+                            progress = progress,
+                            downloadUrl = downloadUrl,
+                        )
+                    }
                     when (status) {
                         ExportJobStatus.READY -> {
-                            _state.value = _state.value.copy(
-                                isPollActive = false,
-                                toastMessage = "Export ready — tap Download to save.",
-                            )
+                            _state.update {
+                                it.copy(
+                                    isPollActive = false,
+                                    toastMessage = "Export ready — tap Download to save.",
+                                )
+                            }
                             break
                         }
                         ExportJobStatus.ERROR -> {
                             val msg = (data["error_message"] as? String) ?: "Export failed on server."
-                            _state.value = _state.value.copy(
-                                isPollActive = false,
-                                error = msg,
-                            )
+                            _state.update {
+                                it.copy(
+                                    isPollActive = false,
+                                    error = msg,
+                                )
+                            }
                             break
                         }
                         else -> Unit // keep polling

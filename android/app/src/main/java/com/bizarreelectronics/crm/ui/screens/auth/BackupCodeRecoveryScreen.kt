@@ -34,6 +34,7 @@ import com.bizarreelectronics.crm.util.EmailValidator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -62,19 +63,19 @@ class BackupCodeRecoveryViewModel @Inject constructor(
     val state = _state.asStateFlow()
 
     fun updateEmail(value: String) {
-        _state.value = _state.value.copy(email = value, error = null)
+        _state.update { it.copy(email = value, error = null) }
     }
 
     fun updateBackupCode(value: String) {
-        _state.value = _state.value.copy(backupCode = value, error = null)
+        _state.update { it.copy(backupCode = value, error = null) }
     }
 
     fun updateNewPassword(value: String) {
-        _state.value = _state.value.copy(newPassword = value, error = null)
+        _state.update { it.copy(newPassword = value, error = null) }
     }
 
     fun updateConfirmPassword(value: String) {
-        _state.value = _state.value.copy(confirmPassword = value, error = null)
+        _state.update { it.copy(confirmPassword = value, error = null) }
     }
 
     fun submit() {
@@ -119,14 +120,16 @@ class BackupCodeRecoveryViewModel @Inject constructor(
                 )
                 // Server performs the full recovery (resets password, disables 2FA).
                 // On success the user should log in fresh — signal success to the nav.
-                _state.value = _state.value.copy(isLoading = false, success = true)
+                _state.update { it.copy(isLoading = false, success = true) }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow to preserve structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = extractErrorMessage(e),
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = extractErrorMessage(e),
+                    )
+                }
             }
         }
     }

@@ -45,6 +45,7 @@ import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
@@ -83,7 +84,7 @@ class SecuritySummaryViewModel @Inject constructor(
 
     fun setScreenshotBlocking(enabled: Boolean) {
         appPreferences.screenCapturePreventionEnabled = enabled
-        _state.value = _state.value.copy(screenshotBlockingEnabled = enabled)
+        _state.update { it.copy(screenshotBlockingEnabled = enabled) }
     }
 }
 

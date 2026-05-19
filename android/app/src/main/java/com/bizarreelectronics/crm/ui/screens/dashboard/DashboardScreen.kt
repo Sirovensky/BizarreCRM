@@ -103,6 +103,7 @@ import kotlinx.coroutines.flow.combine
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -848,7 +849,7 @@ class DashboardViewModel @Inject constructor(
             try {
                 val cfg = settingsApi.getConfig().data ?: return@launch
                 val enabled = cfg["ticket_all_employees_view_all"] == "0"
-                _state.value = _state.value.copy(assignmentEnabled = enabled)
+                _state.update { it.copy(assignmentEnabled = enabled) }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (_: Exception) {
@@ -869,26 +870,30 @@ class DashboardViewModel @Inject constructor(
             // so we can call it freely.
             val greetingText = greetingForHour(java.time.LocalTime.now().hour)
 
-            _state.value = _state.value.copy(
-                greeting = "$greetingText, $name",
-                statsError = null,
-                attentionError = null,
-                queueError = null,
-            )
+            _state.update {
+                it.copy(
+                    greeting = "$greetingText, $name",
+                    statsError = null,
+                    attentionError = null,
+                    queueError = null,
+                )
+            }
 
             // U9 fix: track each section's error independently.
             // Stats.
             try {
                 val stats = dashboardRepository.getDashboardStats()
-                _state.value = _state.value.copy(
-                    openTickets = stats.openTickets,
-                    revenueToday = stats.revenueToday,
-                    appointmentsToday = stats.appointmentsToday,
-                    statsError = null,
-                    // §3.14 L570 — mark that we have live data; clear network-error flag.
-                    hasNetworkError = false,
-                    hasCachedData = true,
-                )
+                _state.update {
+                    it.copy(
+                        openTickets = stats.openTickets,
+                        revenueToday = stats.revenueToday,
+                        appointmentsToday = stats.appointmentsToday,
+                        statsError = null,
+                        // §3.14 L570 — mark that we have live data; clear network-error flag.
+                        hasNetworkError = false,
+                        hasCachedData = true,
+                    )
+                }
                 // §36.5 — check whether this load triggers a first-milestone celebration.
                 checkMilestoneCelebrations(
                     openTickets = stats.openTickets,
@@ -898,11 +903,13 @@ class DashboardViewModel @Inject constructor(
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 android.util.Log.w("Dashboard", "Failed to load stats: ${e.message}")
-                _state.value = _state.value.copy(
-                    statsError = e.message ?: "Failed to load KPIs",
-                    // §3.14 L570 — signal network error; banner shown if hasCachedData.
-                    hasNetworkError = true,
-                )
+                _state.update {
+                    it.copy(
+                        statsError = e.message ?: "Failed to load KPIs",
+                        // §3.14 L570 — signal network error; banner shown if hasCachedData.
+                        hasNetworkError = true,
+                    )
+                }
             }
 
             // Needs-attention.
@@ -953,31 +960,37 @@ class DashboardViewModel @Inject constructor(
                 }
 
                 _needsAttentionItems.value = richItems.sortedByDescending { it.priority.ordinal }
-                _state.value = _state.value.copy(
-                    lowStockCount = attention.lowStockCount,
-                    needsAttention = attentionItems,
-                    attentionError = null,
-                )
+                _state.update {
+                    it.copy(
+                        lowStockCount = attention.lowStockCount,
+                        needsAttention = attentionItems,
+                        attentionError = null,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 android.util.Log.w("Dashboard", "Failed to load needs-attention: ${e.message}")
-                _state.value = _state.value.copy(
-                    attentionError = e.message ?: "Failed to load Needs Attention",
-                )
+                _state.update {
+                    it.copy(
+                        attentionError = e.message ?: "Failed to load Needs Attention",
+                    )
+                }
             }
 
             // My Queue refresh.
             try {
                 dashboardRepository.refreshMyQueue()
-                _state.value = _state.value.copy(queueError = null)
+                _state.update { it.copy(queueError = null) }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 android.util.Log.w("Dashboard", "Failed to refresh queue: ${e.message}")
-                _state.value = _state.value.copy(
-                    queueError = e.message ?: "Failed to refresh My Queue",
-                )
+                _state.update {
+                    it.copy(
+                        queueError = e.message ?: "Failed to refresh My Queue",
+                    )
+                }
             }
 
             // §45.3 — Churn-risk customer count for ChurnAlertCard.
@@ -994,10 +1007,12 @@ class DashboardViewModel @Inject constructor(
                 // Leave _churnAtRisk null — ChurnAlertCard shows "Data unavailable"
             }
 
-            _state.value = _state.value.copy(
-                isLoading = false,
-                isRefreshing = false,
-            )
+            _state.update {
+                it.copy(
+                    isLoading = false,
+                    isRefreshing = false,
+                )
+            }
         }
     }
 
@@ -1017,17 +1032,19 @@ class DashboardViewModel @Inject constructor(
                 }
                 _previousQueueSize = currentSize
 
-                _state.value = _state.value.copy(
-                    myQueue = entities.map { entity ->
-                        TicketSummary(
-                            id = entity.id,
-                            orderId = entity.orderId,
-                            customerName = entity.customerName ?: "Unknown",
-                            statusName = entity.statusName ?: "",
-                            statusColor = entity.statusColor ?: "#6b7280",
-                        )
-                    },
-                )
+                _state.update {
+                    it.copy(
+                        myQueue = entities.map { entity ->
+                            TicketSummary(
+                                id = entity.id,
+                                orderId = entity.orderId,
+                                customerName = entity.customerName ?: "Unknown",
+                                statusName = entity.statusName ?: "",
+                                statusColor = entity.statusColor ?: "#6b7280",
+                            )
+                        },
+                    )
+                }
             }
         }
     }
@@ -1085,7 +1102,7 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun refresh() {
-        _state.value = _state.value.copy(isRefreshing = true)
+        _state.update { it.copy(isRefreshing = true) }
         loadDashboard()
     }
 }

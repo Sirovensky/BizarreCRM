@@ -57,6 +57,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -129,7 +130,7 @@ class SwitchUserViewModel @Inject constructor(
 
     private fun submit(pin: String) {
         if (pin.isBlank()) return
-        _state.value = _state.value.copy(isWorking = true, errorMessage = null)
+        _state.update { it.copy(isWorking = true, errorMessage = null) }
 
         viewModelScope.launch {
             try {
@@ -137,10 +138,12 @@ class SwitchUserViewModel @Inject constructor(
                 // We never pass pin into any log call.
                 val response = authApi.switchUser(SwitchUserRequest(pin = pin))
                 val data = response.data ?: run {
-                    _state.value = _state.value.copy(
-                        isWorking = false,
-                        errorMessage = "Unexpected empty response from server",
-                    )
+                    _state.update {
+                        it.copy(
+                            isWorking = false,
+                            errorMessage = "Unexpected empty response from server",
+                        )
+                    }
                     return@launch
                 }
                 // Persist new identity immediately.
@@ -229,7 +232,7 @@ class SwitchUserViewModel @Inject constructor(
             while (remaining > 0) {
                 delay(1_000L)
                 remaining--
-                _state.value = _state.value.copy(lockoutRemainingSeconds = remaining)
+                _state.update { it.copy(lockoutRemainingSeconds = remaining) }
             }
         }
     }

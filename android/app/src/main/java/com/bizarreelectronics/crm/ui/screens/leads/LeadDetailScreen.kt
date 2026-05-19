@@ -41,6 +41,7 @@ import com.bizarreelectronics.crm.util.UndoStack
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -188,11 +189,13 @@ class LeadDetailViewModel @Inject constructor(
     private fun collectLead() {
         viewModelScope.launch {
             leadRepository.getLead(leadId).collect { entity ->
-                _state.value = _state.value.copy(
-                    lead = entity,
-                    isLoading = false,
-                    error = if (entity == null && !_state.value.isLoading) "Lead not found" else null,
-                )
+                _state.update {
+                    it.copy(
+                        lead = entity,
+                        isLoading = false,
+                        error = if (entity == null && !_state.value.isLoading) "Lead not found" else null,
+                    )
+                }
             }
         }
     }
@@ -204,7 +207,7 @@ class LeadDetailViewModel @Inject constructor(
         val oldStatus = lead.status
 
         viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
+            _state.update { it.copy(isActionInProgress = true) }
             try {
                 leadRepository.updateLead(
                     leadId,
@@ -213,7 +216,7 @@ class LeadDetailViewModel @Inject constructor(
                 // Note: no separate "Status updated" actionMessage — the UndoStack.Pushed
                 // event shows "Edit saved / Undo" Snackbar immediately after push(),
                 // which serves as the confirmation. Avoiding double-snackbar.
-                _state.value = _state.value.copy(isActionInProgress = false)
+                _state.update { it.copy(isActionInProgress = false) }
 
                 // Push undo entry: StatusChange covers the lead status/stage concept.
                 val payload = LeadEdit.StatusChange(
@@ -264,10 +267,12 @@ class LeadDetailViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Failed to update status: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Failed to update status: ${e.message}",
+                    )
+                }
             }
         }
     }
@@ -280,10 +285,10 @@ class LeadDetailViewModel @Inject constructor(
         if (oldValue == newValue) return
         val request = buildSingleFieldRequest(fieldName, newValue)
         viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
+            _state.update { it.copy(isActionInProgress = true) }
             try {
                 leadRepository.updateLead(leadId, request)
-                _state.value = _state.value.copy(isActionInProgress = false)
+                _state.update { it.copy(isActionInProgress = false) }
 
                 val payload = LeadEdit.FieldEdit(
                     fieldName = fieldName,
@@ -318,10 +323,12 @@ class LeadDetailViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Failed to update $fieldName: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Failed to update $fieldName: ${e.message}",
+                    )
+                }
             }
         }
     }
@@ -337,13 +344,13 @@ class LeadDetailViewModel @Inject constructor(
         val oldStage = lead.status
 
         viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
+            _state.update { it.copy(isActionInProgress = true) }
             try {
                 leadRepository.updateLead(
                     leadId,
                     UpdateLeadRequest(status = newStage),
                 )
-                _state.value = _state.value.copy(isActionInProgress = false)
+                _state.update { it.copy(isActionInProgress = false) }
 
                 val payload = LeadEdit.StageChange(
                     oldStage = oldStage,
@@ -392,10 +399,12 @@ class LeadDetailViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Failed to update stage: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Failed to update stage: ${e.message}",
+                    )
+                }
             }
         }
     }
@@ -418,16 +427,18 @@ class LeadDetailViewModel @Inject constructor(
         val oldNotes = lead.notes
 
         viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
+            _state.update { it.copy(isActionInProgress = true) }
             try {
                 leadRepository.updateLead(
                     leadId,
                     UpdateLeadRequest(notes = trimmed),
                 )
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Note saved",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Note saved",
+                    )
+                }
 
                 // noteId == leadId because notes are scalar on the lead record.
                 val payload = LeadEdit.NoteAdded(noteId = leadId, body = trimmed)
@@ -459,45 +470,53 @@ class LeadDetailViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Failed to save note: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Failed to save note: ${e.message}",
+                    )
+                }
             }
         }
     }
 
     fun convertToTicket() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
+            _state.update { it.copy(isActionInProgress = true) }
             try {
                 val ticketId = leadRepository.convertLead(leadId)
                 if (ticketId != null) {
-                    _state.value = _state.value.copy(
-                        isActionInProgress = false,
-                        actionMessage = "Lead converted to ticket",
-                    )
+                    _state.update {
+                        it.copy(
+                            isActionInProgress = false,
+                            actionMessage = "Lead converted to ticket",
+                        )
+                    }
                     _convertedTicketId.value = ticketId
                 } else {
-                    _state.value = _state.value.copy(
-                        isActionInProgress = false,
-                        actionMessage = "Convert failed: no ticket returned",
-                    )
+                    _state.update {
+                        it.copy(
+                            isActionInProgress = false,
+                            actionMessage = "Convert failed: no ticket returned",
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Failed to convert: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Failed to convert: ${e.message}",
+                    )
+                }
             }
         }
     }
 
     fun delete() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
+            _state.update { it.copy(isActionInProgress = true) }
             try {
                 // Soft-delete by marking isDeleted — the server's delete endpoint
                 // isn't wired in the repository yet, so we use updateLead for now.
@@ -505,17 +524,21 @@ class LeadDetailViewModel @Inject constructor(
                     leadId,
                     UpdateLeadRequest(status = "lost", lostReason = "Deleted by user"),
                 )
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Lead marked as lost",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Lead marked as lost",
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Failed to delete: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Failed to delete: ${e.message}",
+                    )
+                }
             }
         }
     }
@@ -525,25 +548,25 @@ class LeadDetailViewModel @Inject constructor(
      * screen shows [LostReasonDialog]. Call [confirmLostWithReason] once the user picks.
      */
     fun requestLostTransition() {
-        _state.value = _state.value.copy(pendingLostTransition = true)
+        _state.update { it.copy(pendingLostTransition = true) }
     }
 
     fun cancelLostTransition() {
-        _state.value = _state.value.copy(pendingLostTransition = false)
+        _state.update { it.copy(pendingLostTransition = false) }
     }
 
     /** Called from [LostReasonDialog] after the user picks a reason. */
     fun confirmLostWithReason(reason: String) {
-        _state.value = _state.value.copy(pendingLostTransition = false)
+        _state.update { it.copy(pendingLostTransition = false) }
         val old = _state.value.lead?.status
         viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
+            _state.update { it.copy(isActionInProgress = true) }
             try {
                 leadRepository.updateLead(
                     leadId,
                     UpdateLeadRequest(status = "lost", lostReason = reason),
                 )
-                _state.value = _state.value.copy(isActionInProgress = false)
+                _state.update { it.copy(isActionInProgress = false) }
                 undoStack.push(
                     UndoStack.Entry(
                         payload = LeadEdit.StatusChange(oldStatus = old, newStatus = "lost"),
@@ -565,10 +588,12 @@ class LeadDetailViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Failed to mark as lost: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Failed to mark as lost: ${e.message}",
+                    )
+                }
             }
         }
     }
@@ -579,34 +604,40 @@ class LeadDetailViewModel @Inject constructor(
      */
     fun convertToCustomer() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
+            _state.update { it.copy(isActionInProgress = true) }
             try {
                 val response = leadApi.convertToCustomer(leadId)
                 val customerId = (response.data?.get("customerId") as? Number)?.toLong()
                 if (customerId != null) {
                     refreshLeadInBackground()
-                    _state.value = _state.value.copy(
-                        isActionInProgress = false,
-                        convertedCustomerId = customerId,
-                        actionMessage = "Lead converted to customer",
-                    )
+                    _state.update {
+                        it.copy(
+                            isActionInProgress = false,
+                            convertedCustomerId = customerId,
+                            actionMessage = "Lead converted to customer",
+                        )
+                    }
                 } else {
-                    _state.value = _state.value.copy(
-                        isActionInProgress = false,
-                        actionMessage = "Convert returned no customer id",
-                    )
+                    _state.update {
+                        it.copy(
+                            isActionInProgress = false,
+                            actionMessage = "Convert returned no customer id",
+                        )
+                    }
                 }
             } catch (e: retrofit2.HttpException) {
                 val msg = if (e.code() == 404) "Convert to customer not yet available on this server"
                           else "Failed to convert: ${e.message}"
-                _state.value = _state.value.copy(isActionInProgress = false, actionMessage = msg)
+                _state.update { it.copy(isActionInProgress = false, actionMessage = msg) }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Failed to convert to customer: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Failed to convert to customer: ${e.message}",
+                    )
+                }
             }
         }
     }
@@ -617,42 +648,52 @@ class LeadDetailViewModel @Inject constructor(
      */
     fun convertToEstimate() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
+            _state.update { it.copy(isActionInProgress = true) }
             try {
                 val response = leadApi.convertToEstimate(leadId)
                 val estimateId = (response.data?.get("estimateId") as? Number)?.toLong()
                 if (estimateId != null) {
-                    _state.value = _state.value.copy(
-                        isActionInProgress = false,
-                        convertedEstimateId = estimateId,
-                        actionMessage = "Lead converted to estimate",
-                    )
+                    _state.update {
+                        it.copy(
+                            isActionInProgress = false,
+                            convertedEstimateId = estimateId,
+                            actionMessage = "Lead converted to estimate",
+                        )
+                    }
                 } else {
-                    _state.value = _state.value.copy(
-                        isActionInProgress = false,
-                        actionMessage = "Convert returned no estimate id",
-                    )
+                    _state.update {
+                        it.copy(
+                            isActionInProgress = false,
+                            actionMessage = "Convert returned no estimate id",
+                        )
+                    }
                 }
             } catch (e: retrofit2.HttpException) {
                 if (e.code() == 404) {
                     // Server endpoint not deployed — fall through to client-side create flow
-                    _state.value = _state.value.copy(
-                        isActionInProgress = false,
-                        navigateToEstimateCreate = true,
-                    )
+                    _state.update {
+                        it.copy(
+                            isActionInProgress = false,
+                            navigateToEstimateCreate = true,
+                        )
+                    }
                 } else {
-                    _state.value = _state.value.copy(
-                        isActionInProgress = false,
-                        actionMessage = "Failed to convert: ${e.message}",
-                    )
+                    _state.update {
+                        it.copy(
+                            isActionInProgress = false,
+                            actionMessage = "Failed to convert: ${e.message}",
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Failed to convert to estimate: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Failed to convert to estimate: ${e.message}",
+                    )
+                }
             }
         }
     }
@@ -670,19 +711,19 @@ class LeadDetailViewModel @Inject constructor(
     }
 
     fun clearActionMessage() {
-        _state.value = _state.value.copy(actionMessage = null)
+        _state.update { it.copy(actionMessage = null) }
     }
 
     fun clearConvertedCustomerId() {
-        _state.value = _state.value.copy(convertedCustomerId = null)
+        _state.update { it.copy(convertedCustomerId = null) }
     }
 
     fun clearConvertedEstimateId() {
-        _state.value = _state.value.copy(convertedEstimateId = null)
+        _state.update { it.copy(convertedEstimateId = null) }
     }
 
     fun clearNavigateToEstimateCreate() {
-        _state.value = _state.value.copy(navigateToEstimateCreate = false)
+        _state.update { it.copy(navigateToEstimateCreate = false) }
     }
 
     /**

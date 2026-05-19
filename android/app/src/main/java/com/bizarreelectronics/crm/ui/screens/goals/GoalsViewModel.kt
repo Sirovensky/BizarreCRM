@@ -8,6 +8,7 @@ import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
@@ -61,58 +62,66 @@ class GoalsViewModel @Inject constructor(
         get() = authPreferences.userRole?.lowercase() in setOf("manager", "admin", "owner")
 
     init {
-        _state.value = _state.value.copy(isManager = isManagerOrAdmin)
+        _state.update { it.copy(isManager = isManagerOrAdmin) }
         loadGoals()
     }
 
     fun loadGoals() {
         if (!serverMonitor.isEffectivelyOnline.value) {
-            _state.value = _state.value.copy(isLoading = false, error = "Device is offline")
+            _state.update { it.copy(isLoading = false, error = "Device is offline") }
             return
         }
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = _state.value.goals.isEmpty(), error = null)
+            _state.update { it.copy(isLoading = _state.value.goals.isEmpty(), error = null) }
             try {
                 val response = goalApi.getGoals()
                 val rawList = parseGoalList(response.data)
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    goals = rawList,
-                    serverUnsupported = false,
-                )
-            } catch (e: HttpException) {
-                if (e.code() == 404) {
-                    _state.value = _state.value.copy(
-                        isLoading = false, isRefreshing = false,
-                        serverUnsupported = true, goals = emptyList(),
-                    )
-                } else {
-                    _state.value = _state.value.copy(
-                        isLoading = false, isRefreshing = false,
-                        error = "Failed to load goals (${e.code()})",
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        goals = rawList,
+                        serverUnsupported = false,
                     )
                 }
+            } catch (e: HttpException) {
+                if (e.code() == 404) {
+                    _state.update {
+                        it.copy(
+                            isLoading = false, isRefreshing = false,
+                            serverUnsupported = true, goals = emptyList(),
+                        )
+                    }
+                } else {
+                    _state.update {
+                        it.copy(
+                            isLoading = false, isRefreshing = false,
+                            error = "Failed to load goals (${e.code()})",
+                        )
+                    }
+                }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false, isRefreshing = false,
-                    error = e.message ?: "Failed to load goals",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false, isRefreshing = false,
+                        error = e.message ?: "Failed to load goals",
+                    )
+                }
             }
         }
     }
 
     fun refresh() {
-        _state.value = _state.value.copy(isRefreshing = true)
+        _state.update { it.copy(isRefreshing = true) }
         loadGoals()
     }
 
     fun showCreateDialog() {
-        _state.value = _state.value.copy(showCreateDialog = true)
+        _state.update { it.copy(showCreateDialog = true) }
     }
 
     fun dismissCreateDialog() {
-        _state.value = _state.value.copy(showCreateDialog = false)
+        _state.update { it.copy(showCreateDialog = false) }
     }
 
     /** Create a new goal. [employeeId] defaults to current user if null. */
@@ -125,7 +134,7 @@ class GoalsViewModel @Inject constructor(
         employeeId: Long? = null,
     ) {
         if (title.isBlank()) {
-            _state.value = _state.value.copy(toastMessage = "Title is required")
+            _state.update { it.copy(toastMessage = "Title is required") }
             return
         }
         viewModelScope.launch {
@@ -141,15 +150,17 @@ class GoalsViewModel @Inject constructor(
             // create retap could DUPLICATE the goal row.
             try {
                 goalApi.createGoal(body)
-                _state.value = _state.value.copy(
-                    showCreateDialog = false,
-                    toastMessage = "Goal created",
-                )
+                _state.update {
+                    it.copy(
+                        showCreateDialog = false,
+                        toastMessage = "Goal created",
+                    )
+                }
                 loadGoals()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(toastMessage = "Failed to create goal")
+                _state.update { it.copy(toastMessage = "Failed to create goal") }
             }
         }
     }
@@ -160,18 +171,18 @@ class GoalsViewModel @Inject constructor(
             // server may have committed delete, retap 404s.
             try {
                 goalApi.deleteGoal(id)
-                _state.value = _state.value.copy(toastMessage = "Goal removed")
+                _state.update { it.copy(toastMessage = "Goal removed") }
                 loadGoals()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(toastMessage = "Failed to remove goal")
+                _state.update { it.copy(toastMessage = "Failed to remove goal") }
             }
         }
     }
 
     fun clearToast() {
-        _state.value = _state.value.copy(toastMessage = null)
+        _state.update { it.copy(toastMessage = null) }
     }
 
     // ── Parsing helpers ───────────────────────────────────────────────────────

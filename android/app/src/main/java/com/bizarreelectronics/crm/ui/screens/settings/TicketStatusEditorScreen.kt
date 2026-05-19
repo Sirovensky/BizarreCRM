@@ -76,6 +76,7 @@ import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import com.bizarreelectronics.crm.data.remote.dto.TicketStatusItem
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.CancellationException
@@ -122,21 +123,25 @@ class TicketStatusEditorViewModel @Inject constructor(
 
     private fun load() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, errorMessage = null)
+            _state.update { it.copy(isLoading = true, errorMessage = null) }
             try {
                 val resp = settingsApi.getStatusList()
                 val items = resp.data ?: emptyList()
-                _state.value = _state.value.copy(
-                    statuses = items.sortedBy { it.sortOrder },
-                    isLoading = false,
-                )
+                _state.update {
+                    it.copy(
+                        statuses = items.sortedBy { it.sortOrder },
+                        isLoading = false,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (err: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    errorMessage = "Could not load statuses: ${err.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = "Could not load statuses: ${err.message}",
+                    )
+                }
             }
         }
     }
@@ -166,20 +171,22 @@ class TicketStatusEditorViewModel @Inject constructor(
         val original = _state.value.statuses.find { it.id == id } ?: return
 
         // Optimistic update
-        _state.value = _state.value.copy(
-            savingId = id,
-            statuses = _state.value.statuses.map { s ->
-                if (s.id == id) s.copy(
-                    name = name,
-                    color = color,
-                    notifyCustomer = if (notifyCustomer) 1 else 0,
-                    isClosed = if (isClosed) 1 else 0,
-                    isCancelled = if (isCancelled) 1 else 0,
-                    waitingCustomer = if (waitingCustomer) 1 else 0,
-                    awaitingParts = if (awaitingParts) 1 else 0,
-                ) else s
-            },
-        )
+        _state.update {
+            it.copy(
+                savingId = id,
+                statuses = _state.value.statuses.map { s ->
+                    if (s.id == id) s.copy(
+                        name = name,
+                        color = color,
+                        notifyCustomer = if (notifyCustomer) 1 else 0,
+                        isClosed = if (isClosed) 1 else 0,
+                        isCancelled = if (isCancelled) 1 else 0,
+                        waitingCustomer = if (waitingCustomer) 1 else 0,
+                        awaitingParts = if (awaitingParts) 1 else 0,
+                    ) else s
+                },
+            )
+        }
 
         viewModelScope.launch {
             try {
@@ -195,21 +202,25 @@ class TicketStatusEditorViewModel @Inject constructor(
                         put("awaiting_parts", if (awaitingParts) 1 else 0)
                     },
                 )
-                _state.value = _state.value.copy(
-                    savingId = null,
-                    snackMessage = "\"$name\" saved",
-                )
+                _state.update {
+                    it.copy(
+                        savingId = null,
+                        snackMessage = "\"$name\" saved",
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (err: Exception) {
                 // Roll back
-                _state.value = _state.value.copy(
-                    savingId = null,
-                    statuses = _state.value.statuses.map { s ->
-                        if (s.id == id) original else s
-                    },
-                    snackMessage = "Save failed: ${err.message}",
-                )
+                _state.update {
+                    it.copy(
+                        savingId = null,
+                        statuses = _state.value.statuses.map { s ->
+                            if (s.id == id) original else s
+                        },
+                        snackMessage = "Save failed: ${err.message}",
+                    )
+                }
             }
         }
     }
@@ -232,7 +243,7 @@ class TicketStatusEditorViewModel @Inject constructor(
         // Assign new sort_order values (0-based index) so the list stays
         // consistent even before the server round-trip finishes.
         val reindexed = current.mapIndexed { idx, s -> s.copy(sortOrder = idx) }
-        _state.value = _state.value.copy(statuses = reindexed)
+        _state.update { it.copy(statuses = reindexed) }
     }
 
     /**
@@ -263,18 +274,20 @@ class TicketStatusEditorViewModel @Inject constructor(
                 } catch (e: CancellationException) {
                     throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
                 } catch (err: Exception) {
-                    _state.value = _state.value.copy(
-                        snackMessage = "Reorder save failed: ${err.message}",
-                    )
+                    _state.update {
+                        it.copy(
+                            snackMessage = "Reorder save failed: ${err.message}",
+                        )
+                    }
                     return@launch // stop on first error to avoid cascading failures
                 }
             }
-            _state.value = _state.value.copy(snackMessage = "Order saved")
+            _state.update { it.copy(snackMessage = "Order saved") }
         }
     }
 
-    fun clearSnack() { _state.value = _state.value.copy(snackMessage = null) }
-    fun clearError() { _state.value = _state.value.copy(errorMessage = null) }
+    fun clearSnack() { _state.update { it.copy(snackMessage = null) } }
+    fun clearError() { _state.update { it.copy(errorMessage = null) } }
 }
 
 // ─── Screen ───────────────────────────────────────────────────────────────────

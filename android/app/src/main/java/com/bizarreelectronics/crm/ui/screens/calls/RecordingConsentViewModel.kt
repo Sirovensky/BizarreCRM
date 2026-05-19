@@ -8,6 +8,7 @@ import com.bizarreelectronics.crm.data.remote.api.VoiceApi
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
@@ -50,39 +51,45 @@ class RecordingConsentViewModel @Inject constructor(
             // BUGHUNT-2026-05-17: runCatching swallows CancellationException.
             try {
                 val resp = voiceApi.getRecordingConfig()
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    config = resp.data,
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        config = resp.data,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 val is404 = (e as? HttpException)?.code() == 404
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    config = if (is404) RecordingConfigData(
-                        enabled = false,
-                        two_party_required = false,
-                        announcement_url = null,
-                    ) else null,
-                    error = if (is404) null else (e.message ?: "Failed to load recording config"),
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        config = if (is404) RecordingConfigData(
+                            enabled = false,
+                            two_party_required = false,
+                            announcement_url = null,
+                        ) else null,
+                        error = if (is404) null else (e.message ?: "Failed to load recording config"),
+                    )
+                }
             }
         }
     }
 
     fun saveConsent(callId: Long, consented: Boolean) {
-        _state.value = _state.value.copy(isSaving = true)
+        _state.update { it.copy(isSaving = true) }
         viewModelScope.launch {
             try {
                 voiceApi.postRecordingConsent(
                     RecordingConsentRequest(call_id = callId, consented = consented),
                 )
-                _state.value = _state.value.copy(
-                    isSaving = false,
-                    consentGiven = consented,
-                    actionMessage = if (consented) "Recording consent given" else "Recording consent withdrawn",
-                )
+                _state.update {
+                    it.copy(
+                        isSaving = false,
+                        consentGiven = consented,
+                        actionMessage = if (consented) "Recording consent given" else "Recording consent withdrawn",
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: re-throw cancellation. runCatching used
                 // to catch CancellationException and surface it as
@@ -93,18 +100,20 @@ class RecordingConsentViewModel @Inject constructor(
                 // "consented=true" to "consented=false" on retry).
                 // Clear isSaving so the VM state is consistent after the
                 // scope tears down, then propagate.
-                _state.value = _state.value.copy(isSaving = false)
+                _state.update { it.copy(isSaving = false) }
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSaving = false,
-                    actionMessage = "Failed to save consent: ${e.message ?: "Unknown error"}",
-                )
+                _state.update {
+                    it.copy(
+                        isSaving = false,
+                        actionMessage = "Failed to save consent: ${e.message ?: "Unknown error"}",
+                    )
+                }
             }
         }
     }
 
     fun clearActionMessage() {
-        _state.value = _state.value.copy(actionMessage = null)
+        _state.update { it.copy(actionMessage = null) }
     }
 }

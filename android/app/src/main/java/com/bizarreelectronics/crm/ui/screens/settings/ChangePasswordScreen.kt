@@ -64,6 +64,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -146,29 +147,35 @@ class ChangePasswordViewModel @Inject constructor(
     // ── field updates (immutable copies) ──────────────────────────────
 
     fun updateCurrentPassword(value: String) {
-        _state.value = _state.value.copy(
-            currentPassword = value,
-            error = null,
-        )
+        _state.update {
+            it.copy(
+                currentPassword = value,
+                error = null,
+            )
+        }
     }
 
     fun updateNewPassword(value: String) {
-        _state.value = _state.value.copy(
-            newPassword = value,
-            strength = PasswordStrength.evaluate(value),
-            error = null,
-        )
+        _state.update {
+            it.copy(
+                newPassword = value,
+                strength = PasswordStrength.evaluate(value),
+                error = null,
+            )
+        }
     }
 
     fun updateConfirmPassword(value: String) {
-        _state.value = _state.value.copy(
-            confirmPassword = value,
-            error = null,
-        )
+        _state.update {
+            it.copy(
+                confirmPassword = value,
+                error = null,
+            )
+        }
     }
 
     fun updateSignOutOtherSessions(value: Boolean) {
-        _state.value = _state.value.copy(signOutOtherSessions = value)
+        _state.update { it.copy(signOutOtherSessions = value) }
     }
 
     // ── validation ─────────────────────────────────────────────────────
@@ -224,10 +231,12 @@ class ChangePasswordViewModel @Inject constructor(
                 // failure) and the success path each fire deterministically.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = extractErrorMessage(e),
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = extractErrorMessage(e),
+                    )
+                }
             }
         }
     }

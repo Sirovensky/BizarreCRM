@@ -101,6 +101,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -440,7 +441,7 @@ class LoginViewModel @Inject constructor(
         // because login always requires a real network round-trip.
         viewModelScope.launch {
             networkMonitor.isOnline.collect { online ->
-                _state.value = _state.value.copy(networkOffline = !online)
+                _state.update { it.copy(networkOffline = !online) }
             }
         }
 
@@ -462,7 +463,7 @@ class LoginViewModel @Inject constructor(
             deepLinkBus.pendingMagicToken.collect { token ->
                 if (token != null) {
                     deepLinkBus.consumeMagicToken()
-                    _state.value = _state.value.copy(pendingMagicToken = token)
+                    _state.update { it.copy(pendingMagicToken = token) }
                 }
             }
         }
@@ -532,30 +533,32 @@ class LoginViewModel @Inject constructor(
         }
     }
 
-    fun updateServerUrl(value: String) { _state.value = _state.value.copy(serverUrl = value, error = null, serverConnected = false) }
+    fun updateServerUrl(value: String) { _state.update { it.copy(serverUrl = value, error = null, serverConnected = false) } }
     fun updateShopSlug(value: String) {
         val filtered = value.lowercase().filter { it.isLetterOrDigit() || it == '-' }.take(30)
-        _state.value = _state.value.copy(shopSlug = filtered, error = null, serverConnected = false)
+        _state.update { it.copy(shopSlug = filtered, error = null, serverConnected = false) }
     }
-    fun toggleCustomServer() { _state.value = _state.value.copy(useCustomServer = !_state.value.useCustomServer, error = null) }
+    fun toggleCustomServer() { _state.update { it.copy(useCustomServer = !_state.value.useCustomServer, error = null) } }
     fun goToRegister() {
-        _state.value = _state.value.copy(
-            step = SetupStep.REGISTER,
-            registerSubStep = RegisterSubStep.Company,
-            error = null,
-        )
+        _state.update {
+            it.copy(
+                step = SetupStep.REGISTER,
+                registerSubStep = RegisterSubStep.Company,
+                error = null,
+            )
+        }
     }
-    fun updateRegisterShopName(value: String) { _state.value = _state.value.copy(registerShopName = value, error = null) }
-    fun updateRegisterEmail(value: String) { _state.value = _state.value.copy(registerEmail = value, error = null) }
-    fun updateRegisterPassword(value: String) { _state.value = _state.value.copy(registerPassword = value, error = null) }
-    fun updateRegisterTimezone(value: String) { _state.value = _state.value.copy(registerTimezone = value, error = null) }
-    fun updateRegisterShopType(value: String) { _state.value = _state.value.copy(registerShopType = value, error = null) }
+    fun updateRegisterShopName(value: String) { _state.update { it.copy(registerShopName = value, error = null) } }
+    fun updateRegisterEmail(value: String) { _state.update { it.copy(registerEmail = value, error = null) } }
+    fun updateRegisterPassword(value: String) { _state.update { it.copy(registerPassword = value, error = null) } }
+    fun updateRegisterTimezone(value: String) { _state.update { it.copy(registerTimezone = value, error = null) } }
+    fun updateRegisterShopType(value: String) { _state.update { it.copy(registerShopType = value, error = null) } }
     // §2.7-L326 — owner identity field updaters
-    fun updateRegisterFirstName(value: String) { _state.value = _state.value.copy(registerFirstName = value, error = null) }
-    fun updateRegisterLastName(value: String) { _state.value = _state.value.copy(registerLastName = value, error = null) }
-    fun updateRegisterUsername(value: String) { _state.value = _state.value.copy(registerUsername = value, error = null) }
+    fun updateRegisterFirstName(value: String) { _state.update { it.copy(registerFirstName = value, error = null) } }
+    fun updateRegisterLastName(value: String) { _state.update { it.copy(registerLastName = value, error = null) } }
+    fun updateRegisterUsername(value: String) { _state.update { it.copy(registerUsername = value, error = null) } }
     // §2.7-L330 — called by LoginScreen when a setup token arrives via deep link.
-    fun applySetupToken(token: String?) { _state.value = _state.value.copy(registerSetupToken = token) }
+    fun applySetupToken(token: String?) { _state.update { it.copy(registerSetupToken = token) } }
 
     // §2.7-L326 — sub-step navigation within REGISTER.
     fun registerNextSubStep() {
@@ -609,15 +612,17 @@ class LoginViewModel @Inject constructor(
     private var _domainCheckJob: kotlinx.coroutines.Job? = null
 
     fun updateUsername(value: String) {
-        _state.value = _state.value.copy(
-            username = value,
-            error = null,
-            unreachableHost = false,
-            rateLimited = false,
-            // Reset domain SSO state when username changes
-            domainSsoDetected = false,
-            domainSsoProviderId = null,
-        )
+        _state.update {
+            it.copy(
+                username = value,
+                error = null,
+                unreachableHost = false,
+                rateLimited = false,
+                // Reset domain SSO state when username changes
+                domainSsoDetected = false,
+                domainSsoProviderId = null,
+            )
+        }
         // §2.20 L449 — if the username looks like an email, debounce a domain check
         val atIdx = value.indexOf('@')
         if (atIdx > 0) {
@@ -641,36 +646,40 @@ class LoginViewModel @Inject constructor(
      * Any network error is silenced — local-auth fallback remains available.
      */
     private suspend fun checkDomainSso(domain: String) {
-        _state.value = _state.value.copy(domainSsoChecking = true)
+        _state.update { it.copy(domainSsoChecking = true) }
         try {
             val response = authApi.checkSsoDomain(domain)
             val result = response.data
-            _state.value = _state.value.copy(
-                domainSsoDetected = result?.uses_sso == true,
-                domainSsoProviderId = if (result?.uses_sso == true) result.provider_id else null,
-                domainSsoChecking = false,
-            )
+            _state.update {
+                it.copy(
+                    domainSsoDetected = result?.uses_sso == true,
+                    domainSsoProviderId = if (result?.uses_sso == true) result.provider_id else null,
+                    domainSsoChecking = false,
+                )
+            }
         } catch (e: retrofit2.HttpException) {
             // 404 → domain not in SSO config; treat as local auth
-            _state.value = _state.value.copy(
-                domainSsoDetected = false,
-                domainSsoProviderId = null,
-                domainSsoChecking = false,
-            )
+            _state.update {
+                it.copy(
+                    domainSsoDetected = false,
+                    domainSsoProviderId = null,
+                    domainSsoChecking = false,
+                )
+            }
         } catch (_: Exception) {
             // Network error — silently fall back to local auth
-            _state.value = _state.value.copy(domainSsoChecking = false)
+            _state.update { it.copy(domainSsoChecking = false) }
         }
     }
 
     fun updatePassword(value: String) {
-        _state.value = _state.value.copy(password = value, error = null, unreachableHost = false, rateLimited = false)
+        _state.update { it.copy(password = value, error = null, unreachableHost = false, rateLimited = false) }
     }
-    fun updateNewPassword(value: String) { _state.value = _state.value.copy(newPassword = value, error = null) }
-    fun updateConfirmPassword(value: String) { _state.value = _state.value.copy(confirmPassword = value, error = null) }
+    fun updateNewPassword(value: String) { _state.update { it.copy(newPassword = value, error = null) } }
+    fun updateConfirmPassword(value: String) { _state.update { it.copy(confirmPassword = value, error = null) } }
     fun updateTotpCode(value: String) {
         if (value.length <= 6 && value.all { it.isDigit() }) {
-            _state.value = _state.value.copy(totpCode = value, error = null)
+            _state.update { it.copy(totpCode = value, error = null) }
         }
     }
 
@@ -787,19 +796,23 @@ class LoginViewModel @Inject constructor(
                 // have not been verified yet. Persistence happens in login() and
                 // verify2FA() once credentials are confirmed.
 
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    serverConnected = true,
-                    serverUrl = url,
-                    storeName = result,
-                    step = SetupStep.CREDENTIALS,
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        serverConnected = true,
+                        serverUrl = url,
+                        storeName = result,
+                        step = SetupStep.CREDENTIALS,
+                    )
+                }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = if (_state.value.useCustomServer) "Could not connect: ${e.message}"
-                            else "Shop not found. Check the name and try again.",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = if (_state.value.useCustomServer) "Could not connect: ${e.message}"
+                                else "Shop not found. Check the name and try again.",
+                    )
+                }
             }
         }
     }
@@ -900,19 +913,21 @@ class LoginViewModel @Inject constructor(
                         // /auth/me failure is non-blocking; tokens are already persisted above
                     }
                     syncNotificationPreferencesAfterLogin()
-                    _state.value = _state.value.copy(isLoading = false, registerSubStep = RegisterSubStep.Company)
+                    _state.update { it.copy(isLoading = false, registerSubStep = RegisterSubStep.Company) }
                     onAutoLogin?.invoke()
                 } else {
                     // Fallback: no token in response — push to CREDENTIALS with email pre-filled
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        serverConnected = true,
-                        storeName = s.registerShopName.trim(),
-                        // Pre-fill username from email so user only needs the password
-                        username = s.registerEmail.trim(),
-                        step = SetupStep.CREDENTIALS,
-                        registerSubStep = RegisterSubStep.Company,
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            serverConnected = true,
+                            storeName = s.registerShopName.trim(),
+                            // Pre-fill username from email so user only needs the password
+                            username = s.registerEmail.trim(),
+                            step = SetupStep.CREDENTIALS,
+                            registerSubStep = RegisterSubStep.Company,
+                        )
+                    }
                 }
             } catch (e: Exception) {
                 // LOGIN-MOCK-175: distinguish slug conflict (409) from network timeout.
@@ -932,10 +947,12 @@ class LoginViewModel @Inject constructor(
                         "Network error. Check your connection and try again."
                     else -> rawMsg
                 }
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = errorMsg,
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = errorMsg,
+                    )
+                }
             }
         }
     }
@@ -973,30 +990,36 @@ class LoginViewModel @Inject constructor(
                 val data = response.data
                 if (data == null) {
                     // Unexpected null body — treat as non-blocking probe failure
-                    _state.value = _state.value.copy(
-                        isProbing = false,
-                        probeError = null,
-                        setupNeeded = false,
-                    )
+                    _state.update {
+                        it.copy(
+                            isProbing = false,
+                            probeError = null,
+                            setupNeeded = false,
+                        )
+                    }
                     return@launch
                 }
                 // TODO(§2.10): when data.isMultiTenant == true and no tenant is chosen,
                 // push the tenant-picker screen. Tenant picker doesn't exist yet.
-                _state.value = _state.value.copy(
-                    isProbing = false,
-                    setupNeeded = data.needsSetup,
-                    probeError = null,
-                )
+                _state.update {
+                    it.copy(
+                        isProbing = false,
+                        setupNeeded = data.needsSetup,
+                        probeError = null,
+                    )
+                }
             } catch (e: Exception) {
                 // Non-blocking: probe failure is silent. The probe's only user-visible
                 // purpose is surfacing needsSetup=true (a different banner). A network
                 // blip or first-run miss must NOT show an error — the login form is
                 // fully functional regardless of probe result.
                 timber.log.Timber.w(e, "setup-status probe failed silently (non-blocking)")
-                _state.value = _state.value.copy(
-                    isProbing = false,
-                    probeError = null,
-                )
+                _state.update {
+                    it.copy(
+                        isProbing = false,
+                        probeError = null,
+                    )
+                }
             }
         }
     }
@@ -1049,13 +1072,15 @@ class LoginViewModel @Inject constructor(
                 val expiresAt = System.currentTimeMillis() + 600_000L
                 when {
                     data.requiresPasswordSetup == true -> {
-                        _state.value = _state.value.copy(
-                            isLoading = false,
-                            challengeToken = challengeToken,
-                            challengeTokenExpiresAtMs = expiresAt,
-                            challengeExpired = false,
-                            step = SetupStep.SET_PASSWORD,
-                        )
+                        _state.update {
+                            it.copy(
+                                isLoading = false,
+                                challengeToken = challengeToken,
+                                challengeTokenExpiresAtMs = expiresAt,
+                                challengeExpired = false,
+                                step = SetupStep.SET_PASSWORD,
+                            )
+                        }
                     }
                     data.requires2faSetup == true || data.totpEnabled != true -> {
                         // Need to set up 2FA first — setup2FA will update expiresAt when
@@ -1064,13 +1089,15 @@ class LoginViewModel @Inject constructor(
                     }
                     else -> {
                         // 2FA already set up, just need code
-                        _state.value = _state.value.copy(
-                            isLoading = false,
-                            challengeToken = challengeToken,
-                            challengeTokenExpiresAtMs = expiresAt,
-                            challengeExpired = false,
-                            step = SetupStep.TWO_FA_VERIFY,
-                        )
+                        _state.update {
+                            it.copy(
+                                isLoading = false,
+                                challengeToken = challengeToken,
+                                challengeTokenExpiresAtMs = expiresAt,
+                                challengeExpired = false,
+                                step = SetupStep.TWO_FA_VERIFY,
+                            )
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -1090,38 +1117,44 @@ class LoginViewModel @Inject constructor(
                         ?: try { e.response()?.headers()?.get("Retry-After")?.toLong() ?: 60L }
                            catch (_: NumberFormatException) { 60L }
                     val resetAt = System.currentTimeMillis() + retryAfterSec * 1000L
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        rateLimited = true,
-                        rateLimitResetMs = resetAt,
-                        rateLimitScope = scope,
-                        error = null,
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            rateLimited = true,
+                            rateLimitResetMs = resetAt,
+                            rateLimitScope = scope,
+                            error = null,
+                        )
+                    }
                     return@launch
                 }
                 // §2.12-L356: host unreachable (bad URL / no route to server).
                 if (e is UnknownHostException || e is ConnectException ||
                     (e.cause is UnknownHostException) || (e.cause is ConnectException)) {
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        unreachableHost = true,
-                        error = null,
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            unreachableHost = true,
+                            error = null,
+                        )
+                    }
                     return@launch
                 }
                 val errorMsg = extractErrorMessage(e)
                 // §26.4 — increment credentialShakes on 401 (wrong creds) so
                 // CredentialsStep fires a shake animation (or red border under Reduce Motion).
                 val isWrongCredential = e is retrofit2.HttpException && e.code() == 401
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    unreachableHost = false,
-                    rateLimited = false,
-                    error = errorMsg,
-                    credentialShakes = if (isWrongCredential)
-                        _state.value.credentialShakes + 1
-                    else _state.value.credentialShakes,
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        unreachableHost = false,
+                        rateLimited = false,
+                        error = errorMsg,
+                        credentialShakes = if (isWrongCredential)
+                            _state.value.credentialShakes + 1
+                        else _state.value.credentialShakes,
+                    )
+                }
             }
         }
     }
@@ -1145,7 +1178,7 @@ class LoginViewModel @Inject constructor(
                 // Password set, now set up 2FA
                 setup2FA(newChallenge, freshExpiresAt)
             } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoading = false, error = extractErrorMessage(e))
+                _state.update { it.copy(isLoading = false, error = extractErrorMessage(e)) }
             }
         }
     }
@@ -1161,7 +1194,7 @@ class LoginViewModel @Inject constructor(
      */
     private fun setup2FA(challengeToken: String, inheritedExpiresAt: Long? = null) {
         // LOGIN-MOCK-168: mark loading immediately so the UI shows a spinner
-        _state.value = _state.value.copy(isLoading = true, error = null)
+        _state.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
             try {
                 val response = authApi.setup2FA(mapOf("challengeToken" to challengeToken))
@@ -1174,19 +1207,21 @@ class LoginViewModel @Inject constructor(
                 // §2.13-L366: preserve the expiry window started at login(), or start a
                 // fresh one if called without a prior window (e.g. from setPassword path).
                 val expiresAt = inheritedExpiresAt ?: (System.currentTimeMillis() + 600_000L)
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    challengeToken = newChallenge,
-                    challengeTokenExpiresAtMs = expiresAt,
-                    challengeExpired = false,
-                    qrCodeDataUrl = qrCode,
-                    // §2.4 L298 — store secret + manualEntry for enroll step display
-                    twoFaSecret = secret,
-                    twoFaManualEntry = manualEntry,
-                    step = SetupStep.TWO_FA_SETUP,
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        challengeToken = newChallenge,
+                        challengeTokenExpiresAtMs = expiresAt,
+                        challengeExpired = false,
+                        qrCodeDataUrl = qrCode,
+                        // §2.4 L298 — store secret + manualEntry for enroll step display
+                        twoFaSecret = secret,
+                        twoFaManualEntry = manualEntry,
+                        step = SetupStep.TWO_FA_SETUP,
+                    )
+                }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoading = false, error = extractErrorMessage(e))
+                _state.update { it.copy(isLoading = false, error = extractErrorMessage(e)) }
             }
         }
     }
@@ -1226,20 +1261,24 @@ class LoginViewModel @Inject constructor(
                 val s2 = _state.value
                 val shouldStash = s2.rememberMeChecked && s2.biometricEnabled
                 if (!codes.isNullOrEmpty()) {
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        showBackupCodes = codes,
-                        pendingBiometricStash = shouldStash,
-                        pendingStashUsername = if (shouldStash) s2.username.trim() else "",
-                        pendingStashPassword = if (shouldStash) s2.password else "",
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            showBackupCodes = codes,
+                            pendingBiometricStash = shouldStash,
+                            pendingStashUsername = if (shouldStash) s2.username.trim() else "",
+                            pendingStashPassword = if (shouldStash) s2.password else "",
+                        )
+                    }
                 } else if (shouldStash) {
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        pendingBiometricStash = true,
-                        pendingStashUsername = s2.username.trim(),
-                        pendingStashPassword = s2.password,
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            pendingBiometricStash = true,
+                            pendingStashUsername = s2.username.trim(),
+                            pendingStashPassword = s2.password,
+                        )
+                    }
                     // onSuccess is called by LoginScreen after the stash prompt resolves.
                 } else {
                     onSuccess()
@@ -1253,26 +1292,30 @@ class LoginViewModel @Inject constructor(
                         if (body != null) JSONObject(body).optJSONObject("data")?.optString("challengeToken", "") else null
                     } catch (_: Exception) { null }
                     if (!retryToken.isNullOrBlank()) {
-                        _state.value = _state.value.copy(
-                            isLoading = false,
-                            totpCode = "",
-                            challengeToken = retryToken,
-                            error = extractErrorMessage(e),
-                        )
+                        _state.update {
+                            it.copy(
+                                isLoading = false,
+                                totpCode = "",
+                                challengeToken = retryToken,
+                                error = extractErrorMessage(e),
+                            )
+                        }
                         return@launch
                     }
                 }
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    totpCode = "",
-                    error = extractErrorMessage(e),
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        totpCode = "",
+                        error = extractErrorMessage(e),
+                    )
+                }
             }
         }
     }
 
     fun dismissBackupCodes() {
-        _state.value = _state.value.copy(showBackupCodes = null)
+        _state.update { it.copy(showBackupCodes = null) }
     }
 
     /**
@@ -1311,20 +1354,24 @@ class LoginViewModel @Inject constructor(
                 val s2 = _state.value
                 val shouldStash = s2.rememberMeChecked && s2.biometricEnabled
                 if (!codes.isNullOrEmpty()) {
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        showBackupCodes = codes,
-                        pendingBiometricStash = shouldStash,
-                        pendingStashUsername = if (shouldStash) s2.username.trim() else "",
-                        pendingStashPassword = if (shouldStash) s2.password else "",
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            showBackupCodes = codes,
+                            pendingBiometricStash = shouldStash,
+                            pendingStashUsername = if (shouldStash) s2.username.trim() else "",
+                            pendingStashPassword = if (shouldStash) s2.password else "",
+                        )
+                    }
                 } else if (shouldStash) {
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        pendingBiometricStash = true,
-                        pendingStashUsername = s2.username.trim(),
-                        pendingStashPassword = s2.password,
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            pendingBiometricStash = true,
+                            pendingStashUsername = s2.username.trim(),
+                            pendingStashPassword = s2.password,
+                        )
+                    }
                 } else {
                     onSuccess()
                 }
@@ -1336,27 +1383,31 @@ class LoginViewModel @Inject constructor(
                         if (body != null) JSONObject(body).optJSONObject("data")?.optString("challengeToken", "") else null
                     } catch (_: Exception) { null }
                     if (!retryToken.isNullOrBlank()) {
-                        _state.value = _state.value.copy(
-                            isLoading = false,
-                            totpCode = "",
-                            challengeToken = retryToken,
-                            error = extractErrorMessage(e),
-                        )
+                        _state.update {
+                            it.copy(
+                                isLoading = false,
+                                totpCode = "",
+                                challengeToken = retryToken,
+                                error = extractErrorMessage(e),
+                            )
+                        }
                         return@launch
                     }
                 }
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    totpCode = "",
-                    error = extractErrorMessage(e),
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        totpCode = "",
+                        error = extractErrorMessage(e),
+                    )
+                }
             }
         }
     }
 
     /** §2.12-L357 — called by the UI countdown LaunchedEffect when the timer reaches zero. */
     fun clearRateLimit() {
-        _state.value = _state.value.copy(rateLimited = false, rateLimitResetMs = null, rateLimitScope = null)
+        _state.update { it.copy(rateLimited = false, rateLimitResetMs = null, rateLimitScope = null) }
     }
 
     /**
@@ -1393,21 +1444,23 @@ class LoginViewModel @Inject constructor(
      * Username is preserved; password is cleared for security.
      */
     fun onChallengeTokenExpired() {
-        _state.value = _state.value.copy(
-            challengeToken = "",
-            challengeTokenExpiresAtMs = null,
-            challengeExpired = true,
-            step = SetupStep.CREDENTIALS,
-            // Clear sensitive mid-flow fields
-            totpCode = "",
-            newPassword = "",
-            confirmPassword = "",
-            qrCodeDataUrl = "",
-            twoFaSecret = "",
-            twoFaManualEntry = "",
-            isLoading = false,
-            error = null,
-        )
+        _state.update {
+            it.copy(
+                challengeToken = "",
+                challengeTokenExpiresAtMs = null,
+                challengeExpired = true,
+                step = SetupStep.CREDENTIALS,
+                // Clear sensitive mid-flow fields
+                totpCode = "",
+                newPassword = "",
+                confirmPassword = "",
+                qrCodeDataUrl = "",
+                twoFaSecret = "",
+                twoFaManualEntry = "",
+                isLoading = false,
+                error = null,
+            )
+        }
     }
 
     /**
@@ -1415,14 +1468,14 @@ class LoginViewModel @Inject constructor(
      * acknowledged (or automatically dismissed). Clears the flag so the banner hides.
      */
     fun clearChallengeExpired() {
-        _state.value = _state.value.copy(challengeExpired = false)
+        _state.update { it.copy(challengeExpired = false) }
     }
 
     // region — §2.17 Remember-me / biometric stash
 
     /** Toggles the "Remember me" checkbox on the CREDENTIALS step. */
     fun toggleRememberMe() {
-        _state.value = _state.value.copy(rememberMeChecked = !_state.value.rememberMeChecked)
+        _state.update { it.copy(rememberMeChecked = !_state.value.rememberMeChecked) }
     }
 
     /**
@@ -1430,18 +1483,20 @@ class LoginViewModel @Inject constructor(
      * (success or cancelled). Clears the pending stash flag and any sensitive field.
      */
     fun clearPendingBiometricStash() {
-        _state.value = _state.value.copy(
-            pendingBiometricStash = false,
-            pendingStashUsername = "",
-            pendingStashPassword = "",
-        )
+        _state.update {
+            it.copy(
+                pendingBiometricStash = false,
+                pendingStashUsername = "",
+                pendingStashPassword = "",
+            )
+        }
     }
 
     /** Toggles the "Use biometrics" option on the CREDENTIALS step. */
     fun toggleBiometricEnabled() {
         val newValue = !_state.value.biometricEnabled
         authPreferences.biometricCredentialsEnabled = newValue
-        _state.value = _state.value.copy(biometricEnabled = newValue)
+        _state.update { it.copy(biometricEnabled = newValue) }
     }
 
     /**
@@ -1449,14 +1504,14 @@ class LoginViewModel @Inject constructor(
      * disabled so the user is not confused by a stale toggle state.
      */
     fun dismissDeviceChangedBanner() {
-        _state.value = _state.value.copy(deviceChangedBanner = false)
+        _state.update { it.copy(deviceChangedBanner = false) }
     }
 
     /**
      * §2.17-L413 — dismisses the server-revoke banner (user acknowledged the sign-out).
      */
     fun dismissServerRevokeBanner() {
-        _state.value = _state.value.copy(serverRevokeBanner = false)
+        _state.update { it.copy(serverRevokeBanner = false) }
     }
 
     /**
@@ -1481,7 +1536,7 @@ class LoginViewModel @Inject constructor(
                 if (stored) {
                     authPreferences.setStoredCredentialsIv(authenticatedCipher.iv)
                     authPreferences.biometricCredentialsEnabled = true
-                    _state.value = _state.value.copy(biometricEnabled = true)
+                    _state.update { it.copy(biometricEnabled = true) }
                 }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
@@ -1509,25 +1564,27 @@ class LoginViewModel @Inject constructor(
         val iv = authPreferences.getStoredCredentialsIv() ?: return
         if (!biometricCredentialStore.hasStoredCredentials) return
 
-        _state.value = _state.value.copy(isBiometricAutoLoginInFlight = true)
+        _state.update { it.copy(isBiometricAutoLoginInFlight = true) }
         viewModelScope.launch {
             try {
                 val decryptCipher = biometricCredentialStore.createDecryptCipher(iv)
                 val authenticatedCipher = biometricAuth.decryptWithBiometric(activity, decryptCipher, iv)
                 if (authenticatedCipher == null) {
                     // User cancelled — fall back to password form.
-                    _state.value = _state.value.copy(isBiometricAutoLoginInFlight = false)
+                    _state.update { it.copy(isBiometricAutoLoginInFlight = false) }
                     return@launch
                 }
                 when (val result = biometricCredentialStore.retrieve(authenticatedCipher)) {
                     is BiometricCredentialStore.RetrieveResult.Success -> {
                         // Replay login with decrypted credentials — full 2FA flow
                         val creds = result.credentials
-                        _state.value = _state.value.copy(
-                            username = creds.username,
-                            password = creds.password,
-                            isBiometricAutoLoginInFlight = false,
-                        )
+                        _state.update {
+                            it.copy(
+                                username = creds.username,
+                                password = creds.password,
+                                isBiometricAutoLoginInFlight = false,
+                            )
+                        }
                         login() // kicks off the normal password → 2FA → verify flow
                     }
                     BiometricCredentialStore.RetrieveResult.DeviceChanged,
@@ -1536,20 +1593,22 @@ class LoginViewModel @Inject constructor(
                         biometricCredentialStore.clear()
                         authPreferences.biometricCredentialsEnabled = false
                         authPreferences.setStoredCredentialsIv(null)
-                        _state.value = _state.value.copy(
-                            biometricEnabled = false,
-                            deviceChangedBanner = result == BiometricCredentialStore.RetrieveResult.DeviceChanged,
-                            isBiometricAutoLoginInFlight = false,
-                        )
+                        _state.update {
+                            it.copy(
+                                biometricEnabled = false,
+                                deviceChangedBanner = result == BiometricCredentialStore.RetrieveResult.DeviceChanged,
+                                isBiometricAutoLoginInFlight = false,
+                            )
+                        }
                     }
                     else -> {
-                        _state.value = _state.value.copy(isBiometricAutoLoginInFlight = false)
+                        _state.update { it.copy(isBiometricAutoLoginInFlight = false) }
                     }
                 }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (_: Exception) {
-                _state.value = _state.value.copy(isBiometricAutoLoginInFlight = false)
+                _state.update { it.copy(isBiometricAutoLoginInFlight = false) }
             }
         }
     }
@@ -1563,11 +1622,13 @@ class LoginViewModel @Inject constructor(
      */
     fun handleServerRevoke() {
         authPreferences.clear(AuthPreferences.ClearReason.SessionRevoked)
-        _state.value = _state.value.copy(
-            serverRevokeBanner = true,
-            biometricEnabled = false,
-            step = SetupStep.CREDENTIALS,
-        )
+        _state.update {
+            it.copy(
+                serverRevokeBanner = true,
+                biometricEnabled = false,
+                step = SetupStep.CREDENTIALS,
+            )
+        }
     }
 
     // §2.20 — SSO functions
@@ -1578,35 +1639,39 @@ class LoginViewModel @Inject constructor(
      * Any other error is also silenced — SSO is optional; credentials login still works.
      */
     private suspend fun loadSsoProviders() {
-        _state.value = _state.value.copy(ssoProvidersLoading = true)
+        _state.update { it.copy(ssoProvidersLoading = true) }
         try {
             val response = authApi.getSsoProviders()
-            _state.value = _state.value.copy(
-                ssoProviders = response.data?.providers ?: emptyList(),
-                ssoProvidersLoading = false,
-            )
+            _state.update {
+                it.copy(
+                    ssoProviders = response.data?.providers ?: emptyList(),
+                    ssoProvidersLoading = false,
+                )
+            }
         } catch (e: retrofit2.HttpException) {
             // 404 = no SSO on this tenant — hide the button silently
-            _state.value = _state.value.copy(ssoProviders = emptyList(), ssoProvidersLoading = false)
+            _state.update { it.copy(ssoProviders = emptyList(), ssoProvidersLoading = false) }
         } catch (_: Exception) {
             // Network error — hide the button; credentials login still works
-            _state.value = _state.value.copy(ssoProviders = emptyList(), ssoProvidersLoading = false)
+            _state.update { it.copy(ssoProviders = emptyList(), ssoProvidersLoading = false) }
         }
     }
 
     /** Clears the SSO success flag after LoginScreen has dispatched onLoginSuccess(). */
     fun clearSsoLoginSuccess() {
-        _state.value = _state.value.copy(ssoLoginSuccess = false)
+        _state.update { it.copy(ssoLoginSuccess = false) }
     }
 
     /** Called from the provider-picker sheet when the user taps an SSO provider. */
     fun launchSsoProvider(activity: Activity, provider: SsoProvider) {
         val state = java.util.UUID.randomUUID().toString().replace("-", "")
-        _state.value = _state.value.copy(
-            pendingSsoProvider = provider,
-            ssoState = state,
-            error = null,
-        )
+        _state.update {
+            it.copy(
+                pendingSsoProvider = provider,
+                ssoState = state,
+                error = null,
+            )
+        }
         SsoLauncher.launch(activity, provider.authUrl, state)
     }
 
@@ -1618,7 +1683,7 @@ class LoginViewModel @Inject constructor(
      */
     fun exchangeSsoCode(provider: String, code: String, state: String) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(ssoExchangeLoading = true, error = null)
+            _state.update { it.copy(ssoExchangeLoading = true, error = null) }
             try {
                 val response = authApi.tokenExchange(
                     SsoTokenExchangeRequest(provider = provider, code = code, state = state),
@@ -1634,31 +1699,37 @@ class LoginViewModel @Inject constructor(
                     role = data.user.role,
                 )
                 syncNotificationPreferencesAfterLogin()
-                _state.value = _state.value.copy(
-                    ssoExchangeLoading = false,
-                    pendingSsoProvider = null,
-                    ssoState = "",
-                    ssoLoginSuccess = true,
-                )
+                _state.update {
+                    it.copy(
+                        ssoExchangeLoading = false,
+                        pendingSsoProvider = null,
+                        ssoState = "",
+                        ssoLoginSuccess = true,
+                    )
+                }
             } catch (e: retrofit2.HttpException) {
                 val msg = when (e.code()) {
                     400  -> "Sign-in link mismatch. Try again."
                     404  -> "SSO token exchange is not supported on this server."
                     else -> "SSO sign-in failed (${e.code()}). Try again."
                 }
-                _state.value = _state.value.copy(
-                    ssoExchangeLoading = false,
-                    error = msg,
-                    pendingSsoProvider = null,
-                    ssoState = "",
-                )
+                _state.update {
+                    it.copy(
+                        ssoExchangeLoading = false,
+                        error = msg,
+                        pendingSsoProvider = null,
+                        ssoState = "",
+                    )
+                }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    ssoExchangeLoading = false,
-                    error = "SSO sign-in failed: ${e.message}",
-                    pendingSsoProvider = null,
-                    ssoState = "",
-                )
+                _state.update {
+                    it.copy(
+                        ssoExchangeLoading = false,
+                        error = "SSO sign-in failed: ${e.message}",
+                        pendingSsoProvider = null,
+                        ssoState = "",
+                    )
+                }
             }
         }
     }
@@ -1675,10 +1746,10 @@ class LoginViewModel @Inject constructor(
         try {
             val response = authApi.getTenantMe()
             val enabled = response.data?.magicLinksEnabled ?: false
-            _state.value = _state.value.copy(magicLinksEnabled = enabled)
+            _state.update { it.copy(magicLinksEnabled = enabled) }
         } catch (_: Exception) {
             // 404 or any failure → treat as disabled (opt-in model; hide button until confirmed).
-            _state.value = _state.value.copy(magicLinksEnabled = false)
+            _state.update { it.copy(magicLinksEnabled = false) }
         }
     }
 
@@ -1696,10 +1767,10 @@ class LoginViewModel @Inject constructor(
         try {
             val response = authApi.getTenantMe()
             val enabled = response.data?.passkeyEnabled ?: false
-            _state.value = _state.value.copy(passkeyEnabled = enabled)
+            _state.update { it.copy(passkeyEnabled = enabled) }
         } catch (_: Exception) {
             // 404 or any failure → hide button (opt-in model).
-            _state.value = _state.value.copy(passkeyEnabled = false)
+            _state.update { it.copy(passkeyEnabled = false) }
         }
     }
 
@@ -1717,7 +1788,7 @@ class LoginViewModel @Inject constructor(
      */
     fun signInWithPasskey(activity: android.app.Activity) {
         if (_state.value.passkeyLoading) return
-        _state.value = _state.value.copy(passkeyLoading = true, passkeyError = null)
+        _state.update { it.copy(passkeyLoading = true, passkeyError = null) }
         viewModelScope.launch {
             try {
                 // Step 1: get challenge from server.
@@ -1755,28 +1826,34 @@ class LoginViewModel @Inject constructor(
                             role = user.role,
                         )
                         syncNotificationPreferencesAfterLogin()
-                        _state.value = _state.value.copy(passkeyLoading = false, passkeyLoginSuccess = true)
+                        _state.update { it.copy(passkeyLoading = false, passkeyLoginSuccess = true) }
                     }
                     is com.bizarreelectronics.crm.util.PasskeyManager.PasskeyOutcome.Cancelled -> {
-                        _state.value = _state.value.copy(passkeyLoading = false)
+                        _state.update { it.copy(passkeyLoading = false) }
                     }
                     is com.bizarreelectronics.crm.util.PasskeyManager.PasskeyOutcome.NoCredentials -> {
-                        _state.value = _state.value.copy(
-                            passkeyLoading = false,
-                            passkeyError = "No passkey found on this device. Sign in with your password first.",
-                        )
+                        _state.update {
+                            it.copy(
+                                passkeyLoading = false,
+                                passkeyError = "No passkey found on this device. Sign in with your password first.",
+                            )
+                        }
                     }
                     is com.bizarreelectronics.crm.util.PasskeyManager.PasskeyOutcome.Unsupported -> {
-                        _state.value = _state.value.copy(
-                            passkeyLoading = false,
-                            passkeyEnabled = false,
-                        )
+                        _state.update {
+                            it.copy(
+                                passkeyLoading = false,
+                                passkeyEnabled = false,
+                            )
+                        }
                     }
                     is com.bizarreelectronics.crm.util.PasskeyManager.PasskeyOutcome.Error -> {
-                        _state.value = _state.value.copy(
-                            passkeyLoading = false,
-                            passkeyError = outcome.message,
-                        )
+                        _state.update {
+                            it.copy(
+                                passkeyLoading = false,
+                                passkeyError = outcome.message,
+                            )
+                        }
                     }
                 }
             } catch (e: retrofit2.HttpException) {
@@ -1785,27 +1862,29 @@ class LoginViewModel @Inject constructor(
                     401 -> "Passkey not recognized. Try again or use your password."
                     else -> "Passkey sign-in failed (${e.code()})."
                 }
-                _state.value = _state.value.copy(passkeyLoading = false, passkeyError = msg)
+                _state.update { it.copy(passkeyLoading = false, passkeyError = msg) }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    passkeyLoading = false,
-                    passkeyError = "Passkey sign-in failed: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        passkeyLoading = false,
+                        passkeyError = "Passkey sign-in failed: ${e.message}",
+                    )
+                }
             }
         }
     }
 
     fun clearPasskeyError() {
-        _state.value = _state.value.copy(passkeyError = null)
+        _state.update { it.copy(passkeyError = null) }
     }
 
     /** LOGIN-MOCK-165: dismiss the setup-needed banner. Sets setupNeeded=false locally. */
     fun dismissSetupNeededBanner() {
-        _state.value = _state.value.copy(setupNeeded = false)
+        _state.update { it.copy(setupNeeded = false) }
     }
 
     fun clearPasskeyLoginSuccess() {
-        _state.value = _state.value.copy(passkeyLoginSuccess = false)
+        _state.update { it.copy(passkeyLoginSuccess = false) }
     }
 
     // endregion — passkey
@@ -1813,27 +1892,31 @@ class LoginViewModel @Inject constructor(
     // region — §2.21 Magic-link (continued)
 
     fun updateMagicLinkEmail(value: String) {
-        _state.value = _state.value.copy(magicLinkEmail = value, magicLinkError = null)
+        _state.update { it.copy(magicLinkEmail = value, magicLinkError = null) }
     }
 
     fun openMagicLinkSheet() {
-        _state.value = _state.value.copy(
-            showMagicLinkSheet = true,
-            magicLinkEmail = "",
-            magicLinkSent = false,
-            magicLinkError = null,
-            magicLinkResendCooldownMs = null,
-        )
+        _state.update {
+            it.copy(
+                showMagicLinkSheet = true,
+                magicLinkEmail = "",
+                magicLinkSent = false,
+                magicLinkError = null,
+                magicLinkResendCooldownMs = null,
+            )
+        }
     }
 
     fun closeMagicLinkSheet() {
-        _state.value = _state.value.copy(
-            showMagicLinkSheet = false,
-            magicLinkEmail = "",
-            magicLinkSent = false,
-            magicLinkError = null,
-            magicLinkResendCooldownMs = null,
-        )
+        _state.update {
+            it.copy(
+                showMagicLinkSheet = false,
+                magicLinkEmail = "",
+                magicLinkSent = false,
+                magicLinkError = null,
+                magicLinkResendCooldownMs = null,
+            )
+        }
     }
 
     /**
@@ -1855,30 +1938,34 @@ class LoginViewModel @Inject constructor(
                 authApi.requestMagicLink(
                     com.bizarreelectronics.crm.data.remote.dto.MagicLinkRequest(email = email),
                 )
-                _state.value = _state.value.copy(
-                    magicLinkLoading = false,
-                    magicLinkSent = true,
-                    magicLinkResendCooldownMs = System.currentTimeMillis() + 30_000L,
-                )
+                _state.update {
+                    it.copy(
+                        magicLinkLoading = false,
+                        magicLinkSent = true,
+                        magicLinkResendCooldownMs = System.currentTimeMillis() + 30_000L,
+                    )
+                }
             } catch (e: retrofit2.HttpException) {
                 val msg = when (e.code()) {
                     404  -> "Magic-link login is not available on this server."
                     429  -> "Too many requests. Please wait before trying again."
                     else -> "Failed to send link (${e.code()}). Try again."
                 }
-                _state.value = _state.value.copy(magicLinkLoading = false, magicLinkError = msg)
+                _state.update { it.copy(magicLinkLoading = false, magicLinkError = msg) }
             } catch (_: Exception) {
-                _state.value = _state.value.copy(
-                    magicLinkLoading = false,
-                    magicLinkError = "Could not send the link. Check your connection.",
-                )
+                _state.update {
+                    it.copy(
+                        magicLinkLoading = false,
+                        magicLinkError = "Could not send the link. Check your connection.",
+                    )
+                }
             }
         }
     }
 
     /** Clears the resend cooldown after the timer expires. */
     fun clearMagicLinkResendCooldown() {
-        _state.value = _state.value.copy(magicLinkResendCooldownMs = null)
+        _state.update { it.copy(magicLinkResendCooldownMs = null) }
     }
 
     /**
@@ -1917,14 +2004,16 @@ class LoginViewModel @Inject constructor(
                     // Different-device path: push to 2FA verify step.
                     val challengeToken = data.challengeToken
                         ?: throw Exception("No challenge token for 2FA")
-                    _state.value = _state.value.copy(
-                        magicLinkExchangeLoading = false,
-                        pendingMagicToken = null,
-                        challengeToken = challengeToken,
-                        challengeTokenExpiresAtMs = System.currentTimeMillis() + 600_000L,
-                        challengeExpired = false,
-                        step = SetupStep.TWO_FA_VERIFY,
-                    )
+                    _state.update {
+                        it.copy(
+                            magicLinkExchangeLoading = false,
+                            pendingMagicToken = null,
+                            challengeToken = challengeToken,
+                            challengeTokenExpiresAtMs = System.currentTimeMillis() + 600_000L,
+                            challengeExpired = false,
+                            step = SetupStep.TWO_FA_VERIFY,
+                        )
+                    }
                 } else {
                     // Same-device path: tokens issued immediately.
                     val accessToken = data.accessToken
@@ -1940,11 +2029,13 @@ class LoginViewModel @Inject constructor(
                         role = user.role,
                     )
                     syncNotificationPreferencesAfterLogin()
-                    _state.value = _state.value.copy(
-                        magicLinkExchangeLoading = false,
-                        pendingMagicToken = null,
-                        magicLinkLoginSuccess = true,
-                    )
+                    _state.update {
+                        it.copy(
+                            magicLinkExchangeLoading = false,
+                            pendingMagicToken = null,
+                            magicLinkLoginSuccess = true,
+                        )
+                    }
                 }
             } catch (e: retrofit2.HttpException) {
                 val msg = when (e.code()) {
@@ -1952,30 +2043,36 @@ class LoginViewModel @Inject constructor(
                     410  -> "This sign-in link has expired or already been used. Request a new one."
                     else -> "Sign-in failed (${e.code()}). Request a new link."
                 }
-                _state.value = _state.value.copy(
-                    magicLinkExchangeLoading = false,
-                    magicLinkExchangeError = msg,
-                    pendingMagicToken = null,
-                )
+                _state.update {
+                    it.copy(
+                        magicLinkExchangeLoading = false,
+                        magicLinkExchangeError = msg,
+                        pendingMagicToken = null,
+                    )
+                }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    magicLinkExchangeLoading = false,
-                    magicLinkExchangeError = "Sign-in failed: ${e.message}",
-                    pendingMagicToken = null,
-                )
+                _state.update {
+                    it.copy(
+                        magicLinkExchangeLoading = false,
+                        magicLinkExchangeError = "Sign-in failed: ${e.message}",
+                        pendingMagicToken = null,
+                    )
+                }
             }
         }
     }
 
     fun dismissMagicLinkPreview() {
-        _state.value = _state.value.copy(
-            pendingMagicToken = null,
-            magicLinkExchangeError = null,
-        )
+        _state.update {
+            it.copy(
+                pendingMagicToken = null,
+                magicLinkExchangeError = null,
+            )
+        }
     }
 
     fun clearMagicLinkLoginSuccess() {
-        _state.value = _state.value.copy(magicLinkLoginSuccess = false)
+        _state.update { it.copy(magicLinkLoginSuccess = false) }
     }
 
     // endregion

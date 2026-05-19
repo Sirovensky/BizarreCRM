@@ -30,6 +30,7 @@ import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -66,32 +67,36 @@ class CustomRolesViewModel @Inject constructor(
 
     fun load() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = _state.value.roles.isEmpty(), error = null)
+            _state.update { it.copy(isLoading = _state.value.roles.isEmpty(), error = null) }
             runCatching { rolesApi.getRoles() }
                 .onSuccess { resp ->
                     val parsed = parseRoles(resp.data)
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        roles = parsed,
-                        serverUnsupported = false,
-                        error = null,
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            roles = parsed,
+                            serverUnsupported = false,
+                            error = null,
+                        )
+                    }
                 }
                 .onFailure { t ->
                     // BUGHUNT-2026-05-18: rethrow cancel so we don't paint a torn-down-screen error.
                     if (t is CancellationException) throw t
                     val is404 = t is retrofit2.HttpException && t.code() == 404
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        serverUnsupported = is404,
-                        error = if (is404) null else (t.message ?: "Failed to load roles"),
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            serverUnsupported = is404,
+                            error = if (is404) null else (t.message ?: "Failed to load roles"),
+                        )
+                    }
                 }
         }
     }
 
-    fun showCreate() { _state.value = _state.value.copy(showCreateDialog = true) }
-    fun dismissCreate() { _state.value = _state.value.copy(showCreateDialog = false) }
+    fun showCreate() { _state.update { it.copy(showCreateDialog = true) } }
+    fun dismissCreate() { _state.update { it.copy(showCreateDialog = false) } }
 
     fun createRole(name: String, description: String) {
         viewModelScope.launch {
@@ -101,42 +106,44 @@ class CustomRolesViewModel @Inject constructor(
             )
             try {
                 rolesApi.createRole(body)
-                _state.value = _state.value.copy(
-                    showCreateDialog = false,
-                    snackMessage = "Role \"$name\" created",
-                )
+                _state.update {
+                    it.copy(
+                        showCreateDialog = false,
+                        snackMessage = "Role \"$name\" created",
+                    )
+                }
                 load()
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: runCatching swallowed cancellation and
                 // painted a fake "Failed to create role" snackbar on back-nav.
                 throw e
             } catch (t: Throwable) {
-                _state.value = _state.value.copy(snackMessage = t.message ?: "Failed to create role")
+                _state.update { it.copy(snackMessage = t.message ?: "Failed to create role") }
             }
         }
     }
 
-    fun requestDelete(role: CustomRole) { _state.value = _state.value.copy(pendingDeleteRole = role) }
-    fun cancelDelete() { _state.value = _state.value.copy(pendingDeleteRole = null) }
+    fun requestDelete(role: CustomRole) { _state.update { it.copy(pendingDeleteRole = role) } }
+    fun cancelDelete() { _state.update { it.copy(pendingDeleteRole = null) } }
 
     fun confirmDelete() {
         val role = _state.value.pendingDeleteRole ?: return
-        _state.value = _state.value.copy(pendingDeleteRole = null)
+        _state.update { it.copy(pendingDeleteRole = null) }
         viewModelScope.launch {
             try {
                 rolesApi.deleteRole(role.id)
-                _state.value = _state.value.copy(snackMessage = "Role deleted")
+                _state.update { it.copy(snackMessage = "Role deleted") }
                 load()
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: same as createRole.
                 throw e
             } catch (t: Throwable) {
-                _state.value = _state.value.copy(snackMessage = "Failed to delete role")
+                _state.update { it.copy(snackMessage = "Failed to delete role") }
             }
         }
     }
 
-    fun clearSnack() { _state.value = _state.value.copy(snackMessage = null) }
+    fun clearSnack() { _state.update { it.copy(snackMessage = null) } }
 
     @Suppress("UNCHECKED_CAST")
     private fun parseRoles(data: Any?): List<CustomRole> {

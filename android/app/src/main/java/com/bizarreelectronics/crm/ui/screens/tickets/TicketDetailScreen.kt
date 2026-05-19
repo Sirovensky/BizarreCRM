@@ -85,6 +85,7 @@ import com.bizarreelectronics.crm.data.remote.api.WaiverApi
 import com.bizarreelectronics.crm.util.UndoStack
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -286,10 +287,12 @@ class TicketDetailViewModel @Inject constructor(
         viewModelScope.launch {
             ticketRepository.getTicket(ticketId).collect { entity ->
                 if (entity != null) {
-                    _state.value = _state.value.copy(
-                        ticket = entity,
-                        isLoading = false,
-                    )
+                    _state.update {
+                        it.copy(
+                            ticket = entity,
+                            isLoading = false,
+                        )
+                    }
                 }
             }
         }
@@ -300,21 +303,23 @@ class TicketDetailViewModel @Inject constructor(
         viewModelScope.launch {
             // Only show loading spinner if we have no cached entity yet
             if (_state.value.ticket == null) {
-                _state.value = _state.value.copy(isLoading = true, error = null)
+                _state.update { it.copy(isLoading = true, error = null) }
             }
             try {
                 val response = ticketApi.getTicket(ticketId)
                 val detail = response.data
                 if (detail != null) {
-                    _state.value = _state.value.copy(
-                        ticketDetail = detail,
-                        devices = detail.devices ?: emptyList(),
-                        notes = detail.notes ?: emptyList(),
-                        history = detail.history ?: emptyList(),
-                        photos = detail.photos ?: emptyList(),
-                        isLoading = false,
-                        error = null,
-                    )
+                    _state.update {
+                        it.copy(
+                            ticketDetail = detail,
+                            devices = detail.devices ?: emptyList(),
+                            notes = detail.notes ?: emptyList(),
+                            history = detail.history ?: emptyList(),
+                            photos = detail.photos ?: emptyList(),
+                            isLoading = false,
+                            error = null,
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -325,20 +330,24 @@ class TicketDetailViewModel @Inject constructor(
                     (e as? retrofit2.HttpException)?.code() == 404
                 }.getOrDefault(false)
                 if (is404) {
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        isDeletedWhileViewing = true,
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            isDeletedWhileViewing = true,
+                        )
+                    }
                     return@launch
                 }
                 // If we have a cached entity, just show a soft warning — not a hard error
                 if (_state.value.ticket != null) {
-                    _state.value = _state.value.copy(isLoading = false)
+                    _state.update { it.copy(isLoading = false) }
                 } else {
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        error = e.message ?: "Failed to load ticket",
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            error = e.message ?: "Failed to load ticket",
+                        )
+                    }
                 }
             }
         }
@@ -353,7 +362,7 @@ class TicketDetailViewModel @Inject constructor(
                 // variant `getStatusList()` (added in §19.16) instead.
                 val response = settingsApi.getStatusList()
                 val statuses = response.data ?: emptyList()
-                _state.value = _state.value.copy(statuses = statuses)
+                _state.update { it.copy(statuses = statuses) }
             } catch (_: CancellationException) {
                 throw CancellationException()
             } catch (_: Exception) {
@@ -379,13 +388,13 @@ class TicketDetailViewModel @Inject constructor(
             violations += "At least one photo must be attached before moving to \"$newStatusName\""
         }
         if (violations.isNotEmpty()) {
-            _state.value = _state.value.copy(statusTransitionError = violations.joinToString("; "))
+            _state.update { it.copy(statusTransitionError = violations.joinToString("; ")) }
             return
         }
-        _state.value = _state.value.copy(statusTransitionError = null)
+        _state.update { it.copy(statusTransitionError = null) }
 
         viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
+            _state.update { it.copy(isActionInProgress = true) }
             try {
                 val request = UpdateTicketRequest(
                     statusId = newStatusId,
@@ -395,7 +404,7 @@ class TicketDetailViewModel @Inject constructor(
                 // Note: no separate "Status updated" actionMessage here — the UndoStack.Pushed
                 // event will show "Edit saved / Undo" Snackbar immediately after push(), which
                 // serves as the confirmation. Avoiding double-snackbar.
-                _state.value = _state.value.copy(isActionInProgress = false)
+                _state.update { it.copy(isActionInProgress = false) }
 
                 // Push undo entry after optimistic update succeeds (or is queued offline).
                 // apply = re-apply the new status; reverse = restore the old status.
@@ -450,26 +459,30 @@ class TicketDetailViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Failed to change status: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Failed to change status: ${e.message}",
+                    )
+                }
             }
         }
     }
 
     fun addNote(text: String, type: String = "internal") {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
+            _state.update { it.copy(isActionInProgress = true) }
 
             if (serverMonitor.isEffectivelyOnline.value) {
                 try {
                     val response = ticketApi.addNote(ticketId, mapOf("type" to type, "content" to text))
                     val noteId = response.data?.id ?: -1L
-                    _state.value = _state.value.copy(
-                        isActionInProgress = false,
-                        actionMessage = "Note added",
-                    )
+                    _state.update {
+                        it.copy(
+                            isActionInProgress = false,
+                            actionMessage = "Note added",
+                        )
+                    }
                     loadTicketDetail()
 
                     // Push undo entry — compensatingSync deletes the note server-side via
@@ -485,9 +498,11 @@ class TicketDetailViewModel @Inject constructor(
                             },
                             reverse = {
                                 // Remove from local notes list optimistically
-                                _state.value = _state.value.copy(
-                                    notes = _state.value.notes.filter { it.id != noteId },
-                                )
+                                _state.update {
+                                    it.copy(
+                                        notes = _state.value.notes.filter { it.id != noteId },
+                                    )
+                                }
                             },
                             auditDescription = "Note added: \"${text.take(60)}${if (text.length > 60) "…" else ""}\"",
                             compensatingSync = compensatingSyncForNote@{
@@ -526,10 +541,12 @@ class TicketDetailViewModel @Inject constructor(
                     payload = gson.toJson(mapOf("type" to type, "content" to text)),
                 )
             )
-            _state.value = _state.value.copy(
-                isActionInProgress = false,
-                actionMessage = "Note queued — will sync when online",
-            )
+            _state.update {
+                it.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Note queued — will sync when online",
+                )
+            }
         }
     }
 
@@ -622,15 +639,17 @@ class TicketDetailViewModel @Inject constructor(
         suggestion: com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion,
     ) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
+            _state.update { it.copy(isActionInProgress = true) }
             when (suggestion.kind) {
                 com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion.Kind.PART -> {
                     val invId = suggestion.inventoryItemId
                     if (invId == null) {
-                        _state.value = _state.value.copy(
-                            isActionInProgress = false,
-                            actionMessage = "Missing inventory id — cannot add",
-                        )
+                        _state.update {
+                            it.copy(
+                                isActionInProgress = false,
+                                actionMessage = "Missing inventory id — cannot add",
+                            )
+                        }
                         return@launch
                     }
                     val req = com.bizarreelectronics.crm.data.remote.dto.AddTicketPartRequest(
@@ -640,10 +659,12 @@ class TicketDetailViewModel @Inject constructor(
                     )
                     runCatching { ticketApi.addPartToDevice(deviceId, req) }
                         .onSuccess {
-                            _state.value = _state.value.copy(
-                                isActionInProgress = false,
-                                actionMessage = "Added \"${suggestion.name}\"",
-                            )
+                            _state.update {
+                                it.copy(
+                                    isActionInProgress = false,
+                                    actionMessage = "Added \"${suggestion.name}\"",
+                                )
+                            }
                             loadTicketDetail()
                         }
                         .onFailure { e ->
@@ -652,10 +673,12 @@ class TicketDetailViewModel @Inject constructor(
                             // runCatching. Painting "Add failed" tempts the
                             // user to retap and create a duplicate part row.
                             if (e is CancellationException) throw e
-                            _state.value = _state.value.copy(
-                                isActionInProgress = false,
-                                actionMessage = "Add failed — ${e.message ?: "unknown error"}",
-                            )
+                            _state.update {
+                                it.copy(
+                                    isActionInProgress = false,
+                                    actionMessage = "Add failed — ${e.message ?: "unknown error"}",
+                                )
+                            }
                         }
                 }
                 com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion.Kind.SVC -> {
@@ -671,10 +694,12 @@ class TicketDetailViewModel @Inject constructor(
                         "Service line payload (server endpoint pending): %s",
                         gson.toJson(payload),
                     )
-                    _state.value = _state.value.copy(
-                        isActionInProgress = false,
-                        actionMessage = "Service line wiring deferred — see TODO.md (T-C6-server)",
-                    )
+                    _state.update {
+                        it.copy(
+                            isActionInProgress = false,
+                            actionMessage = "Service line wiring deferred — see TODO.md (T-C6-server)",
+                        )
+                    }
                 }
                 com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion.Kind.MISC -> {
                     val payload = mapOf(
@@ -688,10 +713,12 @@ class TicketDetailViewModel @Inject constructor(
                         "Misc line payload (server endpoint pending): %s",
                         gson.toJson(payload),
                     )
-                    _state.value = _state.value.copy(
-                        isActionInProgress = false,
-                        actionMessage = "Misc line wiring deferred — see TODO.md (T-C6-server)",
-                    )
+                    _state.update {
+                        it.copy(
+                            isActionInProgress = false,
+                            actionMessage = "Misc line wiring deferred — see TODO.md (T-C6-server)",
+                        )
+                    }
                 }
             }
             _quoteSuggestions.value = emptyList()
@@ -705,24 +732,28 @@ class TicketDetailViewModel @Inject constructor(
      */
     fun convertToInvoice() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
+            _state.update { it.copy(isActionInProgress = true) }
 
             if (serverMonitor.isEffectivelyOnline.value) {
                 try {
                     val response = ticketApi.convertToInvoice(ticketId)
                     val invoiceId = response.data?.id
                     if (invoiceId != null) {
-                        _state.value = _state.value.copy(
-                            isActionInProgress = false,
-                            actionMessage = "Invoice created",
-                            convertedInvoiceId = invoiceId,
-                        )
+                        _state.update {
+                            it.copy(
+                                isActionInProgress = false,
+                                actionMessage = "Invoice created",
+                                convertedInvoiceId = invoiceId,
+                            )
+                        }
                         return@launch
                     }
-                    _state.value = _state.value.copy(
-                        isActionInProgress = false,
-                        actionMessage = "Convert failed: server returned no invoice",
-                    )
+                    _state.update {
+                        it.copy(
+                            isActionInProgress = false,
+                            actionMessage = "Convert failed: server returned no invoice",
+                        )
+                    }
                     return@launch
                 } catch (e: CancellationException) {
                     // BUGHUNT-2026-05-17: re-throw cancellation. The server-
@@ -733,10 +764,12 @@ class TicketDetailViewModel @Inject constructor(
                     // signal handles the success path explicitly.
                     throw e
                 } catch (e: Exception) {
-                    _state.value = _state.value.copy(
-                        isActionInProgress = false,
-                        actionMessage = "Convert failed: ${e.message ?: "unknown error"}",
-                    )
+                    _state.update {
+                        it.copy(
+                            isActionInProgress = false,
+                            actionMessage = "Convert failed: ${e.message ?: "unknown error"}",
+                        )
+                    }
                     return@launch
                 }
             }
@@ -750,50 +783,56 @@ class TicketDetailViewModel @Inject constructor(
                     payload = gson.toJson(mapOf("ticketId" to ticketId)),
                 )
             )
-            _state.value = _state.value.copy(
-                isActionInProgress = false,
-                actionMessage = "Convert queued — will sync when online",
-            )
-        }
-    }
-
-    /** Clear the converted invoice ID after the screen has navigated, so we don't re-navigate on recomposition. */
-    fun clearConvertedInvoiceId() {
-        _state.value = _state.value.copy(convertedInvoiceId = null)
-    }
-
-    fun togglePin() {
-        viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
-            try {
-                val response = ticketApi.togglePin(ticketId)
-                val detail = response.data
-                if (detail != null) {
-                    _state.value = _state.value.copy(
-                        ticketDetail = detail,
-                        isActionInProgress = false,
-                    )
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(
+            _state.update {
+                it.copy(
                     isActionInProgress = false,
-                    actionMessage = if (e.message?.contains("Unable to resolve host") == true ||
-                        e.message?.contains("timeout") == true)
-                        "Pin/unpin requires server connection"
-                    else "Failed to toggle pin: ${e.message}",
+                    actionMessage = "Convert queued — will sync when online",
                 )
             }
         }
     }
 
+    /** Clear the converted invoice ID after the screen has navigated, so we don't re-navigate on recomposition. */
+    fun clearConvertedInvoiceId() {
+        _state.update { it.copy(convertedInvoiceId = null) }
+    }
+
+    fun togglePin() {
+        viewModelScope.launch {
+            _state.update { it.copy(isActionInProgress = true) }
+            try {
+                val response = ticketApi.togglePin(ticketId)
+                val detail = response.data
+                if (detail != null) {
+                    _state.update {
+                        it.copy(
+                            ticketDetail = detail,
+                            isActionInProgress = false,
+                        )
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = if (e.message?.contains("Unable to resolve host") == true ||
+                            e.message?.contains("timeout") == true)
+                            "Pin/unpin requires server connection"
+                        else "Failed to toggle pin: ${e.message}",
+                    )
+                }
+            }
+        }
+    }
+
     fun clearActionMessage() {
-        _state.value = _state.value.copy(actionMessage = null)
+        _state.update { it.copy(actionMessage = null) }
     }
 
     fun clearStatusTransitionError() {
-        _state.value = _state.value.copy(statusTransitionError = null)
+        _state.update { it.copy(statusTransitionError = null) }
     }
 
     // -----------------------------------------------------------------------
@@ -805,7 +844,7 @@ class TicketDetailViewModel @Inject constructor(
             try {
                 val response = settingsApi.getEmployees()
                 val list = response.data ?: emptyList()
-                _state.value = _state.value.copy(employees = list)
+                _state.update { it.copy(employees = list) }
             } catch (_: CancellationException) {
                 throw CancellationException()
             } catch (_: Exception) {
@@ -819,20 +858,22 @@ class TicketDetailViewModel @Inject constructor(
     // -----------------------------------------------------------------------
 
     fun showWarrantyDialog() {
-        _state.value = _state.value.copy(
-            showWarrantyDialog = true,
-            warrantyResult = null,
-            warrantyError = null,
-        )
+        _state.update {
+            it.copy(
+                showWarrantyDialog = true,
+                warrantyResult = null,
+                warrantyError = null,
+            )
+        }
     }
 
     fun dismissWarrantyDialog() {
-        _state.value = _state.value.copy(showWarrantyDialog = false)
+        _state.update { it.copy(showWarrantyDialog = false) }
     }
 
     fun lookupWarranty(query: String) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(warrantyLoading = true, warrantyError = null, warrantyResult = null)
+            _state.update { it.copy(warrantyLoading = true, warrantyError = null, warrantyResult = null) }
             try {
                 // Server lookup accepts imei/serial/phone as named query args.
                 // Caller's `query` is opaque — try imei (most common), fall back
@@ -848,10 +889,12 @@ class TicketDetailViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 val is404 = runCatching { (e as? retrofit2.HttpException)?.code() == 404 }.getOrDefault(false)
-                _state.value = _state.value.copy(
-                    warrantyLoading = false,
-                    warrantyError = if (is404) "No warranty record found." else "Lookup failed: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        warrantyLoading = false,
+                        warrantyError = if (is404) "No warranty record found." else "Lookup failed: ${e.message}",
+                    )
+                }
             }
         }
     }
@@ -861,45 +904,53 @@ class TicketDetailViewModel @Inject constructor(
     // -----------------------------------------------------------------------
 
     fun showDeviceHistory() {
-        _state.value = _state.value.copy(
-            showDeviceHistory = true,
-            deviceHistoryEntries = emptyList(),
-            deviceHistoryError = null,
-        )
+        _state.update {
+            it.copy(
+                showDeviceHistory = true,
+                deviceHistoryEntries = emptyList(),
+                deviceHistoryError = null,
+            )
+        }
         // Resolve identifier from first device
         val device = _state.value.devices.firstOrNull()
         val imei = device?.imei
         val serial = device?.serial
         if (imei.isNullOrBlank() && serial.isNullOrBlank()) {
-            _state.value = _state.value.copy(
-                deviceHistoryLoading = false,
-                deviceHistoryError = "No IMEI or serial number on this device.",
-            )
+            _state.update {
+                it.copy(
+                    deviceHistoryLoading = false,
+                    deviceHistoryError = "No IMEI or serial number on this device.",
+                )
+            }
             return
         }
         viewModelScope.launch {
-            _state.value = _state.value.copy(deviceHistoryLoading = true)
+            _state.update { it.copy(deviceHistoryLoading = true) }
             try {
                 val response = ticketApi.getDeviceHistory(imei = imei?.ifBlank { null }, serial = serial?.ifBlank { null })
                 val entries = response.data ?: emptyList()
-                _state.value = _state.value.copy(
-                    deviceHistoryLoading = false,
-                    deviceHistoryEntries = entries,
-                    deviceHistoryError = if (entries.isEmpty()) "No prior repairs found for this device." else null,
-                )
+                _state.update {
+                    it.copy(
+                        deviceHistoryLoading = false,
+                        deviceHistoryEntries = entries,
+                        deviceHistoryError = if (entries.isEmpty()) "No prior repairs found for this device." else null,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    deviceHistoryLoading = false,
-                    deviceHistoryError = "Failed to load device history: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        deviceHistoryLoading = false,
+                        deviceHistoryError = "Failed to load device history: ${e.message}",
+                    )
+                }
             }
         }
     }
 
     fun dismissDeviceHistory() {
-        _state.value = _state.value.copy(showDeviceHistory = false)
+        _state.update { it.copy(showDeviceHistory = false) }
     }
 
     // -----------------------------------------------------------------------
@@ -913,7 +964,7 @@ class TicketDetailViewModel @Inject constructor(
      */
     fun pinToDashboard() {
         appPreferences.addPinnedTicketId(ticketId)
-        _state.value = _state.value.copy(actionMessage = "Ticket pinned to dashboard")
+        _state.update { it.copy(actionMessage = "Ticket pinned to dashboard") }
         viewModelScope.launch {
             try {
                 ticketApi.pinToDashboard(ticketId)
@@ -936,7 +987,7 @@ class TicketDetailViewModel @Inject constructor(
      */
     fun startBenchTimer() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isBenchTimerRunning = true)
+            _state.update { it.copy(isBenchTimerRunning = true) }
             try {
                 ticketApi.startBenchTimer(ticketId)
             } catch (e: CancellationException) {
@@ -953,7 +1004,7 @@ class TicketDetailViewModel @Inject constructor(
      */
     fun stopBenchTimer() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isBenchTimerRunning = false)
+            _state.update { it.copy(isBenchTimerRunning = false) }
             try {
                 ticketApi.stopBenchTimer(ticketId)
             } catch (e: CancellationException) {
@@ -973,9 +1024,11 @@ class TicketDetailViewModel @Inject constructor(
      * Stub fallback on 404 (e.g. already deleted on another device).
      */
     fun deletePhoto(photoId: Long) {
-        _state.value = _state.value.copy(
-            photos = _state.value.photos.filter { it.id != photoId },
-        )
+        _state.update {
+            it.copy(
+                photos = _state.value.photos.filter { it.id != photoId },
+            )
+        }
         viewModelScope.launch {
             try {
                 ticketApi.deletePhoto(photoId)
@@ -1008,7 +1061,7 @@ class TicketDetailViewModel @Inject constructor(
     // -----------------------------------------------------------------------
 
     private fun captureRoleInState() {
-        _state.value = _state.value.copy(userRole = authPreferences.userRole)
+        _state.update { it.copy(userRole = authPreferences.userRole) }
     }
 
     // -----------------------------------------------------------------------
@@ -1021,20 +1074,20 @@ class TicketDetailViewModel @Inject constructor(
      * succeeds. 404 → hides the Waivers overflow action (no crash, no error snackbar).
      */
     fun probeWaiverFeature() {
-        _state.value = _state.value.copy(waiverCheckInProgress = true)
+        _state.update { it.copy(waiverCheckInProgress = true) }
         viewModelScope.launch {
             try {
                 waiverApi.getRequiredTemplates(ticketId)
-                _state.value = _state.value.copy(waiverFeatureEnabled = true, waiverCheckInProgress = false)
+                _state.update { it.copy(waiverFeatureEnabled = true, waiverCheckInProgress = false) }
             } catch (e: HttpException) {
                 // 404 = feature not available — hide the action silently
-                _state.value = _state.value.copy(waiverFeatureEnabled = false, waiverCheckInProgress = false)
+                _state.update { it.copy(waiverFeatureEnabled = false, waiverCheckInProgress = false) }
             } catch (e: CancellationException) {
-                _state.value = _state.value.copy(waiverCheckInProgress = false)
+                _state.update { it.copy(waiverCheckInProgress = false) }
                 throw e
             } catch (e: Exception) {
                 // Network error treated the same as not-available for safety
-                _state.value = _state.value.copy(waiverFeatureEnabled = false, waiverCheckInProgress = false)
+                _state.update { it.copy(waiverFeatureEnabled = false, waiverCheckInProgress = false) }
             }
         }
     }
@@ -1044,11 +1097,11 @@ class TicketDetailViewModel @Inject constructor(
     // -----------------------------------------------------------------------
 
     fun showQcSignOff() {
-        _state.value = _state.value.copy(showQcSignOffDialog = true)
+        _state.update { it.copy(showQcSignOffDialog = true) }
     }
 
     fun dismissQcSignOff() {
-        _state.value = _state.value.copy(showQcSignOffDialog = false)
+        _state.update { it.copy(showQcSignOffDialog = false) }
     }
 
     /**
@@ -1067,7 +1120,7 @@ class TicketDetailViewModel @Inject constructor(
         comments: String,
         cacheDir: java.io.File,
     ) {
-        _state.value = _state.value.copy(showQcSignOffDialog = false, isActionInProgress = true)
+        _state.update { it.copy(showQcSignOffDialog = false, isActionInProgress = true) }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             // Persist bitmap to cache
             val key = java.util.UUID.randomUUID().toString()
@@ -1175,17 +1228,19 @@ class TicketDetailViewModel @Inject constructor(
             }
         }
 
-        _state.value = _state.value.copy(
-            pendingStatusChange = PendingStatusChange(
-                newStatusId = newStatusId,
-                notifications = specs,
-            ),
-        )
+        _state.update {
+            it.copy(
+                pendingStatusChange = PendingStatusChange(
+                    newStatusId = newStatusId,
+                    notifications = specs,
+                ),
+            )
+        }
     }
 
     fun confirmStatusChangeWithNotify(sendNotifications: Boolean) {
         val pending = _state.value.pendingStatusChange ?: return
-        _state.value = _state.value.copy(pendingStatusChange = null)
+        _state.update { it.copy(pendingStatusChange = null) }
 
         // Apply the status change
         changeStatus(pending.newStatusId)
@@ -1213,7 +1268,7 @@ class TicketDetailViewModel @Inject constructor(
     }
 
     fun cancelPendingStatusChange() {
-        _state.value = _state.value.copy(pendingStatusChange = null)
+        _state.update { it.copy(pendingStatusChange = null) }
     }
 
     // -----------------------------------------------------------------------
@@ -1245,9 +1300,12 @@ class TicketDetailViewModel @Inject constructor(
 
         when (result) {
             is TransitionResult.Allowed -> requestStatusChangeWithNotify(newStatusId)
-            is TransitionResult.Blocked -> _state.value = _state.value.copy(
-                statusTransitionError = result.message,
-            )
+            is TransitionResult.Blocked -> _state.update {
+            is TransitionResult.Blocked ->     it.copy(
+                    statusTransitionError = result.message,
+                
+            is TransitionResult.Blocked ->     )
+            is TransitionResult.Blocked -> }
         }
     }
 
@@ -1275,11 +1333,11 @@ class TicketDetailViewModel @Inject constructor(
         }
 
     fun showRollbackDialog() {
-        _state.value = _state.value.copy(showRollbackDialog = true)
+        _state.update { it.copy(showRollbackDialog = true) }
     }
 
     fun dismissRollbackDialog() {
-        _state.value = _state.value.copy(showRollbackDialog = false)
+        _state.update { it.copy(showRollbackDialog = false) }
     }
 
     /**
@@ -1297,21 +1355,23 @@ class TicketDetailViewModel @Inject constructor(
 
         val guard = TicketStateMachine.validateRollback(ticket.statusName, targetStatus?.name)
         if (guard is TransitionResult.Blocked) {
-            _state.value = _state.value.copy(actionMessage = "Rollback blocked: ${guard.message}")
+            _state.update { it.copy(actionMessage = "Rollback blocked: ${guard.message}") }
             return
         }
 
         viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
+            _state.update { it.copy(isActionInProgress = true) }
             try {
                 ticketApi.rollbackStatus(
                     ticketId,
                     mapOf("statusId" to targetStatusId, "reason" to reason),
                 )
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Status rolled back to \"${targetStatus?.name ?: targetStatusId}\"",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Status rolled back to \"${targetStatus?.name ?: targetStatusId}\"",
+                    )
+                }
                 loadTicketDetail()
             } catch (e: HttpException) {
                 if (e.code() == 404) {
@@ -1322,34 +1382,42 @@ class TicketDetailViewModel @Inject constructor(
                             ticketId,
                             UpdateTicketRequest(statusId = targetStatusId),
                         )
-                        _state.value = _state.value.copy(
-                            isActionInProgress = false,
-                            actionMessage = "Status rolled back (audit endpoint pending deployment)",
-                        )
+                        _state.update {
+                            it.copy(
+                                isActionInProgress = false,
+                                actionMessage = "Status rolled back (audit endpoint pending deployment)",
+                            )
+                        }
                         loadTicketDetail()
                     } catch (ex: CancellationException) {
-                        _state.value = _state.value.copy(isActionInProgress = false)
+                        _state.update { it.copy(isActionInProgress = false) }
                         throw ex
                     } catch (ex: Exception) {
-                        _state.value = _state.value.copy(
-                            isActionInProgress = false,
-                            actionMessage = "Rollback failed: ${ex.message}",
-                        )
+                        _state.update {
+                            it.copy(
+                                isActionInProgress = false,
+                                actionMessage = "Rollback failed: ${ex.message}",
+                            )
+                        }
                     }
                 } else {
-                    _state.value = _state.value.copy(
-                        isActionInProgress = false,
-                        actionMessage = "Rollback failed: HTTP ${e.code()}",
-                    )
+                    _state.update {
+                        it.copy(
+                            isActionInProgress = false,
+                            actionMessage = "Rollback failed: HTTP ${e.code()}",
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
-                _state.value = _state.value.copy(isActionInProgress = false)
+                _state.update { it.copy(isActionInProgress = false) }
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Rollback failed: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Rollback failed: ${e.message}",
+                    )
+                }
             }
         }
     }
@@ -1379,14 +1447,16 @@ class TicketDetailViewModel @Inject constructor(
      */
     fun signalPermissionDenied(action: String = "") {
         val suffix = if (action.isNotBlank()) " ($action)" else ""
-        _state.value = _state.value.copy(
-            permissionDeniedMessage = "Ask your admin to enable this$suffix.",
-        )
+        _state.update {
+            it.copy(
+                permissionDeniedMessage = "Ask your admin to enable this$suffix.",
+            )
+        }
     }
 
     /** Consume the permission-denied message after it has been shown. */
     fun clearPermissionDenied() {
-        _state.value = _state.value.copy(permissionDeniedMessage = null)
+        _state.update { it.copy(permissionDeniedMessage = null) }
     }
 
     /**
@@ -1394,24 +1464,24 @@ class TicketDetailViewModel @Inject constructor(
      * Call from any PUT/PATCH catch block when `e.code() == 409`.
      */
     fun signalConcurrentEdit() {
-        _state.value = _state.value.copy(isConcurrentEdit = true)
+        _state.update { it.copy(isConcurrentEdit = true) }
     }
 
     /** Dismiss the concurrent-edit banner (called before reload). */
     fun clearConcurrentEdit() {
-        _state.value = _state.value.copy(isConcurrentEdit = false)
+        _state.update { it.copy(isConcurrentEdit = false) }
     }
 
     // ─── §4.22 — Notify customer of delay ────────────────────────────────────
 
     /** Open the "Notify customer of delay" dialog from the overflow menu. */
     fun showNotifyDelayDialog() {
-        _state.value = _state.value.copy(showNotifyDelayDialog = true)
+        _state.update { it.copy(showNotifyDelayDialog = true) }
     }
 
     /** Dismiss the notify-delay dialog without sending. */
     fun dismissNotifyDelayDialog() {
-        _state.value = _state.value.copy(showNotifyDelayDialog = false, isDelaySendInProgress = false)
+        _state.update { it.copy(showNotifyDelayDialog = false, isDelaySendInProgress = false) }
     }
 
     /**
@@ -1437,7 +1507,7 @@ class TicketDetailViewModel @Inject constructor(
             return
         }
 
-        _state.value = _state.value.copy(isDelaySendInProgress = true)
+        _state.update { it.copy(isDelaySendInProgress = true) }
         viewModelScope.launch {
             try {
                 smsApi.sendSms(mapOf("to" to phone, "message" to message))

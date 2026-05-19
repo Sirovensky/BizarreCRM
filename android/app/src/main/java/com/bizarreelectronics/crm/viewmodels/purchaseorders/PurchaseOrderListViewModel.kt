@@ -10,6 +10,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -50,39 +51,43 @@ class PurchaseOrderListViewModel @Inject constructor(
     fun load() {
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val data = repository.listPurchaseOrders(
                     status = _state.value.statusFilter,
                 )
-                _state.value = _state.value.copy(
-                    orders = data.orders,
-                    pagination = data.pagination,
-                    isLoading = false,
-                    isRefreshing = false,
-                )
+                _state.update {
+                    it.copy(
+                        orders = data.orders,
+                        pagination = data.pagination,
+                        isLoading = false,
+                        isRefreshing = false,
+                    )
+                }
             } catch (e: CancellationException) {
                 // Don't paint "cancelled" over the now-current load; re-throw
                 // so the structured-concurrency contract is preserved.
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "load failed: ${e.message}")
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    error = e.message ?: "Failed to load purchase orders",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        error = e.message ?: "Failed to load purchase orders",
+                    )
+                }
             }
         }
     }
 
     fun refresh() {
-        _state.value = _state.value.copy(isRefreshing = true)
+        _state.update { it.copy(isRefreshing = true) }
         load()
     }
 
     fun onStatusFilterChanged(status: String?) {
-        _state.value = _state.value.copy(statusFilter = if (status == "all") null else status)
+        _state.update { it.copy(statusFilter = if (status == "all") null else status) }
         load()
     }
 

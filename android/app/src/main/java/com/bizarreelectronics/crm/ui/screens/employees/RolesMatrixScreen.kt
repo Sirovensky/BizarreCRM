@@ -54,6 +54,7 @@ import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -152,32 +153,38 @@ class RolesMatrixViewModel @Inject constructor(
 
     fun load() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val response = rolesApi.getRolePermissions(roleId)
                 val matrix = response.data?.matrix ?: emptyList()
                 val pendingMap = matrix.associate { it.key to it.allowed }
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    isSystemRole = roleName.lowercase() in SYSTEM_ROLES_MATRIX,
-                    entries = matrix,
-                    pending = pendingMap,
-                    isDirty = false,
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        isSystemRole = roleName.lowercase() in SYSTEM_ROLES_MATRIX,
+                        entries = matrix,
+                        pending = pendingMap,
+                        isDirty = false,
+                    )
+                }
             } catch (e: retrofit2.HttpException) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = when (e.code()) {
-                        403 -> "Admin access required"
-                        404 -> "Role not found"
-                        else -> "Failed to load permissions (${e.code()})"
-                    },
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = when (e.code()) {
+                            403 -> "Admin access required"
+                            404 -> "Role not found"
+                            else -> "Failed to load permissions (${e.code()})"
+                        },
+                    )
+                }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Failed to load permissions",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = e.message ?: "Failed to load permissions",
+                    )
+                }
             }
         }
     }
@@ -203,11 +210,13 @@ class RolesMatrixViewModel @Inject constructor(
                     roleId = roleId,
                     body = UpdatePermissionsBody(updates = updates),
                 )
-                _state.value = _state.value.copy(
-                    isSaving = false,
-                    isDirty = false,
-                    actionMessage = "Permissions saved",
-                )
+                _state.update {
+                    it.copy(
+                        isSaving = false,
+                        isDirty = false,
+                        actionMessage = "Permissions saved",
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: runCatching swallowed CancellationException
                 // and painted "Save failed" on back-nav. Permission update is
@@ -225,13 +234,13 @@ class RolesMatrixViewModel @Inject constructor(
                 } else {
                     t.message ?: "Save failed"
                 }
-                _state.value = _state.value.copy(isSaving = false, actionMessage = msg)
+                _state.update { it.copy(isSaving = false, actionMessage = msg) }
             }
         }
     }
 
     fun clearActionMessage() {
-        _state.value = _state.value.copy(actionMessage = null)
+        _state.update { it.copy(actionMessage = null) }
     }
 }
 

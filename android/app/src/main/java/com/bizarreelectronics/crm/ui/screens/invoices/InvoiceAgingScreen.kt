@@ -31,6 +31,7 @@ import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.util.CurrencyFormatter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -70,35 +71,41 @@ class InvoiceAgingViewModel @Inject constructor(
 
     fun load() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val resp = invoiceApi.getAgingReport()
                 val data = resp.data
                 if (resp.success && data != null) {
-                    _state.value = _state.value.copy(
-                        buckets = data.buckets,
-                        invoices = data.invoices,
-                        isLoading = false,
-                    )
+                    _state.update {
+                        it.copy(
+                            buckets = data.buckets,
+                            invoices = data.invoices,
+                            isLoading = false,
+                        )
+                    }
                 } else {
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        error = "Aging report unavailable.",
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            error = "Aging report unavailable.",
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Failed to load aging report.",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = e.message ?: "Failed to load aging report.",
+                    )
+                }
             }
         }
     }
 
     fun selectBucket(bucket: String) {
-        _state.value = _state.value.copy(selectedBucket = bucket)
+        _state.update { it.copy(selectedBucket = bucket) }
     }
 
     // ── Send-reminder dialog ──────────────────────────────────────────────────
@@ -108,12 +115,12 @@ class InvoiceAgingViewModel @Inject constructor(
      * The dialog pre-fills a template; the user can edit before confirming.
      */
     fun requestSendReminder(row: AgingInvoiceRow) {
-        _state.value = _state.value.copy(pendingReminderRow = row)
+        _state.update { it.copy(pendingReminderRow = row) }
     }
 
     /** Dismiss the send-reminder dialog without sending. */
     fun dismissSendReminder() {
-        _state.value = _state.value.copy(pendingReminderRow = null, isSendReminderInProgress = false)
+        _state.update { it.copy(pendingReminderRow = null, isSendReminderInProgress = false) }
     }
 
     /**
@@ -123,7 +130,7 @@ class InvoiceAgingViewModel @Inject constructor(
      * sends via its configured channel (SMS / email). 404-tolerant.
      */
     fun confirmSendReminder(invoiceId: Long) {
-        _state.value = _state.value.copy(isSendReminderInProgress = true)
+        _state.update { it.copy(isSendReminderInProgress = true) }
         viewModelScope.launch {
             try {
                 invoiceApi.bulkAction(BulkActionRequest(action = "send_reminder", ids = listOf(invoiceId)))
@@ -132,11 +139,13 @@ class InvoiceAgingViewModel @Inject constructor(
             } catch (_: Exception) {
                 // best-effort: mark done regardless
             }
-            _state.value = _state.value.copy(
-                isSendReminderInProgress = false,
-                pendingReminderRow = null,
-                actionMessage = "Reminder sent.",
-            )
+            _state.update {
+                it.copy(
+                    isSendReminderInProgress = false,
+                    pendingReminderRow = null,
+                    actionMessage = "Reminder sent.",
+                )
+            }
         }
     }
 
@@ -147,20 +156,22 @@ class InvoiceAgingViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 invoiceApi.voidInvoice(invoiceId)
-                _state.value = _state.value.copy(
-                    invoices = _state.value.invoices.filter { it.id != invoiceId },
-                    actionMessage = "Invoice written off.",
-                )
+                _state.update {
+                    it.copy(
+                        invoices = _state.value.invoices.filter { it.id != invoiceId },
+                        actionMessage = "Invoice written off.",
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (_: Exception) {
-                _state.value = _state.value.copy(actionMessage = "Write-off failed. Check your connection.")
+                _state.update { it.copy(actionMessage = "Write-off failed. Check your connection.") }
             }
         }
     }
 
     fun clearActionMessage() {
-        _state.value = _state.value.copy(actionMessage = null)
+        _state.update { it.copy(actionMessage = null) }
     }
 }
 

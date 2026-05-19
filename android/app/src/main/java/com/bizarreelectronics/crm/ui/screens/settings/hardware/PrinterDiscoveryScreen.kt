@@ -20,6 +20,7 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.util.PrinterManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -53,7 +54,7 @@ class PrinterDiscoveryViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             printerManager.printerStatus.collect { map ->
-                _state.value = _state.value.copy(statusMap = map)
+                _state.update { it.copy(statusMap = map) }
             }
         }
         refresh()
@@ -61,16 +62,18 @@ class PrinterDiscoveryViewModel @Inject constructor(
 
     fun refresh() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isScanning = true)
+            _state.update { it.copy(isScanning = true) }
             val devices = printerManager.discoverBluetoothPrinters()
             val roles = PrinterManager.PrinterRole.entries.associateWith {
                 printerManager.getPairedAddress(it)
             }
-            _state.value = _state.value.copy(
-                discoveredPrinters = devices,
-                pairedRoles = roles,
-                isScanning = false,
-            )
+            _state.update {
+                it.copy(
+                    discoveredPrinters = devices,
+                    pairedRoles = roles,
+                    isScanning = false,
+                )
+            }
             // Probe connections
             printerManager.onActivityResume()
         }
@@ -89,25 +92,29 @@ class PrinterDiscoveryViewModel @Inject constructor(
     fun testPrint(role: PrinterManager.PrinterRole) {
         viewModelScope.launch {
             val result = printerManager.testPrint(role)
-            _state.value = _state.value.copy(
-                testPrintResult = if (result.isSuccess) "Test print sent to ${role.label} printer"
-                else "Test print failed: ${result.exceptionOrNull()?.message}",
-            )
+            _state.update {
+                it.copy(
+                    testPrintResult = if (result.isSuccess) "Test print sent to ${role.label} printer"
+                    else "Test print failed: ${result.exceptionOrNull()?.message}",
+                )
+            }
         }
     }
 
     fun kickDrawer() {
         viewModelScope.launch {
             val result = printerManager.kickDrawer()
-            _state.value = _state.value.copy(
-                kickDrawerResult = if (result.isSuccess) "Cash drawer kicked"
-                else "Kick failed: ${result.exceptionOrNull()?.message}",
-            )
+            _state.update {
+                it.copy(
+                    kickDrawerResult = if (result.isSuccess) "Cash drawer kicked"
+                    else "Kick failed: ${result.exceptionOrNull()?.message}",
+                )
+            }
         }
     }
 
-    fun clearTestResult() { _state.value = _state.value.copy(testPrintResult = null) }
-    fun clearKickResult() { _state.value = _state.value.copy(kickDrawerResult = null) }
+    fun clearTestResult() { _state.update { it.copy(testPrintResult = null) } }
+    fun clearKickResult() { _state.update { it.copy(kickDrawerResult = null) } }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

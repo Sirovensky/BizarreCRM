@@ -42,6 +42,7 @@ import com.bizarreelectronics.crm.util.ImageUploadPolicy
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -78,21 +79,21 @@ class CameraCaptureViewModel @Inject constructor(
     val state = _state.asStateFlow()
 
     fun setPermission(granted: Boolean) {
-        _state.value = _state.value.copy(hasCameraPermission = granted)
+        _state.update { it.copy(hasCameraPermission = granted) }
     }
 
     fun toggleFlash() {
-        _state.value = _state.value.copy(flashEnabled = !_state.value.flashEnabled)
+        _state.update { it.copy(flashEnabled = !_state.value.flashEnabled) }
     }
 
     fun toggleVideoMode() {
-        _state.value = _state.value.copy(isVideoMode = !_state.value.isVideoMode)
+        _state.update { it.copy(isVideoMode = !_state.value.isVideoMode) }
     }
 
     fun uploadCapture(context: Context, ticketId: Long, deviceId: Long, file: File, mimeType: String) {
         if (_state.value.isCapturing) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isCapturing = true, lastError = null)
+            _state.update { it.copy(isCapturing = true, lastError = null) }
             try {
                 ImageUploadPolicy.validate(file, mimeType, ImageUploadPolicy.GENERAL_IMAGE_MAX_BYTES)?.let {
                     throw IllegalStateException(it)
@@ -110,22 +111,26 @@ class CameraCaptureViewModel @Inject constructor(
                     type = typeBody,
                     ticketDeviceId = deviceIdBody,
                 )
-                _state.value = _state.value.copy(
-                    isCapturing = false,
-                    capturedCount = _state.value.capturedCount + 1,
-                )
+                _state.update {
+                    it.copy(
+                        isCapturing = false,
+                        capturedCount = _state.value.capturedCount + 1,
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: optimistic — server may have committed the
                 // photo upload before nav-cancel. Don't paint "Upload failed"
                 // (which tempts retap and double-uploads the same photo).
-                _state.value = _state.value.copy(isCapturing = false)
+                _state.update { it.copy(isCapturing = false) }
                 throw e
             } catch (e: Exception) {
                 Timber.w(e, "CameraCapture: upload failed")
-                _state.value = _state.value.copy(
-                    isCapturing = false,
-                    lastError = e.message ?: "Upload failed",
-                )
+                _state.update {
+                    it.copy(
+                        isCapturing = false,
+                        lastError = e.message ?: "Upload failed",
+                    )
+                }
             } finally {
                 runCatching { file.delete() }
             }
@@ -133,7 +138,7 @@ class CameraCaptureViewModel @Inject constructor(
     }
 
     fun clearError() {
-        _state.value = _state.value.copy(lastError = null)
+        _state.update { it.copy(lastError = null) }
     }
 }
 

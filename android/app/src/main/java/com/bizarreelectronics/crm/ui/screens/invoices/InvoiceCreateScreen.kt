@@ -43,6 +43,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -154,7 +155,7 @@ class InvoiceCreateViewModel @Inject constructor(
                 val draft = draftStore.load(DraftStore.DraftType.INVOICE) ?: return@launch
                 // Simple heuristic: if the draft has a non-empty customer_id field, show the banner.
                 if (draft.payloadJson.contains("customer_id") && !draft.payloadJson.contains("\"customer_id\":0")) {
-                    _state.value = _state.value.copy(draftRestoredBanner = true)
+                    _state.update { it.copy(draftRestoredBanner = true) }
                 }
                 // Full parse deferred — banner informs user a draft is available; they dismiss it to load.
             }
@@ -162,7 +163,7 @@ class InvoiceCreateViewModel @Inject constructor(
     }
 
     fun dismissDraftBanner() {
-        _state.value = _state.value.copy(draftRestoredBanner = false)
+        _state.update { it.copy(draftRestoredBanner = false) }
     }
 
     fun discardDraft() {
@@ -173,42 +174,48 @@ class InvoiceCreateViewModel @Inject constructor(
 
     /** Opens the catalog picker targeting [lineIndex]. */
     fun openCatalogPicker(lineIndex: Int) {
-        _state.value = _state.value.copy(
-            catalogPickerLineIndex = lineIndex,
-            catalogQuery = "",
-            catalogResults = emptyList(),
-            catalogLoading = false,
-        )
+        _state.update {
+            it.copy(
+                catalogPickerLineIndex = lineIndex,
+                catalogQuery = "",
+                catalogResults = emptyList(),
+                catalogLoading = false,
+            )
+        }
     }
 
     fun closeCatalogPicker() {
         catalogSearchJob?.cancel()
-        _state.value = _state.value.copy(
-            catalogPickerLineIndex = null,
-            catalogQuery = "",
-            catalogResults = emptyList(),
-            catalogLoading = false,
-        )
+        _state.update {
+            it.copy(
+                catalogPickerLineIndex = null,
+                catalogQuery = "",
+                catalogResults = emptyList(),
+                catalogLoading = false,
+            )
+        }
     }
 
     /** Debounced search against GET /inventory?keyword=. */
     fun onCatalogQueryChanged(query: String) {
         catalogSearchJob?.cancel()
-        _state.value = _state.value.copy(catalogQuery = query, catalogResults = emptyList())
+        _state.update { it.copy(catalogQuery = query, catalogResults = emptyList()) }
         if (query.isBlank()) {
-            _state.value = _state.value.copy(catalogLoading = false)
+            _state.update { it.copy(catalogLoading = false) }
             return
         }
-        _state.value = _state.value.copy(catalogLoading = true)
+        _state.update { it.copy(catalogLoading = true) }
         catalogSearchJob = viewModelScope.launch {
             delay(300)
             runCatching {
                 inventoryApi.getItems(mapOf("keyword" to query, "limit" to "20"))
             }.onSuccess { resp ->
-                _state.value = _state.value.copy(
-                    catalogResults = resp.data?.items ?: emptyList(),
-                    catalogLoading = false,
-                )
+                _state.update {
+                    it.copy(
+                        catalogResults = resp.data?.items ?: emptyList(),
+                        catalogLoading = false,
+                    )
+                }
             }.onFailure {
                 // BUGHUNT-2026-05-18: keystroke debounce cancels the prior
                 // catalog search via catalogSearchJob.cancel() — runCatching
@@ -216,10 +223,12 @@ class InvoiceCreateViewModel @Inject constructor(
                 // blank catalogResults on a screen where the next search has
                 // already started.
                 if (it is CancellationException) throw it
-                _state.value = _state.value.copy(
-                    catalogResults = emptyList(),
-                    catalogLoading = false,
-                )
+                _state.update {
+                    it.copy(
+                        catalogResults = emptyList(),
+                        catalogLoading = false,
+                    )
+                }
             }
         }
     }
@@ -232,129 +241,145 @@ class InvoiceCreateViewModel @Inject constructor(
         val idx = _state.value.catalogPickerLineIndex ?: return
         val name = item.name ?: item.sku ?: ""
         val price = item.price ?: item.costPrice ?: 0.0
-        _state.value = _state.value.copy(
-            lineItems = _state.value.lineItems.mapIndexed { i, row ->
-                if (i == idx) {
-                    row.copy(
-                        description = name,
-                        unitPrice = if (price > 0) "%.2f".format(price) else row.unitPrice,
-                    )
-                } else row
-            },
-            catalogPickerLineIndex = null,
-            catalogQuery = "",
-            catalogResults = emptyList(),
-            catalogLoading = false,
-        )
+        _state.update {
+            it.copy(
+                lineItems = _state.value.lineItems.mapIndexed { i, row ->
+                    if (i == idx) {
+                        row.copy(
+                            description = name,
+                            unitPrice = if (price > 0) "%.2f".format(price) else row.unitPrice,
+                        )
+                    } else row
+                },
+                catalogPickerLineIndex = null,
+                catalogQuery = "",
+                catalogResults = emptyList(),
+                catalogLoading = false,
+            )
+        }
         scheduleDraftSave()
     }
 
     fun onCustomerQueryChanged(query: String) {
-        _state.value = _state.value.copy(
-            customerSearchQuery = query,
-            selectedCustomer = null,
-            showCustomerDropdown = query.isNotBlank(),
-        )
+        _state.update {
+            it.copy(
+                customerSearchQuery = query,
+                selectedCustomer = null,
+                showCustomerDropdown = query.isNotBlank(),
+            )
+        }
         searchJob?.cancel()
         if (query.isBlank()) {
-            _state.value = _state.value.copy(customerSearchResults = emptyList())
+            _state.update { it.copy(customerSearchResults = emptyList()) }
             return
         }
         searchJob = viewModelScope.launch {
             delay(300)
             runCatching { customerApi.searchCustomers(query) }
                 .onSuccess { resp ->
-                    _state.value = _state.value.copy(
-                        customerSearchResults = resp.data ?: emptyList(),
-                        showCustomerDropdown = true,
-                    )
+                    _state.update {
+                        it.copy(
+                            customerSearchResults = resp.data ?: emptyList(),
+                            showCustomerDropdown = true,
+                        )
+                    }
                 }
                 .onFailure {
                     // BUGHUNT-2026-05-18: same as catalog search — rethrow
                     // cancel so a debounce-triggered cancel doesn't blank
                     // results between keystrokes.
                     if (it is CancellationException) throw it
-                    _state.value = _state.value.copy(customerSearchResults = emptyList())
+                    _state.update { it.copy(customerSearchResults = emptyList()) }
                 }
         }
     }
 
     fun onCustomerSelected(customer: CustomerListItem) {
-        _state.value = _state.value.copy(
-            selectedCustomer = customer,
-            customerSearchQuery = listOfNotNull(customer.firstName, customer.lastName)
-                .joinToString(" ").ifBlank { customer.organization ?: "" },
-            showCustomerDropdown = false,
-            customerSearchResults = emptyList(),
-        )
+        _state.update {
+            it.copy(
+                selectedCustomer = customer,
+                customerSearchQuery = listOfNotNull(customer.firstName, customer.lastName)
+                    .joinToString(" ").ifBlank { customer.organization ?: "" },
+                showCustomerDropdown = false,
+                customerSearchResults = emptyList(),
+            )
+        }
         scheduleDraftSave()
     }
 
     fun onDismissDropdown() {
-        _state.value = _state.value.copy(showCustomerDropdown = false)
+        _state.update { it.copy(showCustomerDropdown = false) }
     }
 
     // ── Line items ────────────────────────────────────────────────────────────
 
     fun onLineDescriptionChanged(index: Int, value: String) {
-        _state.value = _state.value.copy(
-            lineItems = _state.value.lineItems.mapIndexed { i, row ->
-                if (i == index) row.copy(description = value) else row
-            },
-        )
+        _state.update {
+            it.copy(
+                lineItems = _state.value.lineItems.mapIndexed { i, row ->
+                    if (i == index) row.copy(description = value) else row
+                },
+            )
+        }
         scheduleDraftSave()
     }
 
     fun onLineQtyChanged(index: Int, value: String) {
-        _state.value = _state.value.copy(
-            lineItems = _state.value.lineItems.mapIndexed { i, row ->
-                if (i == index) row.copy(qty = value) else row
-            },
-        )
+        _state.update {
+            it.copy(
+                lineItems = _state.value.lineItems.mapIndexed { i, row ->
+                    if (i == index) row.copy(qty = value) else row
+                },
+            )
+        }
         scheduleDraftSave()
     }
 
     fun onLineUnitPriceChanged(index: Int, value: String) {
-        _state.value = _state.value.copy(
-            lineItems = _state.value.lineItems.mapIndexed { i, row ->
-                if (i == index) row.copy(unitPrice = value) else row
-            },
-        )
+        _state.update {
+            it.copy(
+                lineItems = _state.value.lineItems.mapIndexed { i, row ->
+                    if (i == index) row.copy(unitPrice = value) else row
+                },
+            )
+        }
         scheduleDraftSave()
     }
 
     fun addLineItem() {
-        _state.value = _state.value.copy(
-            lineItems = _state.value.lineItems + LineItemRow(),
-        )
+        _state.update {
+            it.copy(
+                lineItems = _state.value.lineItems + LineItemRow(),
+            )
+        }
         scheduleDraftSave()
     }
 
     fun removeLineItem(index: Int) {
         val updated = _state.value.lineItems.toMutableList().also { it.removeAt(index) }
-        _state.value = _state.value.copy(lineItems = updated.ifEmpty { listOf(LineItemRow()) })
+        _state.update { it.copy(lineItems = updated.ifEmpty { listOf(LineItemRow()) }) }
         scheduleDraftSave()
     }
 
     // ── Other fields ─────────────────────────────────────────────────────────
 
     fun onNotesChanged(value: String) {
-        _state.value = _state.value.copy(notes = value)
+        _state.update { it.copy(notes = value) }
         scheduleDraftSave()
     }
 
     fun onDueDateChanged(value: String) {
-        _state.value = _state.value.copy(dueDate = value)
+        _state.update { it.copy(dueDate = value) }
         scheduleDraftSave()
     }
 
     /** §7.3: "Send now" — email/SMS the invoice immediately on create. */
     fun onSendNowChanged(sendNow: Boolean) {
-        _state.value = _state.value.copy(sendNow = sendNow)
+        _state.update { it.copy(sendNow = sendNow) }
     }
 
     fun clearError() {
-        _state.value = _state.value.copy(error = null)
+        _state.update { it.copy(error = null) }
     }
 
     // ── Submit ────────────────────────────────────────────────────────────────
@@ -375,7 +400,7 @@ class InvoiceCreateViewModel @Inject constructor(
                 )
             }
 
-        _state.value = _state.value.copy(loading = true, error = null)
+        _state.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
             try {
                 val resp = invoiceApi.createInvoice(
@@ -389,15 +414,19 @@ class InvoiceCreateViewModel @Inject constructor(
                 if (resp.success && resp.data != null) {
                     // Draft successfully created — discard the autosave.
                     runCatching { draftStore.discard(DraftStore.DraftType.INVOICE) }
-                    _state.value = _state.value.copy(
-                        loading = false,
-                        created = resp.data.invoice.id,
-                    )
+                    _state.update {
+                        it.copy(
+                            loading = false,
+                            created = resp.data.invoice.id,
+                        )
+                    }
                 } else {
-                    _state.value = _state.value.copy(
-                        loading = false,
-                        error = resp.message ?: "Failed to create invoice",
-                    )
+                    _state.update {
+                        it.copy(
+                            loading = false,
+                            error = resp.message ?: "Failed to create invoice",
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: runCatching caught CancellationException
@@ -410,10 +439,12 @@ class InvoiceCreateViewModel @Inject constructor(
                 // misleading error.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    loading = false,
-                    error = e.message ?: "Network error — please try again",
-                )
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        error = e.message ?: "Network error — please try again",
+                    )
+                }
             }
         }
     }

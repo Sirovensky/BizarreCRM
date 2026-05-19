@@ -60,6 +60,7 @@ import com.bizarreelectronics.crm.util.toDollars
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
@@ -106,19 +107,23 @@ class InvoiceDetailViewModel @Inject constructor(
     fun loadInvoice() {
         // Collect entity from repository (cached + background refresh)
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             invoiceRepository.getInvoice(invoiceId)
                 .catch { e ->
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        error = e.message ?: "Failed to load invoice",
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            error = e.message ?: "Failed to load invoice",
+                        )
+                    }
                 }
                 .collectLatest { entity ->
-                    _state.value = _state.value.copy(
-                        invoice = entity,
-                        isLoading = false,
-                    )
+                    _state.update {
+                        it.copy(
+                            invoice = entity,
+                            isLoading = false,
+                        )
+                    }
                 }
         }
         // Fetch line items and payments from API (online-only)
@@ -130,19 +135,23 @@ class InvoiceDetailViewModel @Inject constructor(
             try {
                 val response = invoiceApi.getInvoice(invoiceId)
                 val detail = response.data?.invoice
-                _state.value = _state.value.copy(
-                    onlineDetail = detail,
-                    lineItems = detail?.lineItems ?: emptyList(),
-                    payments = detail?.payments ?: emptyList(),
-                    onlineDetailMessage = null,
-                )
+                _state.update {
+                    it.copy(
+                        onlineDetail = detail,
+                        lineItems = detail?.lineItems ?: emptyList(),
+                        payments = detail?.payments ?: emptyList(),
+                        onlineDetailMessage = null,
+                    )
+                }
             } catch (_: Exception) {
-                _state.value = _state.value.copy(
-                    onlineDetail = null,
-                    lineItems = emptyList(),
-                    payments = emptyList(),
-                    onlineDetailMessage = "Line items available when online",
-                )
+                _state.update {
+                    it.copy(
+                        onlineDetail = null,
+                        lineItems = emptyList(),
+                        payments = emptyList(),
+                        onlineDetailMessage = "Line items available when online",
+                    )
+                }
             }
         }
     }
@@ -165,7 +174,7 @@ class InvoiceDetailViewModel @Inject constructor(
         // coroutine is in flight can't enqueue a second POST /payments.
         if (_state.value.isActionInProgress) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
+            _state.update { it.copy(isActionInProgress = true) }
             try {
                 val request = RecordPaymentRequest(
                     amount = amount,
@@ -174,11 +183,13 @@ class InvoiceDetailViewModel @Inject constructor(
                     transactionId = reference?.takeIf { it.isNotBlank() },
                 )
                 invoiceApi.recordPayment(invoiceId, request)
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Payment of $${"%.2f".format(amount)} recorded",
-                    paymentSuccessCounter = _state.value.paymentSuccessCounter + 1,
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Payment of $${"%.2f".format(amount)} recorded",
+                        paymentSuccessCounter = _state.value.paymentSuccessCounter + 1,
+                    )
+                }
                 // AND-20260414-M8: refresh the InvoiceEntity through the
                 // repository so list screens + this detail's Room flow pick up
                 // the new status/amountPaid/amountDue immediately. Previously
@@ -195,23 +206,27 @@ class InvoiceDetailViewModel @Inject constructor(
                 // action state pending and let the user back out cleanly.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Failed to record payment. You must be online for financial operations.",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Failed to record payment. You must be online for financial operations.",
+                    )
+                }
             }
         }
     }
 
     fun voidInvoice() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
+            _state.update { it.copy(isActionInProgress = true) }
             try {
                 invoiceApi.voidInvoice(invoiceId)
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Invoice voided",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Invoice voided",
+                    )
+                }
                 // AND-20260414-M8: same as payment — refresh the entity so the
                 // Voided status lands on the Room flow before the user sees stale UI.
                 runCatching { invoiceRepository.refreshInvoiceDetail(invoiceId) }
@@ -219,10 +234,12 @@ class InvoiceDetailViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Failed to void invoice. You must be online for financial operations.",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Failed to void invoice. You must be online for financial operations.",
+                    )
+                }
             }
         }
     }
@@ -230,14 +247,16 @@ class InvoiceDetailViewModel @Inject constructor(
     fun issueRefund(amount: Double, reason: String?) {
         if (_state.value.isActionInProgress) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
+            _state.update { it.copy(isActionInProgress = true) }
             try {
                 val request = IssueRefundRequest(invoiceId = invoiceId, amount = amount, reason = reason)
                 invoiceApi.issueRefund(request)
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Refund of $${"%.2f".format(amount)} issued.",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Refund of $${"%.2f".format(amount)} issued.",
+                    )
+                }
                 runCatching { invoiceRepository.refreshInvoiceDetail(invoiceId) }
                 loadOnlineDetails()
             } catch (e: CancellationException) {
@@ -245,11 +264,13 @@ class InvoiceDetailViewModel @Inject constructor(
                 // double-issuing is bad.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    // 404 → endpoint not deployed yet — surface gracefully.
-                    actionMessage = "Refund endpoint unavailable. Try again when the server is updated.",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        // 404 → endpoint not deployed yet — surface gracefully.
+                        actionMessage = "Refund endpoint unavailable. Try again when the server is updated.",
+                    )
+                }
             }
         }
     }
@@ -257,20 +278,24 @@ class InvoiceDetailViewModel @Inject constructor(
     fun cloneInvoice() {
         if (_state.value.isActionInProgress) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
+            _state.update { it.copy(isActionInProgress = true) }
             try {
                 invoiceApi.cloneInvoice(invoiceId)
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Invoice cloned as a new Draft.",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Invoice cloned as a new Draft.",
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Clone endpoint unavailable. Try again when the server is updated.",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Clone endpoint unavailable. Try again when the server is updated.",
+                    )
+                }
             }
         }
     }
@@ -283,15 +308,17 @@ class InvoiceDetailViewModel @Inject constructor(
     fun createCreditNote(amount: Double, reason: String) {
         if (_state.value.isActionInProgress) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
+            _state.update { it.copy(isActionInProgress = true) }
             try {
                 val request = CreditNoteRequest(amount = amount, reason = reason)
                 invoiceApi.createCreditNote(invoiceId, request)
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Credit note of $${"%.2f".format(amount)} created.",
-                    creditNoteSuccessCounter = _state.value.creditNoteSuccessCounter + 1,
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Credit note of $${"%.2f".format(amount)} created.",
+                        creditNoteSuccessCounter = _state.value.creditNoteSuccessCounter + 1,
+                    )
+                }
                 runCatching { invoiceRepository.refreshInvoiceDetail(invoiceId) }
                 loadOnlineDetails()
             } catch (e: CancellationException) {
@@ -299,10 +326,12 @@ class InvoiceDetailViewModel @Inject constructor(
                 // writes, double-creation is bad.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Credit note endpoint unavailable. Try again when the server is updated.",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Credit note endpoint unavailable. Try again when the server is updated.",
+                    )
+                }
             }
         }
     }
@@ -314,32 +343,36 @@ class InvoiceDetailViewModel @Inject constructor(
      */
     fun voidInvoiceWithReason(reason: String?) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
+            _state.update { it.copy(isActionInProgress = true) }
             try {
                 if (reason.isNullOrBlank()) {
                     invoiceApi.voidInvoice(invoiceId)
                 } else {
                     invoiceApi.voidInvoiceWithReason(invoiceId, VoidInvoiceRequest(reason = reason))
                 }
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Invoice voided.",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Invoice voided.",
+                    )
+                }
                 runCatching { invoiceRepository.refreshInvoiceDetail(invoiceId) }
                 loadOnlineDetails()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Failed to void invoice. You must be online for financial operations.",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Failed to void invoice. You must be online for financial operations.",
+                    )
+                }
             }
         }
     }
 
     fun clearActionMessage() {
-        _state.value = _state.value.copy(actionMessage = null)
+        _state.update { it.copy(actionMessage = null) }
     }
 }
 

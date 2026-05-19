@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Sms
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -60,34 +61,40 @@ class SmsTemplatesViewModel @Inject constructor(
 
     fun loadTemplates() {
         if (!serverMonitor.isEffectivelyOnline.value) {
-            _state.value = _state.value.copy(
-                isLoading = false,
-                offline = true,
-                templates = emptyList(),
-                error = null,
-            )
+            _state.update {
+                it.copy(
+                    isLoading = false,
+                    offline = true,
+                    templates = emptyList(),
+                    error = null,
+                )
+            }
             return
         }
 
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null, offline = false)
+            _state.update { it.copy(isLoading = true, error = null, offline = false) }
             try {
                 val response = smsApi.getTemplates()
                 val parsed = (response.data?.templates ?: emptyList()).map { dto ->
                     dto.toSmsTemplate()
                 }
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    templates = parsed,
-                    error = null,
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        templates = parsed,
+                        error = null,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Failed to load templates",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = e.message ?: "Failed to load templates",
+                    )
+                }
             }
         }
     }

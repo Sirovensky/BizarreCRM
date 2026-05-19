@@ -54,6 +54,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.time.LocalTime
@@ -102,7 +103,7 @@ class ClockInTileViewModel @Inject constructor(
             runCatching {
                 val response = settingsApi.getEmployees()
                 val me = response.data?.firstOrNull { it.id == authPreferences.userId }
-                _state.value = _state.value.copy(isClockedIn = me?.isClockedIn)
+                _state.update { it.copy(isClockedIn = me?.isClockedIn) }
             }
         }
     }
@@ -138,14 +139,14 @@ class ClockInTileViewModel @Inject constructor(
             try {
                 if (isClockedIn == true) {
                     settingsApi.clockOut(userId, emptyMap())
-                    _state.value = _state.value.copy(isClockedIn = false, isLoading = false)
+                    _state.update { it.copy(isClockedIn = false, isLoading = false) }
                     // §14.10 — sync QS tile + Glance widget
                     broadcastClockState(isClockedIn = false)
                     onSuccess("Clocked out")
                 } else {
                     settingsApi.clockIn(userId, emptyMap())
                     val timeStr = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
-                    _state.value = _state.value.copy(isClockedIn = true, justClockedInAt = timeStr, isLoading = false)
+                    _state.update { it.copy(isClockedIn = true, justClockedInAt = timeStr, isLoading = false) }
                     // §14.10 — sync QS tile + Glance widget
                     broadcastClockState(isClockedIn = true)
                     onSuccess("Clocked in at $timeStr")
@@ -162,10 +163,10 @@ class ClockInTileViewModel @Inject constructor(
                 // and payroll double-counts the entry. Clear isLoading so
                 // the next tap from a re-entered screen is not blocked,
                 // then propagate so structured concurrency tears down.
-                _state.value = _state.value.copy(isLoading = false)
+                _state.update { it.copy(isLoading = false) }
                 throw e
             } catch (e: Throwable) {
-                _state.value = _state.value.copy(isLoading = false)
+                _state.update { it.copy(isLoading = false) }
                 android.util.Log.w("ClockInTile", "toggle failed: ${e.message}")
                 onFallbackToScreen()
             }

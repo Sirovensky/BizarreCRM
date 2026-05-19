@@ -24,6 +24,7 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
@@ -101,7 +102,7 @@ class GlobalSearchViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             serverMonitor.isEffectivelyOnline.collect { online ->
-                _state.value = _state.value.copy(isOnline = online)
+                _state.update { it.copy(isOnline = online) }
             }
         }
         viewModelScope.launch {
@@ -116,14 +117,16 @@ class GlobalSearchViewModel @Inject constructor(
     // ── Query management ──────────────────────────────────────────────────
 
     fun updateQuery(value: String) {
-        _state.value = _state.value.copy(query = value)
+        _state.update { it.copy(query = value) }
         _queryFlow.value = value
         if (value.isBlank()) {
-            _state.value = _state.value.copy(
-                results = emptyMap(),
-                hasSearched = false,
-                error = null,
-            )
+            _state.update {
+                it.copy(
+                    results = emptyMap(),
+                    hasSearched = false,
+                    error = null,
+                )
+            }
         }
     }
 
@@ -143,18 +146,18 @@ class GlobalSearchViewModel @Inject constructor(
 
     fun clearRecentSearches() {
         appPreferences.clearRecentSearches()
-        _state.value = _state.value.copy(recentSearches = emptyList())
+        _state.update { it.copy(recentSearches = emptyList()) }
     }
 
     // ── Saved / pinned queries (item 8) ───────────────────────────────────
 
     fun requestSaveCurrentQuery() {
         if (_state.value.query.isBlank()) return
-        _state.value = _state.value.copy(showSaveQueryDialog = true)
+        _state.update { it.copy(showSaveQueryDialog = true) }
     }
 
     fun dismissSaveQueryDialog() {
-        _state.value = _state.value.copy(showSaveQueryDialog = false)
+        _state.update { it.copy(showSaveQueryDialog = false) }
     }
 
     fun saveQuery(name: String) {
@@ -167,16 +170,18 @@ class GlobalSearchViewModel @Inject constructor(
         )
         val updated = _state.value.savedQueries + entry
         persistSavedQueries(updated)
-        _state.value = _state.value.copy(
-            savedQueries = updated,
-            showSaveQueryDialog = false,
-        )
+        _state.update {
+            it.copy(
+                savedQueries = updated,
+                showSaveQueryDialog = false,
+            )
+        }
     }
 
     fun removeSavedQuery(id: String) {
         val updated = _state.value.savedQueries.filterNot { it.id == id }
         persistSavedQueries(updated)
-        _state.value = _state.value.copy(savedQueries = updated)
+        _state.update { it.copy(savedQueries = updated) }
     }
 
     fun onSavedQueryTapped(saved: SavedQuery) {
@@ -187,7 +192,7 @@ class GlobalSearchViewModel @Inject constructor(
     // ── Core search ───────────────────────────────────────────────────────
 
     private suspend fun performSearch(query: String) {
-        _state.value = _state.value.copy(isLoading = true, error = null)
+        _state.update { it.copy(isLoading = true, error = null) }
         val online = serverMonitor.isEffectivelyOnline.value
         if (online) {
             try {
@@ -416,12 +421,14 @@ class GlobalSearchViewModel @Inject constructor(
         }?.takeIf { it.isNotEmpty() }?.let { grouped["sms"] = it }
 
         appPreferences.addRecentSearch(query)
-        _state.value = _state.value.copy(
-            results = grouped,
-            isLoading = false,
-            hasSearched = true,
-            recentSearches = appPreferences.recentSearches,
-        )
+        _state.update {
+            it.copy(
+                results = grouped,
+                isLoading = false,
+                hasSearched = true,
+                recentSearches = appPreferences.recentSearches,
+            )
+        }
     }
 
     private suspend fun performOfflineSearch(query: String) {
@@ -461,20 +468,24 @@ class GlobalSearchViewModel @Inject constructor(
             }?.takeIf { it.isNotEmpty() }?.let { grouped["inventory"] = it }
 
             appPreferences.addRecentSearch(query)
-            _state.value = _state.value.copy(
-                results = grouped,
-                isLoading = false,
-                hasSearched = true,
-                recentSearches = appPreferences.recentSearches,
-            )
+            _state.update {
+                it.copy(
+                    results = grouped,
+                    isLoading = false,
+                    hasSearched = true,
+                    recentSearches = appPreferences.recentSearches,
+                )
+            }
         } catch (e: CancellationException) {
             throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
         } catch (e: Exception) {
-            _state.value = _state.value.copy(
-                isLoading = false,
-                error = e.message ?: "Search failed",
-                hasSearched = true,
-            )
+            _state.update {
+                it.copy(
+                    isLoading = false,
+                    error = e.message ?: "Search failed",
+                    hasSearched = true,
+                )
+            }
         }
     }
 

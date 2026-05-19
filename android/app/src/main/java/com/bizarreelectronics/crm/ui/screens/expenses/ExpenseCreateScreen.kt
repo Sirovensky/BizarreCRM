@@ -42,6 +42,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -125,7 +126,7 @@ class ExpenseCreateViewModel @Inject constructor(
     }
 
     fun updateCategory(value: String) {
-        _state.value = _state.value.copy(category = value)
+        _state.update { it.copy(category = value) }
         onFieldChanged()
     }
 
@@ -136,19 +137,19 @@ class ExpenseCreateViewModel @Inject constructor(
     fun updateAmount(value: String) {
         // Allow empty or well-formed decimal
         if (value.isEmpty() || value.matches(Regex("^\\d*\\.?\\d{0,2}$"))) {
-            _state.value = _state.value.copy(amount = value)
+            _state.update { it.copy(amount = value) }
             onFieldChanged()
         }
         // Silently drop characters that would produce invalid input (extra dots, >2 decimals).
     }
 
     fun updateDescription(value: String) {
-        _state.value = _state.value.copy(description = value)
+        _state.update { it.copy(description = value) }
         onFieldChanged()
     }
 
     fun updateDate(value: String) {
-        _state.value = _state.value.copy(date = value)
+        _state.update { it.copy(date = value) }
         onFieldChanged()
     }
 
@@ -163,74 +164,76 @@ class ExpenseCreateViewModel @Inject constructor(
         val localDate = Instant.ofEpochMilli(millis)
             .atZone(java.time.ZoneOffset.UTC)
             .toLocalDate()
-        _state.value = _state.value.copy(
-            dateMillis = millis,
-            date = localDate.toString(),
-        )
+        _state.update {
+            it.copy(
+                dateMillis = millis,
+                date = localDate.toString(),
+            )
+        }
         onFieldChanged()
     }
 
     fun updateReimbursable(checked: Boolean) {
-        _state.value = _state.value.copy(isReimbursable = checked)
+        _state.update { it.copy(isReimbursable = checked) }
         onFieldChanged()
     }
 
     fun updateSubtype(value: ExpenseSubtype) {
-        _state.value = _state.value.copy(subtype = value)
+        _state.update { it.copy(subtype = value) }
         onFieldChanged()
     }
 
     fun updateMiles(value: String) {
         if (value.isEmpty() || value.matches(Regex("^\\d*\\.?\\d{0,2}$"))) {
-            _state.value = _state.value.copy(miles = value)
+            _state.update { it.copy(miles = value) }
             onFieldChanged()
         }
     }
 
     fun updateMileageRate(value: String) {
         if (value.isEmpty() || value.matches(Regex("^\\d*\\.?\\d{0,2}$"))) {
-            _state.value = _state.value.copy(mileageRateDollars = value)
+            _state.update { it.copy(mileageRateDollars = value) }
             onFieldChanged()
         }
     }
 
     fun updateVendor(value: String) {
-        _state.value = _state.value.copy(vendor = value)
+        _state.update { it.copy(vendor = value) }
         onFieldChanged()
     }
 
     fun updatePerDiemDays(value: String) {
         if (value.isEmpty() || value.matches(Regex("^\\d{0,3}$"))) {
-            _state.value = _state.value.copy(perDiemDays = value)
+            _state.update { it.copy(perDiemDays = value) }
             onFieldChanged()
         }
     }
 
     fun updatePerDiemRate(value: String) {
         if (value.isEmpty() || value.matches(Regex("^\\d*\\.?\\d{0,2}$"))) {
-            _state.value = _state.value.copy(perDiemRateDollars = value)
+            _state.update { it.copy(perDiemRateDollars = value) }
             onFieldChanged()
         }
     }
 
     fun clearError() {
-        _state.value = _state.value.copy(error = null)
+        _state.update { it.copy(error = null) }
     }
 
     fun clearOcrToast() {
-        _state.value = _state.value.copy(ocrToast = null)
+        _state.update { it.copy(ocrToast = null) }
     }
 
     fun clearReceiptUri() {
-        _state.value = _state.value.copy(receiptUri = null)
+        _state.update { it.copy(receiptUri = null) }
     }
 
     fun clearSavedOffline() {
-        _state.value = _state.value.copy(savedOffline = false)
+        _state.update { it.copy(savedOffline = false) }
     }
 
     fun onReceiptPicked(context: android.content.Context, uri: Uri) {
-        _state.value = _state.value.copy(receiptUri = uri, isOcrRunning = true, ocrToast = null)
+        _state.update { it.copy(receiptUri = uri, isOcrRunning = true, ocrToast = null) }
         viewModelScope.launch {
             try {
                 val result = ReceiptOcrScanner.scanReceipt(context, uri)
@@ -244,10 +247,12 @@ class ExpenseCreateViewModel @Inject constructor(
                         date = result.date?.takeIf { current.date.isBlank() } ?: current.date,
                     )
                 } else {
-                    _state.value = _state.value.copy(
-                        isOcrRunning = false,
-                        ocrToast = "OCR found no data — please fill in manually",
-                    )
+                    _state.update {
+                        it.copy(
+                            isOcrRunning = false,
+                            ocrToast = "OCR found no data — please fill in manually",
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-18: don't paint "Receipt scan failed" on
@@ -255,10 +260,12 @@ class ExpenseCreateViewModel @Inject constructor(
                 // is best-effort — the next re-scan re-fires this flow.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isOcrRunning = false,
-                    ocrToast = "Receipt scan failed — please fill in manually",
-                )
+                _state.update {
+                    it.copy(
+                        isOcrRunning = false,
+                        ocrToast = "Receipt scan failed — please fill in manually",
+                    )
+                }
             }
         }
     }
@@ -296,12 +303,14 @@ class ExpenseCreateViewModel @Inject constructor(
         val description = obj.get("description")?.takeIf { !it.isJsonNull }?.asString ?: ""
         val date        = obj.get("date")?.takeIf { !it.isJsonNull }?.asString
             ?: LocalDate.now().toString()
-        _state.value = _state.value.copy(
-            category    = category,
-            amount      = amount,
-            description = description,
-            date        = date,
-        )
+        _state.update {
+            it.copy(
+                category    = category,
+                amount      = amount,
+                description = description,
+                date        = date,
+            )
+        }
     }
 
     fun discardDraft() {
@@ -333,7 +342,7 @@ class ExpenseCreateViewModel @Inject constructor(
         val userRole = authPreferences.userRole
         val approvalStatus: String? = if (current.isReimbursable && userRole != "admin") "pending" else null
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSubmitting = true, error = null)
+            _state.update { it.copy(isSubmitting = true, error = null) }
             try {
                 val request = CreateExpenseRequest(
                     category = current.category,
@@ -348,18 +357,22 @@ class ExpenseCreateViewModel @Inject constructor(
                 val createdId = expenseRepository.createExpense(request)
                 val wasOffline = createdId < 0
                 discardDraft()
-                _state.value = _state.value.copy(
-                    isSubmitting = false,
-                    createdId = createdId,
-                    savedOffline = wasOffline,
-                )
+                _state.update {
+                    it.copy(
+                        isSubmitting = false,
+                        createdId = createdId,
+                        savedOffline = wasOffline,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSubmitting = false,
-                    error = e.message ?: "Failed to create expense",
-                )
+                _state.update {
+                    it.copy(
+                        isSubmitting = false,
+                        error = e.message ?: "Failed to create expense",
+                    )
+                }
             }
         }
     }
@@ -383,7 +396,7 @@ class ExpenseCreateViewModel @Inject constructor(
         // truncates to 998 — mileage / per-diem rate stored a cent short.
         val rateCents = Math.round(rateDollars * 100).toInt().coerceIn(1, 50_000)
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSubmitting = true, error = null)
+            _state.update { it.copy(isSubmitting = true, error = null) }
             try {
                 val request = CreateMileageExpenseRequest(
                     vendor = current.vendor.trim().ifBlank { null },
@@ -396,18 +409,22 @@ class ExpenseCreateViewModel @Inject constructor(
                 val createdId = expenseRepository.createMileageExpense(request)
                 val wasOffline = createdId < 0
                 discardDraft()
-                _state.value = _state.value.copy(
-                    isSubmitting = false,
-                    createdId = createdId,
-                    savedOffline = wasOffline,
-                )
+                _state.update {
+                    it.copy(
+                        isSubmitting = false,
+                        createdId = createdId,
+                        savedOffline = wasOffline,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSubmitting = false,
-                    error = e.message ?: "Failed to create mileage expense",
-                )
+                _state.update {
+                    it.copy(
+                        isSubmitting = false,
+                        error = e.message ?: "Failed to create mileage expense",
+                    )
+                }
             }
         }
     }
@@ -431,7 +448,7 @@ class ExpenseCreateViewModel @Inject constructor(
         // truncates to 998 — mileage / per-diem rate stored a cent short.
         val rateCents = Math.round(rateDollars * 100).toInt().coerceIn(1, 50_000)
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSubmitting = true, error = null)
+            _state.update { it.copy(isSubmitting = true, error = null) }
             try {
                 val request = CreatePerDiemExpenseRequest(
                     description = current.description.trim().ifBlank { null },
@@ -443,18 +460,22 @@ class ExpenseCreateViewModel @Inject constructor(
                 val createdId = expenseRepository.createPerDiemExpense(request)
                 val wasOffline = createdId < 0
                 discardDraft()
-                _state.value = _state.value.copy(
-                    isSubmitting = false,
-                    createdId = createdId,
-                    savedOffline = wasOffline,
-                )
+                _state.update {
+                    it.copy(
+                        isSubmitting = false,
+                        createdId = createdId,
+                        savedOffline = wasOffline,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSubmitting = false,
-                    error = e.message ?: "Failed to create per-diem expense",
-                )
+                _state.update {
+                    it.copy(
+                        isSubmitting = false,
+                        error = e.message ?: "Failed to create per-diem expense",
+                    )
+                }
             }
         }
     }

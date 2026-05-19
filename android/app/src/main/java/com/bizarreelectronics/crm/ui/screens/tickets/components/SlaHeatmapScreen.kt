@@ -48,6 +48,7 @@ import com.bizarreelectronics.crm.util.SlaCalculator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -79,25 +80,27 @@ class SlaHeatmapViewModel @Inject constructor(
 
     fun load() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val resp = slaApi.getHeatmap()
                 val rows = resp.data?.rows ?: emptyList()
-                _state.value = _state.value.copy(isLoading = false, rows = sort(rows, _state.value.sortByRed))
+                _state.update { it.copy(isLoading = false, rows = sort(rows, _state.value.sortByRed)) }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoading = false, error = e.message)
+                _state.update { it.copy(isLoading = false, error = e.message) }
             }
         }
     }
 
     fun toggleSort() {
         val newSort = !_state.value.sortByRed
-        _state.value = _state.value.copy(
-            sortByRed = newSort,
-            rows = sort(_state.value.rows, newSort),
-        )
+        _state.update {
+            it.copy(
+                sortByRed = newSort,
+                rows = sort(_state.value.rows, newSort),
+            )
+        }
     }
 
     private fun sort(rows: List<SlaHeatmapRow>, redFirst: Boolean): List<SlaHeatmapRow> =

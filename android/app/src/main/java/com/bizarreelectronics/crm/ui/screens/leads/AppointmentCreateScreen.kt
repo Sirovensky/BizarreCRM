@@ -35,6 +35,7 @@ import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -201,38 +202,40 @@ class AppointmentCreateViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             serverMonitor.isEffectivelyOnline.collect { online ->
-                _state.value = _state.value.copy(isOffline = !online)
+                _state.update { it.copy(isOffline = !online) }
             }
         }
     }
 
     fun updateTitle(value: String) {
-        _state.value = _state.value.copy(title = value)
+        _state.update { it.copy(title = value) }
     }
 
     fun updateNotes(value: String) {
-        _state.value = _state.value.copy(notes = value)
+        _state.update { it.copy(notes = value) }
     }
 
     fun updateLocation(value: String) {
-        _state.value = _state.value.copy(location = value)
+        _state.update { it.copy(location = value) }
     }
 
     fun updateType(value: String) {
-        _state.value = _state.value.copy(type = value)
+        _state.update { it.copy(type = value) }
     }
 
     // TODO(10.3): replace numeric stubs with search-picker once CustomerPicker pattern is ported
-    fun updateLinkedTicketId(value: Long?) { _state.value = _state.value.copy(linkedTicketId = value) }
-    fun updateLinkedEstimateId(value: Long?) { _state.value = _state.value.copy(linkedEstimateId = value) }
-    fun updateLinkedLeadId(value: Long?) { _state.value = _state.value.copy(linkedLeadId = value) }
+    fun updateLinkedTicketId(value: Long?) { _state.update { it.copy(linkedTicketId = value) } }
+    fun updateLinkedEstimateId(value: Long?) { _state.update { it.copy(linkedEstimateId = value) } }
+    fun updateLinkedLeadId(value: Long?) { _state.update { it.copy(linkedLeadId = value) } }
 
     /** Toggle a reminder offset chip on/off. */
     fun toggleReminderOffset(minutes: Int) {
         val current = _state.value.selectedReminderOffsets
-        _state.value = _state.value.copy(
-            selectedReminderOffsets = if (minutes in current) current - minutes else current + minutes,
-        )
+        _state.update {
+            it.copy(
+                selectedReminderOffsets = if (minutes in current) current - minutes else current + minutes,
+            )
+        }
     }
 
     fun updateRecurrencePreset(preset: String) {
@@ -242,11 +245,11 @@ class AppointmentCreateViewModel @Inject constructor(
             "Monthly" -> "FREQ=MONTHLY"
             else -> "" // None or Custom; Custom leaves the raw text field editable
         }
-        _state.value = _state.value.copy(recurrencePreset = preset, rrule = rrule)
+        _state.update { it.copy(recurrencePreset = preset, rrule = rrule) }
     }
 
     fun updateRrule(value: String) {
-        _state.value = _state.value.copy(rrule = value)
+        _state.update { it.copy(rrule = value) }
     }
 
     /** Add [extraMinutes] to the current duration and shift end time accordingly. */
@@ -306,7 +309,7 @@ class AppointmentCreateViewModel @Inject constructor(
     }
 
     fun clearError() {
-        _state.value = _state.value.copy(error = null)
+        _state.update { it.copy(error = null) }
     }
 
     fun save() {
@@ -354,32 +357,38 @@ class AppointmentCreateViewModel @Inject constructor(
                     idempotencyKey = idempotencyKey,
                 )
                 syncQueueDao.insert(entity)
-                _state.value = _state.value.copy(
-                    isSubmitting = false,
-                    savedOffline = true,
-                    createdId = tempId,
-                )
+                _state.update {
+                    it.copy(
+                        isSubmitting = false,
+                        savedOffline = true,
+                        createdId = tempId,
+                    )
+                }
             }
             return
         }
 
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSubmitting = true, error = null)
+            _state.update { it.copy(isSubmitting = true, error = null) }
             try {
                 val response = leadApi.createAppointment(request)
                 val detail = response.data
                     ?: throw Exception(response.message ?: "Create failed")
-                _state.value = _state.value.copy(
-                    isSubmitting = false,
-                    createdId = detail.id,
-                )
+                _state.update {
+                    it.copy(
+                        isSubmitting = false,
+                        createdId = detail.id,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSubmitting = false,
-                    error = e.message ?: "Failed to create appointment",
-                )
+                _state.update {
+                    it.copy(
+                        isSubmitting = false,
+                        error = e.message ?: "Failed to create appointment",
+                    )
+                }
             }
         }
     }

@@ -57,6 +57,7 @@ import com.bizarreelectronics.crm.util.MultipartUpload
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -140,7 +141,7 @@ class WaiverListViewModel @Inject constructor(
 
     /** Reload templates + signed waivers from the server. */
     fun load() {
-        _state.value = _state.value.copy(isLoading = true, error = null)
+        _state.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
             try {
                 val templatesResp = waiverApi.getRequiredTemplates(ticketId)
@@ -160,30 +161,30 @@ class WaiverListViewModel @Inject constructor(
                     )
                 }
 
-                _state.value = _state.value.copy(isLoading = false, rows = rows)
+                _state.update { it.copy(isLoading = false, rows = rows) }
             } catch (e: HttpException) {
                 if (e.code() == 404) {
                     // Feature not yet enabled on this server — show empty list
-                    _state.value = _state.value.copy(isLoading = false, rows = emptyList())
+                    _state.update { it.copy(isLoading = false, rows = emptyList()) }
                 } else {
-                    _state.value = _state.value.copy(isLoading = false, error = "Failed to load waivers: ${e.message}")
+                    _state.update { it.copy(isLoading = false, error = "Failed to load waivers: ${e.message}") }
                 }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoading = false, error = "Failed to load waivers: ${e.message}")
+                _state.update { it.copy(isLoading = false, error = "Failed to load waivers: ${e.message}") }
             }
         }
     }
 
     /** Open the sign sheet for [template]. */
     fun openSheet(template: WaiverTemplateDto) {
-        _state.value = _state.value.copy(activeTemplate = template)
+        _state.update { it.copy(activeTemplate = template) }
     }
 
     /** Dismiss the sign sheet without submitting. */
     fun dismissSheet() {
-        _state.value = _state.value.copy(activeTemplate = null)
+        _state.update { it.copy(activeTemplate = null) }
     }
 
     /**
@@ -204,7 +205,7 @@ class WaiverListViewModel @Inject constructor(
         bitmap: android.graphics.Bitmap,
         cacheDir: File,
     ) {
-        _state.value = _state.value.copy(isSubmitting = true, activeTemplate = null)
+        _state.update { it.copy(isSubmitting = true, activeTemplate = null) }
         viewModelScope.launch {
             try {
                 val response = waiverApi.submitSignature(ticketId, request)
@@ -228,32 +229,36 @@ class WaiverListViewModel @Inject constructor(
                         contentType = "image/png",
                     )
 
-                    _state.value = _state.value.copy(
-                        isSubmitting = false,
-                        actionMessage = "Waiver signed successfully",
-                    )
+                    _state.update {
+                        it.copy(
+                            isSubmitting = false,
+                            actionMessage = "Waiver signed successfully",
+                        )
+                    }
                     load()
                 } else {
-                    _state.value = _state.value.copy(
-                        isSubmitting = false,
-                        actionMessage = "Failed to submit signature",
-                    )
+                    _state.update {
+                        it.copy(
+                            isSubmitting = false,
+                            actionMessage = "Failed to submit signature",
+                        )
+                    }
                 }
             } catch (e: HttpException) {
                 val msg = if (e.code() == 404) "Waiver submission not supported by server" else "Submission failed: ${e.message}"
                 Timber.tag("WaiverList").w(e, "submitSignature failed (HTTP %d)", e.code())
-                _state.value = _state.value.copy(isSubmitting = false, actionMessage = msg)
+                _state.update { it.copy(isSubmitting = false, actionMessage = msg) }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: rethrow for structured concurrency
             } catch (e: Exception) {
                 Timber.tag("WaiverList").e(e, "submitSignature failed")
-                _state.value = _state.value.copy(isSubmitting = false, actionMessage = "Submission failed: ${e.message}")
+                _state.update { it.copy(isSubmitting = false, actionMessage = "Submission failed: ${e.message}") }
             }
         }
     }
 
     fun clearActionMessage() {
-        _state.value = _state.value.copy(actionMessage = null)
+        _state.update { it.copy(actionMessage = null) }
     }
 
     /** ID of the currently active CRM user session. */

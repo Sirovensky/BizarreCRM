@@ -33,6 +33,7 @@ import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -151,35 +152,39 @@ class AppointmentListViewModel @Inject constructor(
     private fun observeOnlineState() {
         viewModelScope.launch {
             serverMonitor.isEffectivelyOnline.collect { online ->
-                _state.value = _state.value.copy(isOffline = !online)
+                _state.update { it.copy(isOffline = !online) }
             }
         }
     }
 
     fun selectDate(millis: Long) {
-        _state.value = _state.value.copy(
-            selectedDateMillis = startOfDay(millis),
-        )
+        _state.update {
+            it.copy(
+                selectedDateMillis = startOfDay(millis),
+            )
+        }
         loadAppointments()
     }
 
     fun refresh() {
-        _state.value = _state.value.copy(isRefreshing = true)
+        _state.update { it.copy(isRefreshing = true) }
         loadAppointments()
     }
 
     fun loadAppointments() {
         viewModelScope.launch {
             if (!_state.value.isRefreshing) {
-                _state.value = _state.value.copy(isLoading = true, error = null)
+                _state.update { it.copy(isLoading = true, error = null) }
             }
             if (!serverMonitor.isEffectivelyOnline.value) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    appointments = emptyList(),
-                    error = "Appointments require online connection",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        appointments = emptyList(),
+                        error = "Appointments require online connection",
+                    )
+                }
                 return@launch
             }
             try {
@@ -194,20 +199,24 @@ class AppointmentListViewModel @Inject constructor(
                     )
                 )
                 val appointments = response.data?.appointments ?: emptyList()
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    appointments = appointments,
-                    error = null,
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        appointments = appointments,
+                        error = null,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    error = e.message ?: "Failed to load appointments",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        error = e.message ?: "Failed to load appointments",
+                    )
+                }
             }
         }
     }

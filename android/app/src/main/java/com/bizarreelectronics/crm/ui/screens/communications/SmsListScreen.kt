@@ -62,6 +62,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -95,7 +96,7 @@ class SmsListViewModel @Inject constructor(
 
     fun loadConversations() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = _state.value.conversations.isEmpty(), error = null)
+            _state.update { it.copy(isLoading = _state.value.conversations.isEmpty(), error = null) }
 
             if (serverMonitor.isEffectivelyOnline.value) {
                 try {
@@ -103,11 +104,13 @@ class SmsListViewModel @Inject constructor(
                     val keyword = q.ifEmpty { null }
                     val response = smsApi.getConversations(keyword)
                     rawConversations = response.data?.conversations ?: emptyList()
-                    _state.value = _state.value.copy(
-                        conversations = applySmsFilter(rawConversations, _state.value.currentFilter),
-                        isLoading = false,
-                        isRefreshing = false,
-                    )
+                    _state.update {
+                        it.copy(
+                            conversations = applySmsFilter(rawConversations, _state.value.currentFilter),
+                            isLoading = false,
+                            isRefreshing = false,
+                        )
+                    }
                     for (conv in rawConversations) {
                         smsRepository.getThread(conv.convPhone)
                     }
@@ -140,24 +143,26 @@ class SmsListViewModel @Inject constructor(
                     it.convPhone.contains(q) || it.lastMessage?.lowercase()?.contains(q) == true
                 }
                 rawConversations = searched
-                _state.value = _state.value.copy(
-                    conversations = applySmsFilter(rawConversations, _state.value.currentFilter),
-                    isLoading = false,
-                    isRefreshing = false,
-                )
+                _state.update {
+                    it.copy(
+                        conversations = applySmsFilter(rawConversations, _state.value.currentFilter),
+                        isLoading = false,
+                        isRefreshing = false,
+                    )
+                }
             }
         }
     }
 
     fun refresh() {
-        _state.value = _state.value.copy(isRefreshing = true)
+        _state.update { it.copy(isRefreshing = true) }
         loadConversations()
     }
 
     private var searchJob: Job? = null
 
     fun onSearchChanged(query: String) {
-        _state.value = _state.value.copy(searchQuery = query)
+        _state.update { it.copy(searchQuery = query) }
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             delay(300L)
@@ -167,10 +172,12 @@ class SmsListViewModel @Inject constructor(
 
     /** L1508 — switch filter and re-apply to cached raw list. */
     fun onFilterSelected(filter: SmsFilter) {
-        _state.value = _state.value.copy(
-            currentFilter = filter,
-            conversations = applySmsFilter(rawConversations, filter),
-        )
+        _state.update {
+            it.copy(
+                currentFilter = filter,
+                conversations = applySmsFilter(rawConversations, filter),
+            )
+        }
     }
 
     /** L1509 — optimistic pin; calls API (404 tolerated). */
@@ -178,9 +185,11 @@ class SmsListViewModel @Inject constructor(
         rawConversations = rawConversations.map { conv ->
             if (conv.convPhone == phone) conv.copy(isPinned = !conv.isPinned) else conv
         }
-        _state.value = _state.value.copy(
-            conversations = applySmsFilter(rawConversations, _state.value.currentFilter),
-        )
+        _state.update {
+            it.copy(
+                conversations = applySmsFilter(rawConversations, _state.value.currentFilter),
+            )
+        }
         viewModelScope.launch {
             try {
                 smsApi.pinThread(phone)
@@ -195,9 +204,11 @@ class SmsListViewModel @Inject constructor(
         rawConversations = rawConversations.map { conv ->
             if (conv.convPhone == phone) conv.copy(isArchived = true) else conv
         }
-        _state.value = _state.value.copy(
-            conversations = applySmsFilter(rawConversations, _state.value.currentFilter),
-        )
+        _state.update {
+            it.copy(
+                conversations = applySmsFilter(rawConversations, _state.value.currentFilter),
+            )
+        }
         viewModelScope.launch {
             try {
                 smsApi.archiveThread(phone)
@@ -213,9 +224,11 @@ class SmsListViewModel @Inject constructor(
         rawConversations = rawConversations.map { conv ->
             if (conv.convPhone == phone) conv.copy(unreadCount = 0) else conv
         }
-        _state.value = _state.value.copy(
-            conversations = applySmsFilter(rawConversations, _state.value.currentFilter),
-        )
+        _state.update {
+            it.copy(
+                conversations = applySmsFilter(rawConversations, _state.value.currentFilter),
+            )
+        }
     }
 }
 

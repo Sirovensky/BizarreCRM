@@ -43,6 +43,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.time.LocalTime
@@ -101,14 +102,16 @@ class ClockInOutViewModel @Inject constructor(
         val firstName = authPreferences.userFirstName.orEmpty()
         val lastName = authPreferences.userLastName.orEmpty()
         val name = "$firstName $lastName".trim().ifBlank { authPreferences.username.orEmpty() }
-        _state.value = _state.value.copy(
-            userName = name,
-            isOffline = !serverMonitor.isEffectivelyOnline.value,
-        )
+        _state.update {
+            it.copy(
+                userName = name,
+                isOffline = !serverMonitor.isEffectivelyOnline.value,
+            )
+        }
         // Observe online status
         viewModelScope.launch {
             serverMonitor.isEffectivelyOnline.collect { online ->
-                _state.value = _state.value.copy(isOffline = !online)
+                _state.update { it.copy(isOffline = !online) }
             }
         }
     }
@@ -123,7 +126,7 @@ class ClockInOutViewModel @Inject constructor(
     }
 
     fun clearPin() {
-        _state.value = _state.value.copy(pin = "", error = null, successMessage = null)
+        _state.update { it.copy(pin = "", error = null, successMessage = null) }
     }
 
     // endregion
@@ -138,7 +141,7 @@ class ClockInOutViewModel @Inject constructor(
         }
         if (current.isProcessing) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isProcessing = true, error = null, successMessage = null)
+            _state.update { it.copy(isProcessing = true, error = null, successMessage = null) }
             if (serverMonitor.isEffectivelyOnline.value) {
                 submitOnline()
             } else {
@@ -153,7 +156,7 @@ class ClockInOutViewModel @Inject constructor(
             val pinResponse = authApi.verifyPin(mapOf("pin" to pin))
             val verified = (pinResponse.data as? Map<*, *>)?.get("verified") == true
             if (!verified) {
-                _state.value = _state.value.copy(isProcessing = false, error = "Invalid PIN", pin = "")
+                _state.update { it.copy(isProcessing = false, error = "Invalid PIN", pin = "") }
                 return
             }
             val userId = authPreferences.userId
@@ -166,13 +169,15 @@ class ClockInOutViewModel @Inject constructor(
                 postClockedInNotification()
             }
             val nowClockedIn = !wasClockedIn
-            _state.value = _state.value.copy(
-                isProcessing = false,
-                isClockedIn = nowClockedIn,
-                onBreak = false,
-                pin = "",
-                successMessage = if (wasClockedIn) "Clocked out successfully" else "Clocked in successfully",
-            )
+            _state.update {
+                it.copy(
+                    isProcessing = false,
+                    isClockedIn = nowClockedIn,
+                    onBreak = false,
+                    pin = "",
+                    successMessage = if (wasClockedIn) "Clocked out successfully" else "Clocked in successfully",
+                )
+            }
             if (wasClockedIn) stopBreakTimer()
             // §14.10 — push new state to QS tile + Glance widget
             broadcastClockState(nowClockedIn)
@@ -185,11 +190,13 @@ class ClockInOutViewModel @Inject constructor(
             // load of this screen reflects the actual server state.
             throw e
         } catch (e: Exception) {
-            _state.value = _state.value.copy(
-                isProcessing = false,
-                error = e.message ?: "Operation failed",
-                pin = "",
-            )
+            _state.update {
+                it.copy(
+                    isProcessing = false,
+                    error = e.message ?: "Operation failed",
+                    pin = "",
+                )
+            }
         }
     }
 
@@ -211,17 +218,19 @@ class ClockInOutViewModel @Inject constructor(
         else cancelLiveUpdate()
 
         val nowClockedIn = !wasClockedIn
-        _state.value = _state.value.copy(
-            isProcessing = false,
-            isClockedIn = nowClockedIn,
-            onBreak = false,
-            pin = "",
-            successMessage = if (wasClockedIn) {
-                "Clock out queued \u2014 will sync when online"
-            } else {
-                "Clock in queued \u2014 will sync when online"
-            },
-        )
+        _state.update {
+            it.copy(
+                isProcessing = false,
+                isClockedIn = nowClockedIn,
+                onBreak = false,
+                pin = "",
+                successMessage = if (wasClockedIn) {
+                    "Clock out queued \u2014 will sync when online"
+                } else {
+                    "Clock in queued \u2014 will sync when online"
+                },
+            )
+        }
         if (wasClockedIn) stopBreakTimer()
         // \u00a714.10 \u2014 push new state to QS tile + Glance widget even when offline
         broadcastClockState(nowClockedIn)
@@ -247,7 +256,7 @@ class ClockInOutViewModel @Inject constructor(
                 android.util.Log.w("ClockInOutVM", "startBreak failed: ${e.message}")
                 // Continue local-only — break is non-critical for payroll
             }
-            _state.value = _state.value.copy(onBreak = true, breakElapsedSeconds = 0L)
+            _state.update { it.copy(onBreak = true, breakElapsedSeconds = 0L) }
             startBreakTimer()
         }
     }
@@ -263,7 +272,7 @@ class ClockInOutViewModel @Inject constructor(
             } catch (e: Exception) {
                 android.util.Log.w("ClockInOutVM", "endBreak failed: ${e.message}")
             }
-            _state.value = _state.value.copy(onBreak = false, breakElapsedSeconds = 0L)
+            _state.update { it.copy(onBreak = false, breakElapsedSeconds = 0L) }
             stopBreakTimer()
         }
     }
@@ -273,9 +282,11 @@ class ClockInOutViewModel @Inject constructor(
         breakTimerJob = viewModelScope.launch {
             while (true) {
                 delay(1_000L)
-                _state.value = _state.value.copy(
-                    breakElapsedSeconds = _state.value.breakElapsedSeconds + 1L,
-                )
+                _state.update {
+                    it.copy(
+                        breakElapsedSeconds = _state.value.breakElapsedSeconds + 1L,
+                    )
+                }
             }
         }
     }
@@ -396,11 +407,13 @@ class ClockInOutViewModel @Inject constructor(
                 val distKm = haversineKm(loc.latitude, loc.longitude, shopLat, shopLon)
                 if (distKm > geofenceRadiusKm) {
                     val km = (distKm * 10).roundToInt() / 10.0
-                    _state.value = _state.value.copy(
-                        geofenceWarning = "You're $km km from the shop",
-                    )
+                    _state.update {
+                        it.copy(
+                            geofenceWarning = "You're $km km from the shop",
+                        )
+                    }
                 } else {
-                    _state.value = _state.value.copy(geofenceWarning = null)
+                    _state.update { it.copy(geofenceWarning = null) }
                 }
             } catch (_: Exception) {
                 // Location unavailable — silently skip geofence check
@@ -409,7 +422,7 @@ class ClockInOutViewModel @Inject constructor(
     }
 
     fun dismissGeofenceWarning() {
-        _state.value = _state.value.copy(geofenceWarning = null)
+        _state.update { it.copy(geofenceWarning = null) }
     }
 
     // endregion

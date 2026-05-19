@@ -8,6 +8,7 @@ import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
@@ -80,64 +81,74 @@ class TimeOffViewModel @Inject constructor(
 
     init {
         val isManager = isManagerOrAdmin
-        _state.value = _state.value.copy(
-            isManager = isManager,
-            statusFilter = if (isManager) "pending" else null,
-        )
+        _state.update {
+            it.copy(
+                isManager = isManager,
+                statusFilter = if (isManager) "pending" else null,
+            )
+        }
         loadRequests()
     }
 
     fun loadRequests() {
         if (!serverMonitor.isEffectivelyOnline.value) {
-            _state.value = _state.value.copy(isLoading = false, error = "Device is offline")
+            _state.update { it.copy(isLoading = false, error = "Device is offline") }
             return
         }
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = _state.value.requests.isEmpty(), error = null)
+            _state.update { it.copy(isLoading = _state.value.requests.isEmpty(), error = null) }
             try {
                 val response = timeOffApi.getRequests(status = _state.value.statusFilter)
                 val list = parseRequestList(response.data)
-                _state.value = _state.value.copy(
-                    isLoading = false, isRefreshing = false,
-                    requests = list, serverUnsupported = false,
-                )
-            } catch (e: HttpException) {
-                if (e.code() == 404) {
-                    _state.value = _state.value.copy(
+                _state.update {
+                    it.copy(
                         isLoading = false, isRefreshing = false,
-                        serverUnsupported = true, requests = emptyList(),
-                    )
-                } else {
-                    _state.value = _state.value.copy(
-                        isLoading = false, isRefreshing = false,
-                        error = "Failed to load requests (${e.code()})",
+                        requests = list, serverUnsupported = false,
                     )
                 }
+            } catch (e: HttpException) {
+                if (e.code() == 404) {
+                    _state.update {
+                        it.copy(
+                            isLoading = false, isRefreshing = false,
+                            serverUnsupported = true, requests = emptyList(),
+                        )
+                    }
+                } else {
+                    _state.update {
+                        it.copy(
+                            isLoading = false, isRefreshing = false,
+                            error = "Failed to load requests (${e.code()})",
+                        )
+                    }
+                }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false, isRefreshing = false,
-                    error = e.message ?: "Failed to load requests",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false, isRefreshing = false,
+                        error = e.message ?: "Failed to load requests",
+                    )
+                }
             }
         }
     }
 
     fun refresh() {
-        _state.value = _state.value.copy(isRefreshing = true)
+        _state.update { it.copy(isRefreshing = true) }
         loadRequests()
     }
 
     fun setStatusFilter(status: String?) {
-        _state.value = _state.value.copy(statusFilter = status)
+        _state.update { it.copy(statusFilter = status) }
         loadRequests()
     }
 
     fun showRequestDialog() {
-        _state.value = _state.value.copy(showRequestDialog = true)
+        _state.update { it.copy(showRequestDialog = true) }
     }
 
     fun dismissRequestDialog() {
-        _state.value = _state.value.copy(showRequestDialog = false)
+        _state.update { it.copy(showRequestDialog = false) }
     }
 
     /** Staff submits a time-off request. */
@@ -148,7 +159,7 @@ class TimeOffViewModel @Inject constructor(
         reason: String,
     ) {
         if (startDate.isBlank() || endDate.isBlank()) {
-            _state.value = _state.value.copy(toastMessage = "Start and end dates are required")
+            _state.update { it.copy(toastMessage = "Start and end dates are required") }
             return
         }
         viewModelScope.launch {
@@ -163,15 +174,17 @@ class TimeOffViewModel @Inject constructor(
             // spurious failure DUPLICATES the request.
             try {
                 timeOffApi.submitRequest(body)
-                _state.value = _state.value.copy(
-                    showRequestDialog = false,
-                    toastMessage = "Time-off request submitted",
-                )
+                _state.update {
+                    it.copy(
+                        showRequestDialog = false,
+                        toastMessage = "Time-off request submitted",
+                    )
+                }
                 loadRequests()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(toastMessage = "Failed to submit request")
+                _state.update { it.copy(toastMessage = "Failed to submit request") }
             }
         }
     }
@@ -184,12 +197,12 @@ class TimeOffViewModel @Inject constructor(
             // approval notification.
             try {
                 timeOffApi.updateRequest(requestId, mapOf("action" to "approve"))
-                _state.value = _state.value.copy(toastMessage = "Request approved")
+                _state.update { it.copy(toastMessage = "Request approved") }
                 loadRequests()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(toastMessage = "Failed to approve request")
+                _state.update { it.copy(toastMessage = "Failed to approve request") }
             }
         }
     }
@@ -204,12 +217,12 @@ class TimeOffViewModel @Inject constructor(
             // BUGHUNT-2026-05-17: see approve.
             try {
                 timeOffApi.updateRequest(requestId, body)
-                _state.value = _state.value.copy(toastMessage = "Request rejected")
+                _state.update { it.copy(toastMessage = "Request rejected") }
                 loadRequests()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(toastMessage = "Failed to reject request")
+                _state.update { it.copy(toastMessage = "Failed to reject request") }
             }
         }
     }
@@ -220,18 +233,18 @@ class TimeOffViewModel @Inject constructor(
             // BUGHUNT-2026-05-17: runCatching swallowed CancellationException.
             try {
                 timeOffApi.updateRequest(requestId, mapOf("action" to "cancel"))
-                _state.value = _state.value.copy(toastMessage = "Request cancelled")
+                _state.update { it.copy(toastMessage = "Request cancelled") }
                 loadRequests()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(toastMessage = "Failed to cancel request")
+                _state.update { it.copy(toastMessage = "Failed to cancel request") }
             }
         }
     }
 
     fun clearToast() {
-        _state.value = _state.value.copy(toastMessage = null)
+        _state.update { it.copy(toastMessage = null) }
     }
 
     // ── Parsing helpers ───────────────────────────────────────────────────────

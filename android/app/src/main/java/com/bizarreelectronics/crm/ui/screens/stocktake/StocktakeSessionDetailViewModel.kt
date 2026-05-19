@@ -14,6 +14,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -85,15 +86,17 @@ class StocktakeSessionDetailViewModel @Inject constructor(
         // can't overwrite a faster refresh.
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val detail = stocktakeRepository.getSession(sessionId)
-                _state.value = _state.value.copy(
-                    session = detail.session,
-                    counts = detail.counts,
-                    summary = detail.summary,
-                    isLoading = false,
-                )
+                _state.update {
+                    it.copy(
+                        session = detail.session,
+                        counts = detail.counts,
+                        summary = detail.summary,
+                        isLoading = false,
+                    )
+                }
             } catch (e: HttpException) {
                 val msg = when (e.code()) {
                     404 -> "Session not found"
@@ -101,14 +104,14 @@ class StocktakeSessionDetailViewModel @Inject constructor(
                     else -> "Failed to load session (HTTP ${e.code()})"
                 }
                 Log.w(TAG, "GET /stocktake/$sessionId HTTP ${e.code()}: ${e.message()}")
-                _state.value = _state.value.copy(isLoading = false, error = msg)
+                _state.update { it.copy(isLoading = false, error = msg) }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: don't paint "Network error" when the
                 // user just back-navs mid-load.
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "GET /stocktake/$sessionId failed: ${e.message}")
-                _state.value = _state.value.copy(isLoading = false, error = "Network error — check connection")
+                _state.update { it.copy(isLoading = false, error = "Network error — check connection") }
             }
         }
     }
@@ -122,7 +125,7 @@ class StocktakeSessionDetailViewModel @Inject constructor(
      */
     fun upsertCount(item: InventoryItemEntity, countedQty: Int) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isUpsertingCount = true, error = null, searchQuery = "", searchResults = emptyList())
+            _state.update { it.copy(isUpsertingCount = true, error = null, searchQuery = "", searchResults = emptyList()) }
             try {
                 val updated = stocktakeRepository.upsertCount(
                     sessionId = sessionId,
@@ -130,11 +133,13 @@ class StocktakeSessionDetailViewModel @Inject constructor(
                     countedQty = countedQty,
                 )
                 val newCounts = mergeCount(_state.value.counts, updated)
-                _state.value = _state.value.copy(
-                    counts = newCounts,
-                    summary = computeSummary(newCounts),
-                    isUpsertingCount = false,
-                )
+                _state.update {
+                    it.copy(
+                        counts = newCounts,
+                        summary = computeSummary(newCounts),
+                        isUpsertingCount = false,
+                    )
+                }
             } catch (e: HttpException) {
                 val msg = when (e.code()) {
                     400 -> if (_state.value.session?.status != "open") "Session is no longer open" else "Invalid request"
@@ -143,7 +148,7 @@ class StocktakeSessionDetailViewModel @Inject constructor(
                     else -> "Failed to record count (HTTP ${e.code()})"
                 }
                 Log.w(TAG, "POST /stocktake/$sessionId/counts HTTP ${e.code()}: ${e.message()}")
-                _state.value = _state.value.copy(isUpsertingCount = false, error = msg)
+                _state.update { it.copy(isUpsertingCount = false, error = msg) }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: upsertCount is a real POST mutation. A
                 // bare catch would paint "Network error" on back-nav and
@@ -151,7 +156,7 @@ class StocktakeSessionDetailViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "upsertCount failed: ${e.message}")
-                _state.value = _state.value.copy(isUpsertingCount = false, error = "Network error")
+                _state.update { it.copy(isUpsertingCount = false, error = "Network error") }
             }
         }
     }
@@ -162,7 +167,7 @@ class StocktakeSessionDetailViewModel @Inject constructor(
      */
     fun updateCountQty(inventoryItemId: Long, newQty: Int) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isUpsertingCount = true, error = null)
+            _state.update { it.copy(isUpsertingCount = true, error = null) }
             try {
                 val updated = stocktakeRepository.upsertCount(
                     sessionId = sessionId,
@@ -170,17 +175,21 @@ class StocktakeSessionDetailViewModel @Inject constructor(
                     countedQty = newQty,
                 )
                 val newCounts = mergeCount(_state.value.counts, updated)
-                _state.value = _state.value.copy(
-                    counts = newCounts,
-                    summary = computeSummary(newCounts),
-                    isUpsertingCount = false,
-                )
+                _state.update {
+                    it.copy(
+                        counts = newCounts,
+                        summary = computeSummary(newCounts),
+                        isUpsertingCount = false,
+                    )
+                }
             } catch (e: HttpException) {
                 Log.w(TAG, "updateCountQty HTTP ${e.code()}: ${e.message()}")
-                _state.value = _state.value.copy(
-                    isUpsertingCount = false,
-                    error = "Failed to update count (HTTP ${e.code()})",
-                )
+                _state.update {
+                    it.copy(
+                        isUpsertingCount = false,
+                        error = "Failed to update count (HTTP ${e.code()})",
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: same as upsertCount — re-throw so a back-nav
                 // mid-mutation doesn't paint a fake "Network error" snackbar that
@@ -188,7 +197,7 @@ class StocktakeSessionDetailViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "updateCountQty failed: ${e.message}")
-                _state.value = _state.value.copy(isUpsertingCount = false, error = "Network error")
+                _state.update { it.copy(isUpsertingCount = false, error = "Network error") }
             }
         }
     }
@@ -206,7 +215,7 @@ class StocktakeSessionDetailViewModel @Inject constructor(
                 val existing = _state.value.counts.firstOrNull { it.inventoryItemId == item.id }
                 upsertCount(item, (existing?.countedQty ?: 0) + 1)
             } else {
-                _state.value = _state.value.copy(error = "No item found for barcode: $rawValue")
+                _state.update { it.copy(error = "No item found for barcode: $rawValue") }
             }
         }
     }
@@ -214,23 +223,23 @@ class StocktakeSessionDetailViewModel @Inject constructor(
     // ── Search ────────────────────────────────────────────────────────────────
 
     fun onSearchQueryChanged(query: String) {
-        _state.value = _state.value.copy(searchQuery = query)
+        _state.update { it.copy(searchQuery = query) }
         // BUGHUNT-2026-05-17: cancel previous search collect so a slower result
         // for "a" cannot stomp a fast result for "ab".
         searchJob?.cancel()
         if (query.length >= 2) {
             searchJob = viewModelScope.launch {
                 inventoryRepository.searchItems(query).collect { results ->
-                    _state.value = _state.value.copy(searchResults = results.take(20))
+                    _state.update { it.copy(searchResults = results.take(20)) }
                 }
             }
         } else {
-            _state.value = _state.value.copy(searchResults = emptyList())
+            _state.update { it.copy(searchResults = emptyList()) }
         }
     }
 
     fun clearSearch() {
-        _state.value = _state.value.copy(searchQuery = "", searchResults = emptyList())
+        _state.update { it.copy(searchQuery = "", searchResults = emptyList()) }
     }
 
     private suspend fun lookupStocktakeItem(rawValue: String): InventoryItemEntity? {
@@ -257,10 +266,10 @@ class StocktakeSessionDetailViewModel @Inject constructor(
         // before recomposition could still slip through.
         if (_state.value.isCommitting) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isCommitting = true, error = null)
+            _state.update { it.copy(isCommitting = true, error = null) }
             try {
                 stocktakeRepository.commitSession(sessionId)
-                _state.value = _state.value.copy(isCommitting = false, committedSuccess = true)
+                _state.update { it.copy(isCommitting = false, committedSuccess = true) }
             } catch (e: HttpException) {
                 val msg = when (e.code()) {
                     400 -> "Cannot commit: ${e.message()}"
@@ -269,7 +278,7 @@ class StocktakeSessionDetailViewModel @Inject constructor(
                     else -> "Commit failed (HTTP ${e.code()})"
                 }
                 Log.w(TAG, "POST /stocktake/$sessionId/commit HTTP ${e.code()}: ${e.message()}")
-                _state.value = _state.value.copy(isCommitting = false, error = msg)
+                _state.update { it.copy(isCommitting = false, error = msg) }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 // BUGHUNT-2026-05-17: stocktake commit applies real inventory
                 // variance. A re-tap after a misleading "Network error"
@@ -279,7 +288,7 @@ class StocktakeSessionDetailViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "commitSession failed: ${e.message}")
-                _state.value = _state.value.copy(isCommitting = false, error = "Network error — commit not saved")
+                _state.update { it.copy(isCommitting = false, error = "Network error — commit not saved") }
             }
         }
     }
@@ -287,11 +296,11 @@ class StocktakeSessionDetailViewModel @Inject constructor(
     // ── Misc ──────────────────────────────────────────────────────────────────
 
     fun clearError() {
-        _state.value = _state.value.copy(error = null)
+        _state.update { it.copy(error = null) }
     }
 
     fun consumeCommittedSuccess() {
-        _state.value = _state.value.copy(committedSuccess = false)
+        _state.update { it.copy(committedSuccess = false) }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

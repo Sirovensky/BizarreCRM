@@ -8,6 +8,7 @@ import com.bizarreelectronics.crm.data.remote.dto.ManufacturerItem
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -46,34 +47,40 @@ class DeviceCatalogViewModel @Inject constructor(
     /** Load manufacturers list (used as first level of hierarchy). */
     fun loadManufacturers() {
         if (!serverMonitor.isEffectivelyOnline.value) {
-            _state.value = _state.value.copy(isLoading = false, offline = true)
+            _state.update { it.copy(isLoading = false, offline = true) }
             return
         }
 
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null, offline = false)
+            _state.update { it.copy(isLoading = true, error = null, offline = false) }
             try {
                 val response = catalogApi.getManufacturers()
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    manufacturers = response.data ?: emptyList(),
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        manufacturers = response.data ?: emptyList(),
+                    )
+                }
             } catch (e: HttpException) {
                 if (e.code() == 404) {
-                    _state.value = _state.value.copy(isLoading = false, manufacturers = emptyList())
+                    _state.update { it.copy(isLoading = false, manufacturers = emptyList()) }
                 } else {
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        error = "Failed to load manufacturers (${e.code()})",
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            error = "Failed to load manufacturers (${e.code()})",
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Failed to load manufacturers",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = e.message ?: "Failed to load manufacturers",
+                    )
+                }
             }
         }
     }
@@ -103,24 +110,30 @@ class DeviceCatalogViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val response = catalogApi.searchDevices(manufacturerId = manufacturerId.toInt())
-                _state.value = _state.value.copy(
-                    isLoadingModels = false,
-                    expandedModels = response.data ?: emptyList(),
-                )
+                _state.update {
+                    it.copy(
+                        isLoadingModels = false,
+                        expandedModels = response.data ?: emptyList(),
+                    )
+                }
             } catch (e: HttpException) {
-                _state.value = _state.value.copy(
-                    isLoadingModels = false,
-                    modelsError = if (e.code() == 404) null else "Failed to load models (${e.code()})",
-                    expandedModels = emptyList(),
-                )
+                _state.update {
+                    it.copy(
+                        isLoadingModels = false,
+                        modelsError = if (e.code() == 404) null else "Failed to load models (${e.code()})",
+                        expandedModels = emptyList(),
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoadingModels = false,
-                    modelsError = e.message ?: "Failed to load models",
-                    expandedModels = emptyList(),
-                )
+                _state.update {
+                    it.copy(
+                        isLoadingModels = false,
+                        modelsError = e.message ?: "Failed to load models",
+                        expandedModels = emptyList(),
+                    )
+                }
             }
         }
     }
@@ -134,34 +147,38 @@ class DeviceCatalogViewModel @Inject constructor(
      * @param query Free-text search term.
      */
     fun search(query: String) {
-        _state.value = _state.value.copy(searchQuery = query)
+        _state.update { it.copy(searchQuery = query) }
         if (query.isBlank()) {
-            _state.value = _state.value.copy(searchResults = null, isSearching = false)
+            _state.update { it.copy(searchResults = null, isSearching = false) }
             return
         }
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSearching = true, searchError = null)
+            _state.update { it.copy(isSearching = true, searchError = null) }
             try {
                 val response = catalogApi.searchDevices(query = query, limit = 100)
-                _state.value = _state.value.copy(
-                    isSearching = false,
-                    searchResults = response.data ?: emptyList(),
-                )
+                _state.update {
+                    it.copy(
+                        isSearching = false,
+                        searchResults = response.data ?: emptyList(),
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSearching = false,
-                    searchError = e.message ?: "Search failed",
-                    searchResults = emptyList(),
-                )
+                _state.update {
+                    it.copy(
+                        isSearching = false,
+                        searchError = e.message ?: "Search failed",
+                        searchResults = emptyList(),
+                    )
+                }
             }
         }
     }
 
     /** Clear a transient search error. */
     fun clearSearchError() {
-        _state.value = _state.value.copy(searchError = null)
+        _state.update { it.copy(searchError = null) }
     }
 }
 

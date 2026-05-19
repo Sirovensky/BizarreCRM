@@ -8,6 +8,7 @@ import com.bizarreelectronics.crm.data.repository.PinRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -63,11 +64,13 @@ class PinLockViewModel @Inject constructor(
     init {
         // Seed lockout state from prefs so a process restart doesn't dodge
         // the 30s/60s freeze the user earned by guessing.
-        _state.value = _state.value.copy(
-            lockoutUntilMillis = pinPrefs.lockoutUntilMillis,
-            hardLockout = pinPrefs.hardLockout,
-            remainingAttempts = (MAX_ATTEMPTS - pinPrefs.failedAttempts).coerceAtLeast(0),
-        )
+        _state.update {
+            it.copy(
+                lockoutUntilMillis = pinPrefs.lockoutUntilMillis,
+                hardLockout = pinPrefs.hardLockout,
+                remainingAttempts = (MAX_ATTEMPTS - pinPrefs.failedAttempts).coerceAtLeast(0),
+            )
+        }
     }
 
     fun startVerify() {
@@ -117,12 +120,12 @@ class PinLockViewModel @Inject constructor(
 
     /** §2.15 — reveal digits while the user holds down on the PIN dot row. */
     fun onPinRevealStart() {
-        _state.value = _state.value.copy(pinsVisible = true)
+        _state.update { it.copy(pinsVisible = true) }
     }
 
     /** §2.15 — hide digits again (called on pointer-up or 3-second auto-hide). */
     fun onPinRevealEnd() {
-        _state.value = _state.value.copy(pinsVisible = false)
+        _state.update { it.copy(pinsVisible = false) }
     }
 
     private suspend fun handleVerify(pin: String) {
@@ -130,12 +133,14 @@ class PinLockViewModel @Inject constructor(
         if (pinPrefs.verifyPinLocally(pin)) {
             pinPrefs.recordSuccess()
             val rotationDue = pinPrefs.isRotationDue()
-            _state.value = _state.value.copy(
-                isWorking = false,
-                entered = "",
-                unlocked = true,
-                showRotationBanner = rotationDue,
-            )
+            _state.update {
+                it.copy(
+                    isWorking = false,
+                    entered = "",
+                    unlocked = true,
+                    showRotationBanner = rotationDue,
+                )
+            }
             return
         }
 

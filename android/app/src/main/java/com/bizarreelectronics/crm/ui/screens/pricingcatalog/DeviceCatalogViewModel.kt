@@ -12,6 +12,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
@@ -43,38 +44,44 @@ class DeviceCatalogViewModel @Inject constructor(
     /** Load all manufacturers for filter chips. */
     fun loadManufacturers() {
         if (!serverMonitor.isEffectivelyOnline.value) {
-            _state.value = _state.value.copy(isLoading = false, offline = true)
+            _state.update { it.copy(isLoading = false, offline = true) }
             return
         }
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null, offline = false)
+            _state.update { it.copy(isLoading = true, error = null, offline = false) }
             try {
                 val response = catalogApi.getManufacturers()
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    manufacturers = response.data ?: emptyList(),
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        manufacturers = response.data ?: emptyList(),
+                    )
+                }
                 // Kick off initial device search (popular devices).
                 searchDevices()
             } catch (e: HttpException) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = "Failed to load manufacturers (${e.code()})",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = "Failed to load manufacturers (${e.code()})",
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Failed to load manufacturers",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = e.message ?: "Failed to load manufacturers",
+                    )
+                }
             }
         }
     }
 
     /** Debounce search query changes and trigger server search. */
     fun onSearchQueryChanged(query: String) {
-        _state.value = _state.value.copy(searchQuery = query)
+        _state.update { it.copy(searchQuery = query) }
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             delay(300)
@@ -83,24 +90,24 @@ class DeviceCatalogViewModel @Inject constructor(
     }
 
     fun onManufacturerSelected(manufacturerId: Long?) {
-        _state.value = _state.value.copy(selectedManufacturerId = manufacturerId)
+        _state.update { it.copy(selectedManufacturerId = manufacturerId) }
         searchDevices()
     }
 
     fun onCategorySelected(category: String?) {
-        _state.value = _state.value.copy(selectedCategory = category)
+        _state.update { it.copy(selectedCategory = category) }
         searchDevices()
     }
 
     /** Execute server search with current filter state. */
     fun searchDevices() {
         if (!serverMonitor.isEffectivelyOnline.value) {
-            _state.value = _state.value.copy(isLoadingDevices = false, offline = true)
+            _state.update { it.copy(isLoadingDevices = false, offline = true) }
             return
         }
         val s = _state.value
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoadingDevices = true, deviceError = null)
+            _state.update { it.copy(isLoadingDevices = true, deviceError = null) }
             try {
                 val response = catalogApi.searchDevices(
                     query = s.searchQuery.trim().takeIf { it.isNotBlank() },
@@ -109,22 +116,28 @@ class DeviceCatalogViewModel @Inject constructor(
                     popular = if (s.searchQuery.isBlank() && s.selectedManufacturerId == null) 1 else null,
                     limit = 200,
                 )
-                _state.value = _state.value.copy(
-                    isLoadingDevices = false,
-                    devices = response.data ?: emptyList(),
-                )
+                _state.update {
+                    it.copy(
+                        isLoadingDevices = false,
+                        devices = response.data ?: emptyList(),
+                    )
+                }
             } catch (e: HttpException) {
-                _state.value = _state.value.copy(
-                    isLoadingDevices = false,
-                    deviceError = "Search failed (${e.code()})",
-                )
+                _state.update {
+                    it.copy(
+                        isLoadingDevices = false,
+                        deviceError = "Search failed (${e.code()})",
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoadingDevices = false,
-                    deviceError = e.message ?: "Search failed",
-                )
+                _state.update {
+                    it.copy(
+                        isLoadingDevices = false,
+                        deviceError = e.message ?: "Search failed",
+                    )
+                }
             }
         }
     }
@@ -144,7 +157,7 @@ class DeviceCatalogViewModel @Inject constructor(
         releaseYear: Int?,
     ) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSaving = true, saveError = null)
+            _state.update { it.copy(isSaving = true, saveError = null) }
             try {
                 catalogApi.addDevice(
                     AddDeviceModelRequest(
@@ -154,21 +167,25 @@ class DeviceCatalogViewModel @Inject constructor(
                         releaseYear = releaseYear,
                     )
                 )
-                _state.value = _state.value.copy(isSaving = false)
+                _state.update { it.copy(isSaving = false) }
                 searchDevices()
             } catch (e: HttpException) {
-                _state.value = _state.value.copy(
-                    isSaving = false,
-                    saveError = "Save failed (${e.code()})",
-                )
+                _state.update {
+                    it.copy(
+                        isSaving = false,
+                        saveError = "Save failed (${e.code()})",
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: optimistic — server may have committed
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSaving = false,
-                    saveError = e.message ?: "Save failed",
-                )
+                _state.update {
+                    it.copy(
+                        isSaving = false,
+                        saveError = e.message ?: "Save failed",
+                    )
+                }
             }
         }
     }

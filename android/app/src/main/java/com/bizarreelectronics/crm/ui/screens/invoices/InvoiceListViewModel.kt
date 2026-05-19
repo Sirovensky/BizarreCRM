@@ -18,6 +18,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
@@ -85,7 +86,7 @@ class InvoiceListViewModel @Inject constructor(
     fun loadInvoices() {
         collectJob?.cancel()
         collectJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             val query = _state.value.searchQuery.trim()
             val statusFilter = _state.value.selectedStatus
             val filters = _state.value.activeFilters
@@ -99,18 +100,22 @@ class InvoiceListViewModel @Inject constructor(
                     )
                 }
                 .catch { _ ->
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        isRefreshing = false,
-                        error = "Failed to load invoices. Check your connection and try again.",
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            isRefreshing = false,
+                            error = "Failed to load invoices. Check your connection and try again.",
+                        )
+                    }
                 }
                 .collectLatest { filtered ->
-                    _state.value = _state.value.copy(
-                        invoices = filtered,
-                        isLoading = false,
-                        isRefreshing = false,
-                    )
+                    _state.update {
+                        it.copy(
+                            invoices = filtered,
+                            isLoading = false,
+                            isRefreshing = false,
+                        )
+                    }
                 }
         }
     }
@@ -123,7 +128,7 @@ class InvoiceListViewModel @Inject constructor(
             try {
                 val resp = invoiceApi.getStats()
                 if (resp.success && resp.data != null) {
-                    _state.value = _state.value.copy(stats = resp.data)
+                    _state.update { it.copy(stats = resp.data) }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -134,7 +139,7 @@ class InvoiceListViewModel @Inject constructor(
     }
 
     fun refresh() {
-        _state.value = _state.value.copy(isRefreshing = true)
+        _state.update { it.copy(isRefreshing = true) }
         loadInvoices()
         loadStats()
     }
@@ -142,7 +147,7 @@ class InvoiceListViewModel @Inject constructor(
     // ── Search / filter / sort ────────────────────────────────────────────────
 
     fun onSearchChanged(query: String) {
-        _state.value = _state.value.copy(searchQuery = query)
+        _state.update { it.copy(searchQuery = query) }
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             delay(300)
@@ -151,7 +156,7 @@ class InvoiceListViewModel @Inject constructor(
     }
 
     fun onStatusChanged(status: String) {
-        _state.value = _state.value.copy(selectedStatus = status)
+        _state.update { it.copy(selectedStatus = status) }
         loadInvoices()
         // Propagate the new filter to the Pager so the paged stream refreshes.
         _filterKeyFlow.value = if (status == "All") "" else "status:${status.lowercase()}"
@@ -164,42 +169,50 @@ class InvoiceListViewModel @Inject constructor(
     }
 
     fun onSortChanged(sort: InvoiceSort) {
-        _state.value = _state.value.copy(currentSort = sort)
+        _state.update { it.copy(currentSort = sort) }
         loadInvoices()
     }
 
     fun onFiltersApplied(filters: InvoiceFilterState) {
-        _state.value = _state.value.copy(activeFilters = filters)
+        _state.update { it.copy(activeFilters = filters) }
         loadInvoices()
     }
 
     // ── Bulk selection ────────────────────────────────────────────────────────
 
     fun enterBulkMode(firstId: Long) {
-        _state.value = _state.value.copy(
-            isBulkMode = true,
-            selectedIds = setOf(firstId),
-        )
+        _state.update {
+            it.copy(
+                isBulkMode = true,
+                selectedIds = setOf(firstId),
+            )
+        }
     }
 
     fun exitBulkMode() {
-        _state.value = _state.value.copy(
-            isBulkMode = false,
-            selectedIds = emptySet(),
-        )
+        _state.update {
+            it.copy(
+                isBulkMode = false,
+                selectedIds = emptySet(),
+            )
+        }
     }
 
     fun toggleSelection(id: Long) {
         val current = _state.value.selectedIds
-        _state.value = _state.value.copy(
-            selectedIds = if (id in current) current - id else current + id,
-        )
+        _state.update {
+            it.copy(
+                selectedIds = if (id in current) current - id else current + id,
+            )
+        }
     }
 
     fun selectAll() {
-        _state.value = _state.value.copy(
-            selectedIds = _state.value.invoices.map { it.id }.toSet(),
-        )
+        _state.update {
+            it.copy(
+                selectedIds = _state.value.invoices.map { it.id }.toSet(),
+            )
+        }
     }
 
     // ── Bulk actions ──────────────────────────────────────────────────────────
@@ -207,11 +220,13 @@ class InvoiceListViewModel @Inject constructor(
     fun bulkSendReminder() {
         val ids = _state.value.selectedIds
         // Stub: real implementation would POST /invoices/bulk-remind with ids.
-        _state.value = _state.value.copy(
-            actionMessage = "Send reminder: ${ids.size} invoice(s) — not yet implemented on server.",
-            isBulkMode = false,
-            selectedIds = emptySet(),
-        )
+        _state.update {
+            it.copy(
+                actionMessage = "Send reminder: ${ids.size} invoice(s) — not yet implemented on server.",
+                isBulkMode = false,
+                selectedIds = emptySet(),
+            )
+        }
     }
 
     fun bulkDelete() {
@@ -240,11 +255,13 @@ class InvoiceListViewModel @Inject constructor(
                 voided == 0 -> "Failed to void $failed invoice(s)."
                 else -> "Voided $voided invoice(s); $failed failed."
             }
-            _state.value = _state.value.copy(
-                actionMessage = message,
-                isBulkMode = false,
-                selectedIds = emptySet(),
-            )
+            _state.update {
+                it.copy(
+                    actionMessage = message,
+                    isBulkMode = false,
+                    selectedIds = emptySet(),
+                )
+            }
             loadInvoices()
         }
     }
@@ -270,7 +287,7 @@ class InvoiceListViewModel @Inject constructor(
     // ── Feedback ──────────────────────────────────────────────────────────────
 
     fun clearActionMessage() {
-        _state.value = _state.value.copy(actionMessage = null)
+        _state.update { it.copy(actionMessage = null) }
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

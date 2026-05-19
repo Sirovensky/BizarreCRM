@@ -8,6 +8,7 @@ import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
@@ -68,56 +69,64 @@ class PerformanceReviewViewModel @Inject constructor(
         get() = authPreferences.userRole?.lowercase() in setOf("manager", "admin", "owner")
 
     init {
-        _state.value = _state.value.copy(isManager = isManagerOrAdmin)
+        _state.update { it.copy(isManager = isManagerOrAdmin) }
         loadReviews()
     }
 
     fun loadReviews() {
         if (!serverMonitor.isEffectivelyOnline.value) {
-            _state.value = _state.value.copy(isLoading = false, error = "Device is offline")
+            _state.update { it.copy(isLoading = false, error = "Device is offline") }
             return
         }
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = _state.value.reviews.isEmpty(), error = null)
+            _state.update { it.copy(isLoading = _state.value.reviews.isEmpty(), error = null) }
             try {
                 val response = performanceApi.getReviews()
                 val list = parseReviewList(response.data)
-                _state.value = _state.value.copy(
-                    isLoading = false, isRefreshing = false,
-                    reviews = list, serverUnsupported = false,
-                )
-            } catch (e: HttpException) {
-                if (e.code() == 404) {
-                    _state.value = _state.value.copy(
+                _state.update {
+                    it.copy(
                         isLoading = false, isRefreshing = false,
-                        serverUnsupported = true, reviews = emptyList(),
-                    )
-                } else {
-                    _state.value = _state.value.copy(
-                        isLoading = false, isRefreshing = false,
-                        error = "Failed to load reviews (${e.code()})",
+                        reviews = list, serverUnsupported = false,
                     )
                 }
+            } catch (e: HttpException) {
+                if (e.code() == 404) {
+                    _state.update {
+                        it.copy(
+                            isLoading = false, isRefreshing = false,
+                            serverUnsupported = true, reviews = emptyList(),
+                        )
+                    }
+                } else {
+                    _state.update {
+                        it.copy(
+                            isLoading = false, isRefreshing = false,
+                            error = "Failed to load reviews (${e.code()})",
+                        )
+                    }
+                }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false, isRefreshing = false,
-                    error = e.message ?: "Failed to load reviews",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false, isRefreshing = false,
+                        error = e.message ?: "Failed to load reviews",
+                    )
+                }
             }
         }
     }
 
     fun refresh() {
-        _state.value = _state.value.copy(isRefreshing = true)
+        _state.update { it.copy(isRefreshing = true) }
         loadReviews()
     }
 
     fun showCreateDialog() {
-        _state.value = _state.value.copy(showCreateDialog = true)
+        _state.update { it.copy(showCreateDialog = true) }
     }
 
     fun dismissCreateDialog() {
-        _state.value = _state.value.copy(showCreateDialog = false)
+        _state.update { it.copy(showCreateDialog = false) }
     }
 
     fun submitReview(
@@ -128,7 +137,7 @@ class PerformanceReviewViewModel @Inject constructor(
         reviewDate: String,
     ) {
         if (employeeId <= 0L) {
-            _state.value = _state.value.copy(toastMessage = "Employee is required")
+            _state.update { it.copy(toastMessage = "Employee is required") }
             return
         }
         viewModelScope.launch {
@@ -150,21 +159,23 @@ class PerformanceReviewViewModel @Inject constructor(
             // for the same employee + period, distorting their record.
             try {
                 performanceApi.createReview(body)
-                _state.value = _state.value.copy(
-                    showCreateDialog = false,
-                    toastMessage = "Review submitted",
-                )
+                _state.update {
+                    it.copy(
+                        showCreateDialog = false,
+                        toastMessage = "Review submitted",
+                    )
+                }
                 loadReviews()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(toastMessage = "Failed to submit review")
+                _state.update { it.copy(toastMessage = "Failed to submit review") }
             }
         }
     }
 
     fun clearToast() {
-        _state.value = _state.value.copy(toastMessage = null)
+        _state.update { it.copy(toastMessage = null) }
     }
 
     // ── Parsing helpers ───────────────────────────────────────────────────────

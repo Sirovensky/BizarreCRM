@@ -8,6 +8,7 @@ import com.bizarreelectronics.crm.data.remote.dto.RepairServiceItem
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -44,12 +45,12 @@ class RepairPricingViewModel @Inject constructor(
         category: String? = _state.value.selectedCategory,
     ) {
         if (!serverMonitor.isEffectivelyOnline.value) {
-            _state.value = _state.value.copy(isLoading = false, offline = true)
+            _state.update { it.copy(isLoading = false, offline = true) }
             return
         }
 
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null, offline = false)
+            _state.update { it.copy(isLoading = true, error = null, offline = false) }
             try {
                 val response = repairPricingApi.getServices(
                     query = query?.takeIf { it.isNotBlank() },
@@ -61,42 +62,48 @@ class RepairPricingViewModel @Inject constructor(
                     .filter { it.isNotBlank() }
                     .distinct()
                     .sorted()
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    services = services,
-                    availableCategories = categories,
-                    searchQuery = query ?: "",
-                    selectedCategory = category,
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        services = services,
+                        availableCategories = categories,
+                        searchQuery = query ?: "",
+                        selectedCategory = category,
+                    )
+                }
             } catch (e: HttpException) {
                 if (e.code() == 404) {
-                    _state.value = _state.value.copy(isLoading = false, services = emptyList())
+                    _state.update { it.copy(isLoading = false, services = emptyList()) }
                 } else {
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        error = "Failed to load services (${e.code()})",
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            error = "Failed to load services (${e.code()})",
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Failed to load services",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = e.message ?: "Failed to load services",
+                    )
+                }
             }
         }
     }
 
     /** Update the local search query and re-fetch from server. */
     fun search(query: String) {
-        _state.value = _state.value.copy(searchQuery = query)
+        _state.update { it.copy(searchQuery = query) }
         loadServices(query = query.takeIf { it.isNotBlank() }, category = _state.value.selectedCategory)
     }
 
     /** Select or deselect a category filter chip. */
     fun selectCategory(category: String?) {
-        _state.value = _state.value.copy(selectedCategory = category)
+        _state.update { it.copy(selectedCategory = category) }
         loadServices(
             query = _state.value.searchQuery.takeIf { it.isNotBlank() },
             category = category,
@@ -120,7 +127,7 @@ class RepairPricingViewModel @Inject constructor(
         description: String? = null,
     ) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSaving = true, saveError = null)
+            _state.update { it.copy(isSaving = true, saveError = null) }
             val body = UpsertRepairServiceRequest(
                 name = name.trim(),
                 slug = if (id == null) name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-') else null,
@@ -134,21 +141,25 @@ class RepairPricingViewModel @Inject constructor(
                 } else {
                     repairPricingApi.createService(body)
                 }
-                _state.value = _state.value.copy(isSaving = false)
+                _state.update { it.copy(isSaving = false) }
                 loadServices()
             } catch (e: HttpException) {
-                _state.value = _state.value.copy(
-                    isSaving = false,
-                    saveError = "Save failed (${e.code()})",
-                )
+                _state.update {
+                    it.copy(
+                        isSaving = false,
+                        saveError = "Save failed (${e.code()})",
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: optimistic — server may have committed
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSaving = false,
-                    saveError = e.message ?: "Save failed",
-                )
+                _state.update {
+                    it.copy(
+                        isSaving = false,
+                        saveError = e.message ?: "Save failed",
+                    )
+                }
             }
         }
     }
@@ -163,13 +174,15 @@ class RepairPricingViewModel @Inject constructor(
      */
     fun deleteService(id: Long) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isDeleting = true, deleteError = null)
+            _state.update { it.copy(isDeleting = true, deleteError = null) }
             try {
                 repairPricingApi.deleteService(id)
-                _state.value = _state.value.copy(
-                    isDeleting = false,
-                    pendingDeleteId = null,
-                )
+                _state.update {
+                    it.copy(
+                        isDeleting = false,
+                        pendingDeleteId = null,
+                    )
+                }
                 loadServices()
             } catch (e: HttpException) {
                 val msg = when (e.code()) {
@@ -177,38 +190,42 @@ class RepairPricingViewModel @Inject constructor(
                     400 -> "Cannot delete — service is in use by repair prices"
                     else -> "Delete failed (${e.code()})"
                 }
-                _state.value = _state.value.copy(
-                    isDeleting = false,
-                    pendingDeleteId = null,
-                    deleteError = msg,
-                )
+                _state.update {
+                    it.copy(
+                        isDeleting = false,
+                        pendingDeleteId = null,
+                        deleteError = msg,
+                    )
+                }
                 if (e.code() == 404) loadServices()
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: optimistic — server may have committed
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isDeleting = false,
-                    pendingDeleteId = null,
-                    deleteError = e.message ?: "Delete failed",
-                )
+                _state.update {
+                    it.copy(
+                        isDeleting = false,
+                        pendingDeleteId = null,
+                        deleteError = e.message ?: "Delete failed",
+                    )
+                }
             }
         }
     }
 
     /** Stage a service for deletion, showing the ConfirmDialog. */
     fun requestDelete(id: Long) {
-        _state.value = _state.value.copy(pendingDeleteId = id)
+        _state.update { it.copy(pendingDeleteId = id) }
     }
 
     /** Cancel the pending delete (ConfirmDialog dismissed). */
     fun cancelDelete() {
-        _state.value = _state.value.copy(pendingDeleteId = null)
+        _state.update { it.copy(pendingDeleteId = null) }
     }
 
     /** Clear a previously shown delete error snackbar. */
     fun clearDeleteError() {
-        _state.value = _state.value.copy(deleteError = null)
+        _state.update { it.copy(deleteError = null) }
     }
 }
 

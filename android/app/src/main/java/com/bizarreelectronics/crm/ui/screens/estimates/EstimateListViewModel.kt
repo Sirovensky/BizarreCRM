@@ -11,6 +11,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
@@ -64,7 +65,7 @@ class EstimateListViewModel @Inject constructor(
     fun loadEstimates() {
         collectJob?.cancel()
         collectJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = _state.value.estimates.isEmpty(), error = null)
+            _state.update { it.copy(isLoading = _state.value.estimates.isEmpty(), error = null) }
             val query = _state.value.searchQuery.trim()
             val statusFilter = _state.value.selectedStatus
             val filters = _state.value.activeFilters
@@ -80,18 +81,22 @@ class EstimateListViewModel @Inject constructor(
                     applyFilters(estimates, statusFilter, filters)
                 }
                 .catch {
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        isRefreshing = false,
-                        error = "Failed to load estimates. Check your connection and try again.",
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            isRefreshing = false,
+                            error = "Failed to load estimates. Check your connection and try again.",
+                        )
+                    }
                 }
                 .collectLatest { estimates ->
-                    _state.value = _state.value.copy(
-                        estimates = estimates,
-                        isLoading = false,
-                        isRefreshing = false,
-                    )
+                    _state.update {
+                        it.copy(
+                            estimates = estimates,
+                            isLoading = false,
+                            isRefreshing = false,
+                        )
+                    }
                 }
         }
     }
@@ -112,7 +117,7 @@ class EstimateListViewModel @Inject constructor(
     }
 
     fun refresh() {
-        _state.value = _state.value.copy(isRefreshing = true)
+        _state.update { it.copy(isRefreshing = true) }
         loadEstimates()
         // Also reset cursor paging so pull-to-refresh refetches page 1
         loadFirstPage()
@@ -128,13 +133,13 @@ class EstimateListViewModel @Inject constructor(
     fun loadFirstPage() {
         loadMoreJob?.cancel()
         nextCursor = null
-        _state.value = _state.value.copy(hasMore = true)
+        _state.update { it.copy(hasMore = true) }
         viewModelScope.launch {
             try {
                 val filters = buildApiFilters()
                 val (_, cursor) = estimateRepository.loadEstimatesPage(null, PAGE_SIZE, filters)
                 nextCursor = cursor
-                _state.value = _state.value.copy(hasMore = cursor != null)
+                _state.update { it.copy(hasMore = cursor != null) }
             } catch (e: Exception) {
                 Log.d(TAG, "loadFirstPage error: ${e.message}")
             }
@@ -151,18 +156,20 @@ class EstimateListViewModel @Inject constructor(
         val cursor = nextCursor ?: return
         loadMoreJob?.cancel()
         loadMoreJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isLoadingMore = true)
+            _state.update { it.copy(isLoadingMore = true) }
             try {
                 val filters = buildApiFilters()
                 val (_, newCursor) = estimateRepository.loadEstimatesPage(cursor, PAGE_SIZE, filters)
                 nextCursor = newCursor
-                _state.value = _state.value.copy(
-                    hasMore = newCursor != null,
-                    isLoadingMore = false,
-                )
+                _state.update {
+                    it.copy(
+                        hasMore = newCursor != null,
+                        isLoadingMore = false,
+                    )
+                }
             } catch (e: Exception) {
                 Log.d(TAG, "loadMore error: ${e.message}")
-                _state.value = _state.value.copy(isLoadingMore = false)
+                _state.update { it.copy(isLoadingMore = false) }
             }
         }
     }
@@ -178,7 +185,7 @@ class EstimateListViewModel @Inject constructor(
     }
 
     fun onSearchChanged(query: String) {
-        _state.value = _state.value.copy(searchQuery = query)
+        _state.update { it.copy(searchQuery = query) }
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             delay(300)
@@ -187,7 +194,7 @@ class EstimateListViewModel @Inject constructor(
     }
 
     fun onStatusChanged(status: String) {
-        _state.value = _state.value.copy(selectedStatus = status)
+        _state.update { it.copy(selectedStatus = status) }
         loadEstimates()
         loadFirstPage()
     }
@@ -195,7 +202,7 @@ class EstimateListViewModel @Inject constructor(
     // ── L1321 Filters ─────────────────────────────────────────────────────────
 
     fun onFiltersApplied(filters: EstimateFilterState) {
-        _state.value = _state.value.copy(activeFilters = filters)
+        _state.update { it.copy(activeFilters = filters) }
         loadEstimates()
         loadFirstPage()
     }
@@ -221,11 +228,11 @@ class EstimateListViewModel @Inject constructor(
 
     fun selectAll() {
         val allIds = _state.value.estimates.map { it.id }.toSet()
-        _state.value = _state.value.copy(selectedIds = allIds, isBulkMode = true)
+        _state.update { it.copy(selectedIds = allIds, isBulkMode = true) }
     }
 
     fun exitBulkMode() {
-        _state.value = _state.value.copy(selectedIds = emptySet(), isBulkMode = false)
+        _state.update { it.copy(selectedIds = emptySet(), isBulkMode = false) }
     }
 
     fun bulkSend() {
@@ -247,11 +254,13 @@ class EstimateListViewModel @Inject constructor(
                     Log.w("EstimateList", "bulkSend $id failed: ${e.message}")
                 }
             }
-            _state.value = _state.value.copy(
-                selectedIds = emptySet(),
-                isBulkMode = false,
-                actionMessage = "Sent $sent of ${ids.size} estimate(s)",
-            )
+            _state.update {
+                it.copy(
+                    selectedIds = emptySet(),
+                    isBulkMode = false,
+                    actionMessage = "Sent $sent of ${ids.size} estimate(s)",
+                )
+            }
         }
     }
 
@@ -272,15 +281,17 @@ class EstimateListViewModel @Inject constructor(
                     Log.w("EstimateList", "bulkDelete $id failed: ${e.message}")
                 }
             }
-            _state.value = _state.value.copy(
-                selectedIds = emptySet(),
-                isBulkMode = false,
-                actionMessage = "Deleted $deleted of ${ids.size} estimate(s)",
-            )
+            _state.update {
+                it.copy(
+                    selectedIds = emptySet(),
+                    isBulkMode = false,
+                    actionMessage = "Deleted $deleted of ${ids.size} estimate(s)",
+                )
+            }
         }
     }
 
     fun clearActionMessage() {
-        _state.value = _state.value.copy(actionMessage = null)
+        _state.update { it.copy(actionMessage = null) }
     }
 }

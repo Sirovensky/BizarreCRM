@@ -45,6 +45,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -115,16 +116,18 @@ class EmployeeListViewModel @Inject constructor(
     fun loadEmployees() {
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null, isOffline = false)
+            _state.update { it.copy(isLoading = true, error = null, isOffline = false) }
             try {
                 val response = settingsApi.getEmployees()
                 val employees = response.data ?: emptyList()
                 cachedEmployees = employees
-                _state.value = _state.value.copy(
-                    employees = employees,
-                    isLoading = false,
-                    isRefreshing = false,
-                )
+                _state.update {
+                    it.copy(
+                        employees = employees,
+                        isLoading = false,
+                        isRefreshing = false,
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: don't paint a fake "Offline — no cached
                 // data" error when this load was superseded by a newer refresh.
@@ -132,41 +135,45 @@ class EmployeeListViewModel @Inject constructor(
             } catch (e: Exception) {
                 val cached = cachedEmployees
                 if (cached != null) {
-                    _state.value = _state.value.copy(
-                        employees = cached,
-                        isLoading = false,
-                        isRefreshing = false,
-                        isOffline = true,
-                        error = "Offline — showing cached data",
-                    )
+                    _state.update {
+                        it.copy(
+                            employees = cached,
+                            isLoading = false,
+                            isRefreshing = false,
+                            isOffline = true,
+                            error = "Offline — showing cached data",
+                        )
+                    }
                 } else {
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        isRefreshing = false,
-                        isOffline = !serverMonitor.isEffectivelyOnline.value,
-                        error = if (!serverMonitor.isEffectivelyOnline.value) {
-                            "Offline — no cached data available"
-                        } else {
-                            e.message ?: "Failed to load employees"
-                        },
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            isRefreshing = false,
+                            isOffline = !serverMonitor.isEffectivelyOnline.value,
+                            error = if (!serverMonitor.isEffectivelyOnline.value) {
+                                "Offline — no cached data available"
+                            } else {
+                                e.message ?: "Failed to load employees"
+                            },
+                        )
+                    }
                 }
             }
         }
     }
 
     fun refresh() {
-        _state.value = _state.value.copy(isRefreshing = true)
+        _state.update { it.copy(isRefreshing = true) }
         loadEmployees()
     }
 
     fun setFilter(filter: EmployeeFilter) {
-        _state.value = _state.value.copy(activeFilter = filter)
+        _state.update { it.copy(activeFilter = filter) }
     }
 
     /** §18.2 — update the scoped search query for this screen. */
     fun updateSearchQuery(query: String) {
-        _state.value = _state.value.copy(searchQuery = query)
+        _state.update { it.copy(searchQuery = query) }
     }
 
     /**
@@ -189,7 +196,7 @@ class EmployeeListViewModel @Inject constructor(
                         else -> PresenceStatus.Off
                     }
                     val updated = _state.value.presenceMap + (employeeId to presence)
-                    _state.value = _state.value.copy(presenceMap = updated)
+                    _state.update { it.copy(presenceMap = updated) }
                 } catch (_: Exception) {
                     // Malformed WS payload — ignore silently
                 }

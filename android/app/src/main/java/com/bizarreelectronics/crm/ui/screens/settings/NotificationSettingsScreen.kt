@@ -400,56 +400,56 @@ class NotificationSettingsViewModel @Inject constructor(
 
     fun setEmailAlerts(enabled: Boolean) {
         appPreferences.notifEmailAlertsEnabled = enabled
-        _state.value = _state.value.copy(emailAlerts = enabled)
+        _state.update { it.copy(emailAlerts = enabled) }
         scheduleServerSync()
     }
 
     fun setSmsAlerts(enabled: Boolean) {
         appPreferences.notifSmsAlertsEnabled = enabled
-        _state.value = _state.value.copy(smsAlerts = enabled)
+        _state.update { it.copy(smsAlerts = enabled) }
         scheduleServerSync()
     }
 
     fun setPushNotifications(enabled: Boolean) {
         appPreferences.notifPushEnabled = enabled
-        _state.value = _state.value.copy(pushNotifications = enabled)
+        _state.update { it.copy(pushNotifications = enabled) }
         scheduleServerSync()
     }
 
     fun setLowStockAlerts(enabled: Boolean) {
         appPreferences.notifLowStockEnabled = enabled
-        _state.value = _state.value.copy(lowStockAlerts = enabled)
+        _state.update { it.copy(lowStockAlerts = enabled) }
         scheduleServerSync()
     }
 
     fun setNewTicketAlerts(enabled: Boolean) {
         appPreferences.notifNewTicketEnabled = enabled
-        _state.value = _state.value.copy(newTicketAlerts = enabled)
+        _state.update { it.copy(newTicketAlerts = enabled) }
         scheduleServerSync()
     }
 
     fun setAppointmentReminderAlerts(enabled: Boolean) {
         appPreferences.notifAppointmentReminderEnabled = enabled
-        _state.value = _state.value.copy(appointmentReminderAlerts = enabled)
+        _state.update { it.copy(appointmentReminderAlerts = enabled) }
         scheduleServerSync()
     }
 
     // §13.2 quiet hours
     fun setQuietHoursEnabled(enabled: Boolean) {
         appPreferences.quietHoursEnabled = enabled
-        _state.value = _state.value.copy(quietHoursEnabled = enabled)
+        _state.update { it.copy(quietHoursEnabled = enabled) }
         scheduleServerSync()
     }
 
     fun setQuietHoursStart(minutes: Int) {
         appPreferences.quietHoursStartMinutes = minutes
-        _state.value = _state.value.copy(quietHoursStartMinutes = minutes)
+        _state.update { it.copy(quietHoursStartMinutes = minutes) }
         scheduleServerSync()
     }
 
     fun setQuietHoursEnd(minutes: Int) {
         appPreferences.quietHoursEndMinutes = minutes
-        _state.value = _state.value.copy(quietHoursEndMinutes = minutes)
+        _state.update { it.copy(quietHoursEndMinutes = minutes) }
         scheduleServerSync()
     }
 

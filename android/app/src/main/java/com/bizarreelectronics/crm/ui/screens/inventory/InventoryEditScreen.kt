@@ -36,6 +36,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -127,7 +128,7 @@ class InventoryEditViewModel @Inject constructor(
         // Keep canUndo in sync with the stack so the UI can gate the Undo action.
         viewModelScope.launch {
             undoStack.canUndo.collect { can ->
-                _state.value = _state.value.copy(canUndo = can)
+                _state.update { it.copy(canUndo = can) }
             }
         }
     }
@@ -135,7 +136,7 @@ class InventoryEditViewModel @Inject constructor(
     fun loadItem() {
         collectJob?.cancel()
         collectJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             try {
                 inventoryRepository.getItem(itemId).collectLatest { entity ->
                     val current = _state.value
@@ -167,42 +168,44 @@ class InventoryEditViewModel @Inject constructor(
                 // CustomerDetailScreen / CustomerListViewModel.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = "Failed to load inventory item. Check your connection and try again.",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = "Failed to load inventory item. Check your connection and try again.",
+                    )
+                }
             }
         }
     }
 
-    fun updateName(value: String) { _state.value = _state.value.copy(name = value) }
-    fun updateSku(value: String) { _state.value = _state.value.copy(sku = value) }
-    fun updateUpcCode(value: String) { _state.value = _state.value.copy(upcCode = value) }
-    fun updateItemType(value: String) { _state.value = _state.value.copy(itemType = value) }
+    fun updateName(value: String) { _state.update { it.copy(name = value) } }
+    fun updateSku(value: String) { _state.update { it.copy(sku = value) } }
+    fun updateUpcCode(value: String) { _state.update { it.copy(upcCode = value) } }
+    fun updateItemType(value: String) { _state.update { it.copy(itemType = value) } }
     fun updateCostPrice(value: String) {
         if (value.isEmpty() || value.matches(Regex("^\\d*\\.?\\d*$"))) {
-            _state.value = _state.value.copy(costPrice = value)
+            _state.update { it.copy(costPrice = value) }
         }
     }
     fun updateRetailPrice(value: String) {
         if (value.isEmpty() || value.matches(Regex("^\\d*\\.?\\d*$"))) {
-            _state.value = _state.value.copy(retailPrice = value)
+            _state.update { it.copy(retailPrice = value) }
         }
     }
     fun updateInStock(value: String) {
         if (value.isEmpty() || value.matches(Regex("^\\d*$"))) {
-            _state.value = _state.value.copy(inStock = value)
+            _state.update { it.copy(inStock = value) }
         }
     }
     fun updateReorderLevel(value: String) {
         if (value.isEmpty() || value.matches(Regex("^\\d*$"))) {
-            _state.value = _state.value.copy(reorderLevel = value)
+            _state.update { it.copy(reorderLevel = value) }
         }
     }
-    fun updateDescription(value: String) { _state.value = _state.value.copy(description = value) }
+    fun updateDescription(value: String) { _state.update { it.copy(description = value) } }
 
     fun clearSaveMessage() {
-        _state.value = _state.value.copy(saveMessage = null)
+        _state.update { it.copy(saveMessage = null) }
     }
 
     fun saveItem() {
@@ -224,7 +227,7 @@ class InventoryEditViewModel @Inject constructor(
         val originalItem = current.item
 
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSaving = true)
+            _state.update { it.copy(isSaving = true) }
             try {
                 val request = CreateInventoryRequest(
                     name = current.name.trim(),
@@ -246,11 +249,13 @@ class InventoryEditViewModel @Inject constructor(
                     pushFieldUndoEntries(current, originalItem, request)
                 }
 
-                _state.value = _state.value.copy(
-                    isSaving = false,
-                    undoMessage = "Inventory item updated",
-                    saved = true,
-                )
+                _state.update {
+                    it.copy(
+                        isSaving = false,
+                        undoMessage = "Inventory item updated",
+                        saved = true,
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: bare catch (e: Exception) below painted
                 // "Failed to update inventory item" on back-nav, tempting a
@@ -259,10 +264,12 @@ class InventoryEditViewModel @Inject constructor(
                 // cleanly; the next screen-resume reflects the actual state.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSaving = false,
-                    saveMessage = e.message ?: "Failed to update inventory item",
-                )
+                _state.update {
+                    it.copy(
+                        isSaving = false,
+                        saveMessage = e.message ?: "Failed to update inventory item",
+                    )
+                }
             }
         }
     }
@@ -390,13 +397,13 @@ class InventoryEditViewModel @Inject constructor(
         viewModelScope.launch {
             val ok = undoStack.undo()
             if (!ok) {
-                _state.value = _state.value.copy(saveMessage = "Nothing to undo")
+                _state.update { it.copy(saveMessage = "Nothing to undo") }
             }
         }
     }
 
     fun clearUndoMessage() {
-        _state.value = _state.value.copy(undoMessage = null)
+        _state.update { it.copy(undoMessage = null) }
     }
 
     private fun formatAmount(value: Double): String {
@@ -413,55 +420,59 @@ class InventoryEditViewModel @Inject constructor(
     // ── §6.4: Delete / Deactivate / Stock-adjust quick-actions ──────────────
 
     fun setShowDeleteDialog(show: Boolean) {
-        _state.value = _state.value.copy(showDeleteDialog = show)
+        _state.update { it.copy(showDeleteDialog = show) }
     }
 
     fun confirmDelete() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(showDeleteDialog = false, isSaving = true)
+            _state.update { it.copy(showDeleteDialog = false, isSaving = true) }
             try {
                 inventoryApi.deleteItem(itemId)
-                _state.value = _state.value.copy(isSaving = false, deleted = true)
+                _state.update { it.copy(isSaving = false, deleted = true) }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: don't paint "Failed to delete item" on
                 // back-nav. Delete is idempotent server-side so a re-tap is
                 // harmless, but the false error confuses the user.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSaving = false,
-                    saveMessage = e.message ?: "Failed to delete item",
-                )
+                _state.update {
+                    it.copy(
+                        isSaving = false,
+                        saveMessage = e.message ?: "Failed to delete item",
+                    )
+                }
             }
         }
     }
 
     fun setShowDeactivateDialog(show: Boolean) {
-        _state.value = _state.value.copy(showDeactivateDialog = show)
+        _state.update { it.copy(showDeactivateDialog = show) }
     }
 
     fun confirmDeactivate() {
         // Deactivation on the server is handled by the same DELETE endpoint
         // (it sets is_active=0 and preserves history).
         viewModelScope.launch {
-            _state.value = _state.value.copy(showDeactivateDialog = false, isSaving = true)
+            _state.update { it.copy(showDeactivateDialog = false, isSaving = true) }
             try {
                 inventoryApi.deleteItem(itemId)
-                _state.value = _state.value.copy(isSaving = false, deactivated = true)
+                _state.update { it.copy(isSaving = false, deactivated = true) }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: see confirmDelete — same pattern.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSaving = false,
-                    saveMessage = e.message ?: "Failed to deactivate item",
-                )
+                _state.update {
+                    it.copy(
+                        isSaving = false,
+                        saveMessage = e.message ?: "Failed to deactivate item",
+                    )
+                }
             }
         }
     }
 
     fun setShowStockAdjustSheet(show: Boolean) {
-        _state.value = _state.value.copy(showStockAdjustSheet = show)
+        _state.update { it.copy(showStockAdjustSheet = show) }
     }
 
     /** §6.4: Quick stock-adjust: delta can be +1, -1, or "set to N". */
@@ -484,12 +495,14 @@ class InventoryEditViewModel @Inject constructor(
                     itemId,
                     AdjustStockRequest(quantity = qty, type = type, reason = "manual"),
                 )
-                _state.value = _state.value.copy(
-                    showStockAdjustSheet = false,
-                    saveMessage = if (qty > 0) "Stock +$qty" else "Stock $qty",
-                    // Optimistically update the form field.
-                    inStock = (oldQty + qty).toString(),
-                )
+                _state.update {
+                    it.copy(
+                        showStockAdjustSheet = false,
+                        saveMessage = if (qty > 0) "Stock +$qty" else "Stock $qty",
+                        // Optimistically update the form field.
+                        inStock = (oldQty + qty).toString(),
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: quickAdjustStock applies a real stock
                 // delta. A bare catch would paint "Stock adjust failed" on
@@ -498,9 +511,11 @@ class InventoryEditViewModel @Inject constructor(
                 // the re-applied delta could compound.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    saveMessage = e.message ?: "Stock adjust failed",
-                )
+                _state.update {
+                    it.copy(
+                        saveMessage = e.message ?: "Stock adjust failed",
+                    )
+                }
             }
         }
     }

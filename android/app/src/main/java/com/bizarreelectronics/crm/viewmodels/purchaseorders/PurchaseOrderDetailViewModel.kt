@@ -13,6 +13,7 @@ import com.bizarreelectronics.crm.data.repository.PurchaseOrderRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -57,7 +58,7 @@ class PurchaseOrderDetailViewModel @Inject constructor(
 
     fun load() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val detail = repository.getPurchaseOrder(poId)
                 val entries = detail.items.map { item ->
@@ -66,18 +67,22 @@ class PurchaseOrderDetailViewModel @Inject constructor(
                         qtyToReceive = (item.quantityOrdered - item.quantityReceived).coerceAtLeast(0),
                     )
                 }
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    order = detail.order,
-                    items = detail.items,
-                    receiveEntries = entries,
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        order = detail.order,
+                        items = detail.items,
+                        receiveEntries = entries,
+                    )
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "load($poId) failed: ${e.message}")
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Failed to load purchase order",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = e.message ?: "Failed to load purchase order",
+                    )
+                }
             }
         }
     }
@@ -92,7 +97,7 @@ class PurchaseOrderDetailViewModel @Inject constructor(
                 entry
             }
         }
-        _state.value = _state.value.copy(receiveEntries = updated)
+        _state.update { it.copy(receiveEntries = updated) }
     }
 
     /**
@@ -102,11 +107,11 @@ class PurchaseOrderDetailViewModel @Inject constructor(
     fun submitReceive() {
         val entries = _state.value.receiveEntries.filter { it.qtyToReceive > 0 }
         if (entries.isEmpty()) {
-            _state.value = _state.value.copy(receiveError = "Enter at least one quantity to receive")
+            _state.update { it.copy(receiveError = "Enter at least one quantity to receive") }
             return
         }
         viewModelScope.launch {
-            _state.value = _state.value.copy(isReceiving = true, receiveError = null)
+            _state.update { it.copy(isReceiving = true, receiveError = null) }
             try {
                 val items = entries.map { entry ->
                     PurchaseOrderReceiveItemRequest(
@@ -123,54 +128,58 @@ class PurchaseOrderDetailViewModel @Inject constructor(
                         qtyToReceive = (item.quantityOrdered - item.quantityReceived).coerceAtLeast(0),
                     )
                 }
-                _state.value = _state.value.copy(
-                    isReceiving = false,
-                    receiveSuccess = true,
-                    order = updated,
-                    items = detail.items,
-                    receiveEntries = newEntries,
-                )
+                _state.update {
+                    it.copy(
+                        isReceiving = false,
+                        receiveSuccess = true,
+                        order = updated,
+                        items = detail.items,
+                        receiveEntries = newEntries,
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: receivePurchaseOrder increments stock
                 // and creates stock_movements rows — no idempotency key. A
                 // "Failed to receive" toast tempted a re-tap that doubled
                 // the received qty. Reload the PO so the entries reflect
                 // the truth before the user retries.
-                _state.value = _state.value.copy(isReceiving = false)
+                _state.update { it.copy(isReceiving = false) }
                 load()
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "submitReceive($poId) failed: ${e.message}")
-                _state.value = _state.value.copy(
-                    isReceiving = false,
-                    receiveError = e.message ?: "Failed to receive items",
-                )
+                _state.update {
+                    it.copy(
+                        isReceiving = false,
+                        receiveError = e.message ?: "Failed to receive items",
+                    )
+                }
             }
         }
     }
 
     fun clearReceiveSuccess() {
-        _state.value = _state.value.copy(receiveSuccess = false, receiveError = null)
+        _state.update { it.copy(receiveSuccess = false, receiveError = null) }
     }
 
     // ── Cancel flow ───────────────────────────────────────────────────────────
 
     fun requestCancel() {
-        _state.value = _state.value.copy(showCancelConfirm = true, cancelReason = "")
+        _state.update { it.copy(showCancelConfirm = true, cancelReason = "") }
     }
 
     fun onCancelReasonChanged(reason: String) {
-        _state.value = _state.value.copy(cancelReason = reason)
+        _state.update { it.copy(cancelReason = reason) }
     }
 
     fun dismissCancelConfirm() {
-        _state.value = _state.value.copy(showCancelConfirm = false, cancelReason = "", cancelError = null)
+        _state.update { it.copy(showCancelConfirm = false, cancelReason = "", cancelError = null) }
     }
 
     /** Transition PO to 'cancelled' with an optional reason. */
     fun confirmCancel() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isCancelling = true, cancelError = null)
+            _state.update { it.copy(isCancelling = true, cancelError = null) }
             try {
                 val updated = repository.updatePurchaseOrder(
                     id = poId,
@@ -179,17 +188,21 @@ class PurchaseOrderDetailViewModel @Inject constructor(
                         cancelledReason = _state.value.cancelReason.takeIf { it.isNotBlank() },
                     ),
                 )
-                _state.value = _state.value.copy(
-                    isCancelling = false,
-                    showCancelConfirm = false,
-                    order = updated,
-                )
+                _state.update {
+                    it.copy(
+                        isCancelling = false,
+                        showCancelConfirm = false,
+                        order = updated,
+                    )
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "confirmCancel($poId) failed: ${e.message}")
-                _state.value = _state.value.copy(
-                    isCancelling = false,
-                    cancelError = e.message ?: "Failed to cancel purchase order",
-                )
+                _state.update {
+                    it.copy(
+                        isCancelling = false,
+                        cancelError = e.message ?: "Failed to cancel purchase order",
+                    )
+                }
             }
         }
     }
