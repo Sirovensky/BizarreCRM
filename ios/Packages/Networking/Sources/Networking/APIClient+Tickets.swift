@@ -120,9 +120,16 @@ public extension APIClient {
 
     /// `PATCH /api/v1/tickets/:id` with `{ pinned: true/false }` — pins or unpins a ticket on the dashboard.
     /// Route: tickets.routes.ts PATCH /tickets/:id (partial update).
+    // BUGHUNT-2026-05-19: same `try?` ate-the-error bug as
+    // attachTicketToInvoice / transferTicket above. TicketListViewModel
+    // .togglePin treats success as the cue to `await refresh()` and only logs
+    // on `catch`. With the throw swallowed, a backend 5xx / 403 / connection
+    // failure looked like success — refresh ran, the ticket came back
+    // un-pinned, and the user saw their pin tap silently revert with no
+    // explanation. Drop the try? so the caller's catch path runs.
     func setTicketPinned(ticketId: Int64, pinned: Bool) async throws {
         let route = Endpoints.Tickets.patchTicket(ticketId: ticketId)
-        _ = try? await patch(route.path, body: TicketPinBody(pinned: pinned), as: TicketDetail.self)
+        _ = try await patch(route.path, body: TicketPinBody(pinned: pinned), as: TicketDetail.self)
     }
 
     // MARK: - §4.1 Export CSV
