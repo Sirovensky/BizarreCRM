@@ -3,6 +3,14 @@
 @tailwind utilities;
 
 @font-face {
+  font-family: 'Futura';
+  src: url('../assets/fonts/futura_medium.otf') format('opentype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
   font-family: 'DM Serif Display';
   src: url('../assets/fonts/dm_serif_display_regular.ttf') format('truetype');
   font-weight: 400;

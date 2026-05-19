@@ -162,7 +162,7 @@ export default {
         logo: ['Saved By Zero', 'DM Serif Display', 'Georgia', 'serif'],
         // Corporate brand fonts — landing page + marketing only
         'brand-display': ['Bebas Neue', 'Futura', 'system-ui', 'sans-serif'],
-        'brand-sans': ['Futura', 'Futura Medium', 'system-ui', '-apple-system', 'sans-serif'],
+        'brand-sans': ['Futura', 'system-ui', '-apple-system', 'sans-serif'],
         'brand-logo': ['Saved By Zero', 'Bebas Neue', 'Futura', 'sans-serif'],
       },
       animation: {

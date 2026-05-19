@@ -3,14 +3,21 @@
 @tailwind utilities;
 
 /* App fonts: DM Serif Display (headings), DM Sans (body), JetBrains Mono (code).
- * Corporate fonts: Bebas Neue (landing headings), Futura (landing body — licensed,
- * system-only), Saved By Zero (logo — pending self-host). */
+ * Corporate fonts: Bebas Neue (landing headings), Futura Medium (landing body),
+ * Saved By Zero (logo — pending self-host). */
 @font-face {
   font-family: 'Bebas Neue';
   font-style: normal;
   font-weight: 400;
   font-display: swap;
   src: url('/fonts/bebas-neue.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Futura';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/futura-medium.otf') format('opentype');
 }
 @font-face {
   font-family: 'DM Serif Display';
