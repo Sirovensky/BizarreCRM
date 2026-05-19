@@ -48,7 +48,12 @@ export function readImpersonationTokenClaims(token: string): ImpersonationTokenC
 }
 
 export function setImpersonationSession(session: ImpersonationSession): void {
-  sessionStorage.setItem(IMPERSONATION_KEY, JSON.stringify(session));
+  // BUGHUNT-2026-05-19: persist + event-dispatch shouldn't share a fate.
+  // If sessionStorage is disabled or full, the throw above used to swallow
+  // the IMPERSONATION_CHANGED_EVENT — the banner never appeared even
+  // though the impersonation token was already minted server-side. Decouple
+  // so the UI signals correctly even on a hostile storage environment.
+  try { sessionStorage.setItem(IMPERSONATION_KEY, JSON.stringify(session)); } catch { /* private mode / quota */ }
   window.dispatchEvent(new CustomEvent(IMPERSONATION_CHANGED_EVENT));
 }
 
