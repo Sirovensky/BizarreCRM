@@ -649,12 +649,14 @@ router.post(
     const results: Array<{ estimate_id: number; ticket_id?: number; error?: string }> = [];
 
     for (const estId of estimate_ids) {
+      let prevStatus: string | undefined;
       try {
         const estimate = await adb.get<any>('SELECT * FROM estimates WHERE id = ?', estId);
         if (!estimate) {
           results.push({ estimate_id: estId, error: 'Estimate not found' });
           continue;
         }
+        prevStatus = estimate.status;
         if (estimate.status === 'converted') {
           results.push({ estimate_id: estId, error: 'Already converted' });
           continue;
@@ -759,7 +761,7 @@ router.post(
         try {
           await adb.run(
             "UPDATE estimates SET status = ?, updated_at = datetime('now') WHERE id = ? AND status = 'converting'",
-            estimate.status, estId,
+            prevStatus ?? 'pending', estId,
           );
         } catch (revertErr) {
           logger.warn('estimate bulk-convert revert failed', {

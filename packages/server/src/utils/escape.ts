@@ -33,7 +33,7 @@ const HTML_ESCAPES: Readonly<Record<string, string>> = Object.freeze({
  */
 export function escapeHtml(input: string): string {
   if (input === null || input === undefined) return '';
-  return String(input).replace(/[&<>"'/`  ]/g, (ch) => HTML_ESCAPES[ch] ?? ch);
+  return String(input).replace(/[&<>"'/`\u2028\u2029]/g, (ch) => HTML_ESCAPES[ch] ?? ch);
 }
 
 /**

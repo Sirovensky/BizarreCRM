@@ -153,19 +153,17 @@ export default {
           950: '#172554',
         },
       },
-      // WEB-FQ-001 / WEB-FE-003 (Fixer-Z 2026-04-25): canonical brand fonts
-       // per §project_brand_fonts. `display` is the new heading family
-       // (Bebas Neue), `sans` is body (Futura Medium → Jost free proxy on
-       // Google Fonts), `logo` keeps Saved By Zero as the head of the chain
-       // even though the @font-face is still pending self-host (falls back
-       // to Bebas Neue, then Jost — never Inter again). Existing
-       // `font-sans` / `font-mono` consumers stay valid; `font-display`
-       // and `font-logo` are new tokens for headings + the logo wordmark.
+      // App UI fonts: DM Serif Display (headings), DM Sans (body).
+       // Corporate/landing fonts: Futura, Bebas Neue, Saved By Zero.
       fontFamily: {
-        display: ['Bebas Neue', 'Jost', 'system-ui', 'sans-serif'],
-        sans: ['Jost', 'Futura', 'system-ui', '-apple-system', 'sans-serif'],
+        display: ['DM Serif Display', 'Georgia', 'serif'],
+        sans: ['DM Sans', 'system-ui', '-apple-system', 'sans-serif'],
         mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
-        logo: ['Saved By Zero', 'Bebas Neue', 'Jost', 'sans-serif'],
+        logo: ['Saved By Zero', 'DM Serif Display', 'Georgia', 'serif'],
+        // Corporate brand fonts — landing page + marketing only
+        'brand-display': ['Bebas Neue', 'Futura', 'system-ui', 'sans-serif'],
+        'brand-sans': ['Futura', 'system-ui', '-apple-system', 'sans-serif'],
+        'brand-logo': ['Saved By Zero', 'Bebas Neue', 'Futura', 'sans-serif'],
       },
       animation: {
         'slide-in': 'slideIn 0.2s ease-out',

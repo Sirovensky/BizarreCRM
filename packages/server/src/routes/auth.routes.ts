@@ -2718,7 +2718,7 @@ router.post('/change-password', authMiddleware, asyncHandler(async (req: Request
       audit(db, 'password_change_failed', userId, ip, { reason: 'concurrent_change' });
       res.status(409).json({
         success: false,
-        code: ERROR_CODES.ERR_CONFLICT ?? 'ERR_CONFLICT',
+        code: ERROR_CODES.ERR_RESOURCE_CONFLICT ?? 'ERR_CONFLICT',
         message: 'Password was changed by another session. Refresh and try again.',
       });
       return;

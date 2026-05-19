@@ -1044,12 +1044,14 @@ router.put('/config', adminOnly, asyncHandler(async (req, res) => {
       if (error) validationErrors.push(error);
     }
     if (validationErrors.length > 0) {
-      return res.status(400).json({ success: false, message: 'Validation failed', errors: validationErrors });
+      res.status(400).json({ success: false, message: 'Validation failed', errors: validationErrors });
+      return;
     }
 
     // SCAN-648: Reject if any value is not a string — indicates a client bug.
     if (!isStringMap(req.body)) {
-      return res.status(400).json({ success: false, message: 'All config values must be strings' });
+      res.status(400).json({ success: false, message: 'All config values must be strings' });
+      return;
     }
 
     // ENR-S2: Read old values for audit trail before updating
@@ -3740,7 +3742,8 @@ router.post('/import', adminOnly, asyncHandler(async (req, res) => {
     // SCAN-648: Reject non-string values — settings are all string-valued.
     if (!isStringMap(req.body)) {
       logger.warn('POST /import: non-string value in settings import payload — potential client bug');
-      return res.status(400).json({ success: false, message: 'All settings values must be strings' });
+      res.status(400).json({ success: false, message: 'All settings values must be strings' });
+      return;
     }
     const data = req.body;
 
@@ -3800,7 +3803,8 @@ router.put('/preferences', asyncHandler(async (req, res) => {
   const data = req.body;
 
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
-    return res.status(400).json({ success: false, message: 'Body must be a JSON object of key-value pairs' });
+    res.status(400).json({ success: false, message: 'Body must be a JSON object of key-value pairs' });
+    return;
   }
 
   const ALLOWED_PREF_KEYS = new Set([
@@ -3855,16 +3859,18 @@ router.put('/module-visibility', adminOnly, asyncHandler(async (req, res) => {
   const data = req.body;
 
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
-    return res.status(400).json({ success: false, message: 'Body must be a JSON object mapping roles to module arrays' });
+    res.status(400).json({ success: false, message: 'Body must be a JSON object mapping roles to module arrays' });
+    return;
   }
 
   // Validate structure: each value must be an array of strings
   for (const [role, modules] of Object.entries(data)) {
     if (!Array.isArray(modules) || !modules.every((m): m is string => typeof m === 'string')) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         message: `Value for role "${role}" must be an array of module name strings`,
       });
+      return;
     }
   }
 

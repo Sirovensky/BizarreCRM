@@ -139,7 +139,7 @@ router.delete('/definitions/:id', adminOnly, asyncHandler(async (req, res) => {
 router.get('/values/:entityType/:entityId', asyncHandler(async (req, res) => {
   // Same allowlist as the PUT endpoint — without it, any authenticated user
   // could probe arbitrary entity_type values via the GET path.
-  if (!VALID_ENTITY_TYPES.has(req.params.entityType)) {
+  if (!VALID_ENTITY_TYPES.has(req.params.entityType as string)) {
     throw new AppError('Invalid entity_type', 400);
   }
   const adb = req.asyncDb;
