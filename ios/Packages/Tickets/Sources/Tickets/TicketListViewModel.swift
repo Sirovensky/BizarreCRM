@@ -229,7 +229,16 @@ public final class TicketListViewModel {
             // refresh will reconcile.
             return
         } catch {
+            // BUGHUNT-2026-05-19: companion to the iter-6 setTicketPinned fix
+            // (APIClient+Tickets.swift dropped the inner try?). With errors
+            // now actually propagating, this catch fired — but it only logged.
+            // The UI showed nothing, the optimistic pin star reverted on the
+            // next refresh, and the user couldn't tell whether the tap was
+            // ignored, the server is down, or they lack permission. Mirror
+            // convertToInvoice below and surface the message so the toolbar
+            // banner / .alert binding can render it.
             AppLog.ui.error("Toggle pin failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = error.localizedDescription
         }
     }
 
