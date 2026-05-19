@@ -92,6 +92,12 @@ public actor VoiceMemoRecorder: NSObject {
             throw VoiceMemoError.setupFailed(error.localizedDescription)
         }
 
+        // BUGHUNT-2026-05-19: AVAudioRecorder setup failures (AVAudioRecorder
+        // init throw, prepareToRecord() false, record() false) all left the
+        // shared AVAudioSession active in .playAndRecord, so any background
+        // music app stays interrupted until the next successful start/stop
+        // cycle. Mirror the SmsVoiceMemoRecorder fix and deactivate on every
+        // early-exit path that follows the setActive(true) above.
         let filename = "\(UUID().uuidString).m4a"
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
 
@@ -99,11 +105,13 @@ public actor VoiceMemoRecorder: NSObject {
         do {
             rec = try AVAudioRecorder(url: url, settings: Self.audioSettings())
         } catch {
+            deactivateSession()
             throw VoiceMemoError.setupFailed(error.localizedDescription)
         }
 
         rec.delegate = self
         guard rec.prepareToRecord() else {
+            deactivateSession()
             throw VoiceMemoError.setupFailed("prepareToRecord() returned false")
         }
 
@@ -111,6 +119,7 @@ public actor VoiceMemoRecorder: NSObject {
             rec.record(forDuration: maxDuration)
         } else {
             guard rec.record() else {
+                deactivateSession()
                 throw VoiceMemoError.setupFailed("record() returned false")
             }
         }
