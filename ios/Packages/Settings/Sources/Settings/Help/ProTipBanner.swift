@@ -57,11 +57,18 @@ public final class ProTipBannerViewModel {
 
     public func startRotating() {
         guard tips.count > 1 else { return }
-        rotationTask = Task {
+        // BUGHUNT-2026-05-19: weak-self the rotation task so a forgotten
+        // .onDisappear (SwiftUI sometimes skips it on cross-tab swaps and
+        // NavigationStack pops mid-animation) doesn't leak the ViewModel.
+        // Without this, Task captures self strongly, self owns the Task →
+        // retain cycle, the Task's 5-second sleep loop keeps the VM alive
+        // forever along with the @State machinery that referenced it.
+        rotationTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(5))
                 guard !Task.isCancelled else { break }
-                advance()
+                guard let strongSelf = self else { break }
+                strongSelf.advance()
             }
         }
     }
