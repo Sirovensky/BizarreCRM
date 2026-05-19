@@ -76,6 +76,7 @@ import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketRelatedRai
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketWarrantyDialog
 import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.util.ClipboardUtil
+import com.bizarreelectronics.crm.util.CurrencyFormatter
 import com.bizarreelectronics.crm.util.DateFormatter
 import com.bizarreelectronics.crm.util.ReduceMotion
 import com.bizarreelectronics.crm.util.formatPhoneDisplay
@@ -2700,7 +2701,8 @@ private fun TicketDetailContent(
                         if (device.price != null && device.price > 0) {
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                "$${String.format("%.2f", device.total ?: device.price)}",
+                                // Locale-aware currency (was hard-coded "$" + en-US decimal sep).
+                                CurrencyFormatter.format(device.total ?: device.price),
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.primary,

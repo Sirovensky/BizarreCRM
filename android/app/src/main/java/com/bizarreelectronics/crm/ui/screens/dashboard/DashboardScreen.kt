@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import com.bizarreelectronics.crm.util.CurrencyFormatter
 import com.bizarreelectronics.crm.util.WindowMode
 import com.bizarreelectronics.crm.util.rememberWindowMode
 import androidx.compose.ui.Modifier
@@ -1219,7 +1220,7 @@ fun DashboardScreen(
         ),
         KpiTile(
             label = "Revenue",
-            value = "$${String.format("%.2f", state.revenueToday)}",
+            value = CurrencyFormatter.format(state.revenueToday),
             iconTint = revenueTint,
             icon = {
                 Icon(Icons.Default.AttachMoney, contentDescription = null, tint = revenueTint)
@@ -1269,7 +1270,7 @@ fun DashboardScreen(
         },
         KpiCard(
             label = "Revenue Today",
-            value = "$${String.format("%.2f", state.revenueToday)}",
+            value = CurrencyFormatter.format(state.revenueToday),
             iconTint = revenueTint,
             onClick = null,
         ) {

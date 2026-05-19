@@ -32,6 +32,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.ui.theme.WarningAmber
+import com.bizarreelectronics.crm.util.CurrencyFormatter
 
 /**
  * Data class for a single overdue-receivables / slow-stock item displayed in
@@ -174,7 +175,8 @@ fun CashTrappedCard(
                     // Show total + top offenders
                     val dollars = (totalCents!! / 100.0)
                     Text(
-                        text = "\$${String.format("%.2f", dollars)}",
+                        // Locale-aware currency: respects active currency override + locale grouping.
+                        text = CurrencyFormatter.format(dollars),
                         style = MaterialTheme.typography.headlineSmall,
                         color = WarningAmber,
                     )

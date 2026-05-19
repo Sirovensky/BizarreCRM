@@ -50,6 +50,7 @@ import com.bizarreelectronics.crm.data.remote.dto.TicketNote
 import com.bizarreelectronics.crm.data.remote.dto.EmployeeListItem
 import com.bizarreelectronics.crm.data.remote.dto.TicketStatusItem
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
+import com.bizarreelectronics.crm.util.CurrencyFormatter
 import com.bizarreelectronics.crm.util.DateFormatter
 import com.bizarreelectronics.crm.util.formatAsMoney
 import com.bizarreelectronics.crm.util.toCentsOrZero
@@ -290,7 +291,8 @@ private fun DeviceCard(device: TicketDevice, onEdit: () -> Unit) {
                     Text(serviceName, style = MaterialTheme.typography.bodySmall)
                     if (device.price != null && device.price > 0) {
                         Text(
-                            "$${String.format("%.2f", device.total ?: device.price)}",
+                            // Locale-aware currency (was hard-coded "$" + en-US decimal sep).
+                            CurrencyFormatter.format(device.total ?: device.price),
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.primary,
@@ -321,7 +323,8 @@ private fun DeviceCard(device: TicketDevice, onEdit: () -> Unit) {
                         )
                         if (part.price != null && part.price > 0) {
                             Text(
-                                "$${String.format("%.2f", part.total ?: (part.price * (part.quantity ?: 1)))}",
+                                // Locale-aware currency (was hard-coded "$" + en-US decimal sep).
+                                CurrencyFormatter.format(part.total ?: (part.price * (part.quantity ?: 1))),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

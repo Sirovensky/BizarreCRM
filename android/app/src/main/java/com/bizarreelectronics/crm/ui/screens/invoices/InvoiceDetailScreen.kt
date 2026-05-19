@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.ui.theme.BrandMono
+import com.bizarreelectronics.crm.util.CurrencyFormatter
 import com.bizarreelectronics.crm.util.HapticEvent
 import com.bizarreelectronics.crm.util.LocalAppHapticController
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -587,7 +588,9 @@ fun InvoiceDetailScreen(
                                         color = MaterialTheme.colorScheme.onSecondaryContainer,
                                     )
                                     Text(
-                                        text = "\$${String.format("%.2f", change)}",
+                                        // Locale-aware currency formatting (was String.format("%.2f", …) which
+                                        // hard-codes $ + en-US decimal separators and ignores currencyOverride).
+                                        text = CurrencyFormatter.format(change),
                                         style = MaterialTheme.typography.titleMedium.copy(
                                             fontWeight = FontWeight.Bold,
                                         ),
