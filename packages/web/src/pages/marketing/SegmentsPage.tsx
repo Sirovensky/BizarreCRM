@@ -454,6 +454,7 @@ function CreateSegmentModal({ onClose, onCreated }: CreateProps) {
                 )}
                 {/* Field */}
                 <select
+                  aria-label={`Rule ${idx + 1}: field`}
                   value={cond.field}
                   onChange={(e) => updateCondition(cond.id, { field: e.target.value as any })}
                   className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-xs"
@@ -464,6 +465,7 @@ function CreateSegmentModal({ onClose, onCreated }: CreateProps) {
                 </select>
                 {/* Op */}
                 <select
+                  aria-label={`Rule ${idx + 1}: operator`}
                   value={cond.op}
                   onChange={(e) => updateCondition(cond.id, { op: e.target.value as any })}
                   className="w-14 px-1 py-1.5 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-xs"

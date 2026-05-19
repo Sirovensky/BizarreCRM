@@ -235,6 +235,7 @@ export function ReviewsPage() {
         <div className="flex items-center gap-1.5">
           <span className="text-sm text-surface-600 dark:text-surface-400">Rating:</span>
           <select
+            aria-label="Filter reviews by star rating"
             value={ratingFilter}
             onChange={(e) => { setRatingFilter(e.target.value === '' ? '' : Number(e.target.value) as number); setPage(1); }}
             className="rounded-lg border border-surface-200 bg-surface-50 px-2 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
@@ -249,6 +250,7 @@ export function ReviewsPage() {
         <div className="flex items-center gap-1.5">
           <span className="text-sm text-surface-600 dark:text-surface-400">Status:</span>
           <select
+            aria-label="Filter reviews by reply status"
             value={repliedFilter}
             onChange={(e) => { setRepliedFilter(e.target.value as '' | 'true' | 'false'); setPage(1); }}
             className="rounded-lg border border-surface-200 bg-surface-50 px-2 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"

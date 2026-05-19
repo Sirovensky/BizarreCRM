@@ -681,16 +681,16 @@ export function InventoryListPage() {
       {showFilters && (
         <div className="mb-4 p-4 rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/50 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <div>
-            <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Manufacturer</label>
-            <select value={manufacturer} onChange={e => setManufacturer(e.target.value)}
+            <label htmlFor="inv-filter-manufacturer" className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Manufacturer</label>
+            <select id="inv-filter-manufacturer" value={manufacturer} onChange={e => setManufacturer(e.target.value)}
               className="w-full text-sm rounded-md border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5">
               <option value="">All</option>
               {manufacturers.map(m => <option key={m} value={m}>{m}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Supplier</label>
-            <select value={supplierId} onChange={e => setSupplierId(e.target.value)}
+            <label htmlFor="inv-filter-supplier" className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Supplier</label>
+            <select id="inv-filter-supplier" value={supplierId} onChange={e => setSupplierId(e.target.value)}
               className="w-full text-sm rounded-md border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5">
               <option value="">All</option>
               {suppliers.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -730,7 +730,7 @@ export function InventoryListPage() {
       {selectedIds.size > 0 && (
         <div className="mb-3 flex items-center gap-3 px-4 py-2 rounded-lg bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800">
           <span className="text-sm font-medium text-primary-700 dark:text-primary-300">{selectedIds.size} selected</span>
-          <select value={bulkAction} onChange={e => { const v = e.target.value; setBulkAction(v); if (v) handleBulkAction(v); }}
+          <select aria-label="Bulk action for selected inventory items" value={bulkAction} onChange={e => { const v = e.target.value; setBulkAction(v); if (v) handleBulkAction(v); }}
             className="text-sm rounded-md border border-primary-200 dark:border-primary-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1">
             <option value="">Bulk Actions...</option>
             <option value="update_price">Update Price (%)</option>
