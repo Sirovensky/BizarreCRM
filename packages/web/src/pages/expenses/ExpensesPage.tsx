@@ -334,7 +334,7 @@ export function ExpensesPage() {
               {fieldErrors.category && <p id="expense-category-error" role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">{fieldErrors.category}</p>}
             </div>
             <div>
-              <input type="number" step="0.01" min="0" placeholder="Amount" value={form.amount}
+              <input type="number" step="0.01" min="0" placeholder="Amount" aria-label="Amount" value={form.amount}
                 onChange={(e) => { setForm({ ...form, amount: e.target.value }); if (fieldErrors.amount) setFieldErrors((p) => ({ ...p, amount: undefined })); }}
                 aria-invalid={fieldErrors.amount ? true : undefined}
                 aria-describedby={fieldErrors.amount ? 'expense-amount-error' : undefined}
@@ -345,14 +345,14 @@ export function ExpensesPage() {
                 so a stray keystroke can't record an expense dated 2099 (polluting next-
                 year drill-downs forever) or 1700 (slipping past audit windows). */}
             <div>
-              <input type="date" value={form.date} min="1900-01-01" max={localToday()}
+              <input type="date" value={form.date} min="1900-01-01" max={localToday()} aria-label="Date"
                 onChange={(e) => { setForm({ ...form, date: e.target.value }); if (fieldErrors.date) setFieldErrors((p) => ({ ...p, date: undefined })); }}
                 aria-invalid={fieldErrors.date ? true : undefined}
                 aria-describedby={fieldErrors.date ? 'expense-date-error' : undefined}
                 className={`w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 ${fieldErrors.date ? 'border-red-400 dark:border-red-500' : 'border-surface-200 dark:border-surface-700'}`} />
               {fieldErrors.date && <p id="expense-date-error" role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">{fieldErrors.date}</p>}
             </div>
-            <input type="text" placeholder="Description" value={form.description}
+            <input type="text" placeholder="Description" aria-label="Description" value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
               className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
             {/* WEB-FK-014: receipt upload — attaches after save, uses expenseReceipts route */}
