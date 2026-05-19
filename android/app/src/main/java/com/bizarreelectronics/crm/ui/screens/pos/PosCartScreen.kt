@@ -1201,7 +1201,11 @@ private fun CartNoteDialog(
     onApply: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var input by remember(currentNote) { mutableStateOf(currentNote.orEmpty()) }
+    // BUGHUNT-2026-05-19: showNoteDialog survives rotation via the parent's
+    // rememberSaveable. The note input itself was on plain `remember`, so
+    // a multi-line cart-level note (e.g. "customer wants gift wrap with
+    // a personalized message") vanished on rotation mid-composition.
+    var input by rememberSaveable(currentNote) { mutableStateOf(currentNote.orEmpty()) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
