@@ -24,6 +24,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.bizarreelectronics.crm.data.remote.api.RefundRow
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.util.CurrencyFormatter
 import com.bizarreelectronics.crm.util.formatAsMoney
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -213,7 +214,7 @@ private fun NewRefundTab(
         if (requiresPin && amountText.isNotBlank()) {
             AssistChip(
                 onClick = {},
-                label = { Text("Manager PIN required (over \$${MANAGER_PIN_THRESHOLD_CENTS / 100})") },
+                label = { Text("Manager PIN required (over ${CurrencyFormatter.format(MANAGER_PIN_THRESHOLD_CENTS / 100.0)})") },
                 leadingIcon = {
                     Icon(
                         Icons.Default.Lock,
@@ -491,7 +492,7 @@ private fun ManagerPinDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "Refunds above \$${MANAGER_PIN_THRESHOLD_CENTS / 100} require manager authorization.",
+                    "Refunds above ${CurrencyFormatter.format(MANAGER_PIN_THRESHOLD_CENTS / 100.0)} require manager authorization.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 OutlinedTextField(
