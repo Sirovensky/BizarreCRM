@@ -112,8 +112,19 @@ public actor BarcodeVisionScanner {
 
     private func perform(handler: VNImageRequestHandler) async throws -> [BarcodeVisionResult] {
         return try await withCheckedThrowingContinuation { continuation in
+            // BUGHUNT-2026-05-19: Vision can fire the request's completion AND
+            // have `handler.perform` throw afterwards (or vice-versa) depending
+            // on which stage failed. Without the `resumed` guard a double-
+            // resume crashes the process with "continuation already resumed."
+            // Vision dispatches the completion on a serial Vision queue and
+            // perform() returns on the caller's thread, but in practice we
+            // only execute perform() synchronously here, so a plain
+            // nonisolated(unsafe) bool is naturally serialized.
+            nonisolated(unsafe) var resumed = false
             let request = VNDetectBarcodesRequest { request, error in
+                if resumed { return }
                 if let error {
+                    resumed = true
                     continuation.resume(throwing: BarcodeVisionError.detectionFailed(error.localizedDescription))
                     return
                 }
@@ -128,12 +139,15 @@ public actor BarcodeVisionScanner {
                         boundingBox: obs.boundingBox
                     )
                 }
+                resumed = true
                 continuation.resume(returning: results)
             }
             request.symbologies = Self.allSymbologies
             do {
                 try handler.perform([request])
             } catch {
+                if resumed { return }
+                resumed = true
                 continuation.resume(throwing: BarcodeVisionError.detectionFailed(error.localizedDescription))
             }
         }

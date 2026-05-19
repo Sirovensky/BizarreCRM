@@ -53,8 +53,16 @@ public actor ReceiptOCRService {
 
     private func performVisionOCR(on cgImage: CGImage) async throws -> String {
         try await withCheckedThrowingContinuation { continuation in
+            // BUGHUNT-2026-05-19: Vision can fire the request's completion AND
+            // have `handler.perform` throw afterwards. Without the `resumed`
+            // guard, a double-resume on the same continuation crashes the
+            // process. perform() runs synchronously and the completion is
+            // serialized on Vision's queue, so the flag is safely toggled.
+            nonisolated(unsafe) var resumed = false
             let request = VNRecognizeTextRequest { request, error in
+                if resumed { return }
                 if let error {
+                    resumed = true
                     continuation.resume(throwing: OCRError.visionError(error))
                     return
                 }
@@ -62,6 +70,7 @@ public actor ReceiptOCRService {
                 let lines: [String] = observations.compactMap { obs in
                     obs.topCandidates(1).first?.string
                 }
+                resumed = true
                 continuation.resume(returning: lines.joined(separator: "\n"))
             }
             request.recognitionLevel = .accurate
@@ -72,6 +81,8 @@ public actor ReceiptOCRService {
             do {
                 try handler.perform([request])
             } catch {
+                if resumed { return }
+                resumed = true
                 continuation.resume(throwing: OCRError.visionError(error))
             }
         }

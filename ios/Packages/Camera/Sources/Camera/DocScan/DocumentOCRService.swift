@@ -83,13 +83,21 @@ public actor DocumentOCRService {
         }
 
         return try await withCheckedThrowingContinuation { continuation in
+            // BUGHUNT-2026-05-19: guard against double-resume — Vision can call
+            // the request completion AND have perform() throw afterwards (or
+            // the other way around) depending on which stage the error fires
+            // in. Without the flag a double resume crashes the process.
+            nonisolated(unsafe) var resumed = false
             let request = VNRecognizeTextRequest { request, error in
+                if resumed { return }
                 if let error {
+                    resumed = true
                     continuation.resume(throwing: DocumentOCRError.recognitionFailed(error.localizedDescription))
                     return
                 }
                 let observations = request.results as? [VNRecognizedTextObservation] ?? []
                 let lines = observations.compactMap { $0.topCandidates(1).first?.string }
+                resumed = true
                 continuation.resume(returning: lines.joined(separator: "\n"))
             }
 
@@ -103,6 +111,8 @@ public actor DocumentOCRService {
             do {
                 try handler.perform([request])
             } catch {
+                if resumed { return }
+                resumed = true
                 continuation.resume(throwing: DocumentOCRError.recognitionFailed(error.localizedDescription))
             }
         }

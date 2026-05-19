@@ -90,15 +90,29 @@ public actor ImageEditService {
         guard let cgImage = image.cgImage else { return "" }
         return await withCheckedContinuation { (cont: CheckedContinuation<String, Never>) in
             DispatchQueue.global(qos: .userInitiated).async {
+                // BUGHUNT-2026-05-19: Vision's perform([request]) can BOTH fire
+                // the request's completion (with error or empty results) AND
+                // throw out of perform — see VNImageRequestHandler.perform
+                // docs: "if the framework fails to perform some of the
+                // requests, both the error parameter of the completion handler
+                // closure of each affected request, as well as this method's
+                // thrown error are populated." The previous code would call
+                // cont.resume from both the completion and the failure
+                // fallback in that case → crash on double resume.
+                nonisolated(unsafe) var resumed = false
                 let request = VNRecognizeTextRequest { req, _ in
+                    if resumed { return }
                     let observations = (req.results as? [VNRecognizedTextObservation]) ?? []
                     let lines = observations.compactMap { $0.topCandidates(1).first?.string }
+                    resumed = true
                     cont.resume(returning: lines.joined(separator: "\n"))
                 }
                 request.recognitionLevel = .accurate
                 request.usesLanguageCorrection = true
                 let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
                 if (try? handler.perform([request])) == nil {
+                    if resumed { return }
+                    resumed = true
                     cont.resume(returning: "")
                 }
             }
