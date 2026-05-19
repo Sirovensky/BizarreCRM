@@ -57,9 +57,9 @@ fun EstimateDetailScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
     var showMenu by remember { mutableStateOf(false) }
-    var showDeleteConfirm by remember { mutableStateOf(false) }
-    var showExpireConfirm by remember { mutableStateOf(false) }
-    var showSendSheet by remember { mutableStateOf(false) }
+    var showDeleteConfirm by rememberSaveable { mutableStateOf(false) }
+    var showExpireConfirm by rememberSaveable { mutableStateOf(false) }
+    var showSendSheet by rememberSaveable { mutableStateOf(false) }
     val sendSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     LaunchedEffect(state.actionMessage) {

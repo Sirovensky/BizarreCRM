@@ -11,6 +11,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -50,12 +51,12 @@ fun CashRegisterScreen(
     val actionState by viewModel.actionState.collectAsState()
     var showOpenDialog by remember { mutableStateOf(false) }
     var showCloseDialog by remember { mutableStateOf(false) }
-    var showPayInDialog by remember { mutableStateOf(false) }
-    var showPayOutDialog by remember { mutableStateOf(false) }
+    var showPayInDialog by rememberSaveable { mutableStateOf(false) }
+    var showPayOutDialog by rememberSaveable { mutableStateOf(false) }
     // Two-step close: form fills pendingClose, then ConfirmDialog submits.
     var pendingClose by remember { mutableStateOf<Pair<Long, String?>?>(null) }
     // ConfirmDialog for Z-report dismiss (after viewing).
-    var showConfirmDismissZReport by remember { mutableStateOf(false) }
+    var showConfirmDismissZReport by rememberSaveable { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(actionState) {

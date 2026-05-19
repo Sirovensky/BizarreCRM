@@ -36,6 +36,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -73,7 +74,7 @@ fun WarrantyClaimScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val snackbarHost = remember { SnackbarHostState() }
-    var showFileClaimConfirm by remember { mutableStateOf(false) }
+    var showFileClaimConfirm by rememberSaveable { mutableStateOf(false) }
 
     // "File claim" confirmation dialog — shown before submitting to avoid accidental taps.
     if (showFileClaimConfirm && state.selectedWarranty != null) {
