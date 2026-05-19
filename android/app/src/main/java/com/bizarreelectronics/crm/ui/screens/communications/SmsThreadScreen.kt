@@ -434,13 +434,17 @@ fun SmsThreadScreen(
     var messageText by rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(""))
     }
-    var showTemplateSheet by remember { mutableStateOf(false) }
-    var showEmojiSheet by remember { mutableStateOf(false) }
-    var showScheduleSheet by remember { mutableStateOf(false) }
+    // BUGHUNT-2026-05-19: rememberSaveable on the sheet/dialog flags so a
+    // rotation mid-conversation doesn't dismiss the picker the user just
+    // tapped. messageText above already survives rotation; aligning the
+    // ancillary flag flags so the whole compose flow is consistent.
+    var showTemplateSheet by rememberSaveable { mutableStateOf(false) }
+    var showEmojiSheet by rememberSaveable { mutableStateOf(false) }
+    var showScheduleSheet by rememberSaveable { mutableStateOf(false) }
     // L1524 — entity/link picker
-    var showEntitySheet by remember { mutableStateOf(false) }
+    var showEntitySheet by rememberSaveable { mutableStateOf(false) }
     // L1529 — create customer dialog
-    var showCreateCustomerDialog by remember { mutableStateOf(false) }
+    var showCreateCustomerDialog by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
@@ -1157,8 +1161,12 @@ private fun CreateCustomerFromThreadDialog(
     onDismiss: () -> Unit,
     onConfirm: (firstName: String, lastName: String?) -> Unit,
 ) {
-    var firstName by remember { mutableStateOf("") }
-    var lastName by remember { mutableStateOf("") }
+    // BUGHUNT-2026-05-19: parent now retains showCreateCustomerDialog via
+    // rememberSaveable, so the dialog persists across rotation. Mirror with
+    // rememberSaveable on the first/last name inputs so the cashier doesn't
+    // retype the customer info that was just being captured.
+    var firstName by rememberSaveable { mutableStateOf("") }
+    var lastName by rememberSaveable { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
