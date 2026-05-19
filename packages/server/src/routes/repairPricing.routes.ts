@@ -1200,8 +1200,12 @@ router.get('/services', asyncHandler(async (_req, res) => {
     params.push(category);
   }
   if (q && typeof q === 'string' && q.trim().length > 0) {
-    sql += " AND (LOWER(name) LIKE ? OR LOWER(COALESCE(category,'')) LIKE ?)";
-    const like = `%${q.trim().toLowerCase()}%`;
+    // BUGHUNT-2026-05-19: escape % / _ / \ in the user keyword and pair
+    // with ESCAPE '\\'. Without this, "Screen %" matched every service
+    // name and "iPhone_" was a single-char wildcard, surfacing wrong rows
+    // to the pricing picker.
+    sql += " AND (LOWER(name) LIKE ? ESCAPE '\\' OR LOWER(COALESCE(category,'')) LIKE ? ESCAPE '\\')";
+    const like = `%${escapeLike(q.trim().toLowerCase())}%`;
     params.push(like, like);
   }
   sql += ' ORDER BY category ASC, sort_order ASC';
