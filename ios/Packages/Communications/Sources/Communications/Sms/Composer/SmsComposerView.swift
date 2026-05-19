@@ -133,6 +133,9 @@ public struct SmsComposerView: View {
                     .overlay(Capsule().strokeBorder(Color.bizarreOutline.opacity(0.5), lineWidth: 0.5))
                     .focused($composerFocused)
                     .lineLimit(1...6)
+                    #if canImport(UIKit)
+                    .textInputAutocapitalization(.sentences)
+                    #endif
                     .accessibilityLabel("Message body")
 
                 Button {

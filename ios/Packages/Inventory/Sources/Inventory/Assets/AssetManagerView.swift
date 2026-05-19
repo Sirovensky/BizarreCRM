@@ -297,6 +297,9 @@ public struct AssetEditorSheet: View {
                 Section("Notes") {
                     TextEditor(text: $notes)
                         .frame(minHeight: 80)
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.sentences)
+                        #endif
                 }
 
                 if let err = errorMessage {
