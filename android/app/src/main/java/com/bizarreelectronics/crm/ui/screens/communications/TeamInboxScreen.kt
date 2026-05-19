@@ -229,6 +229,16 @@ fun TeamInboxScreen(
                         icon = Icons.Default.AllInbox,
                         title = "Inbox is empty",
                         subtitle = if (state.showUnreadOnly) "No unread conversations" else "No conversations yet",
+                        // When the unread filter is active and produced an empty
+                        // result, offer a one-tap escape. Without it, the user
+                        // has to remember the toolbar icon and tap it themselves.
+                        action = if (state.showUnreadOnly) {
+                            {
+                                FilledTonalButton(onClick = { viewModel.toggleUnreadFilter() }) {
+                                    Text("Show all conversations")
+                                }
+                            }
+                        } else null,
                     )
                 }
                 else -> PullToRefreshBox(
