@@ -104,7 +104,7 @@ export function ConversationAssignee({ phone, className }: ConversationAssigneeP
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div className="fixed inset-0 z-30" role="presentation" aria-hidden="true" onClick={() => setOpen(false)} />
           <div className="absolute right-0 z-40 mt-1 w-52 rounded-lg border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-800">
             <div className="flex items-center justify-between border-b border-surface-100 px-3 py-1.5 text-xs font-medium text-surface-500 dark:border-surface-700">
               Assign to
