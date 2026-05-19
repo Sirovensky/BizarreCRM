@@ -40,6 +40,7 @@ public struct InvoiceCustomerPickerSheet: View {
                             .font(.brandBodyMedium())
                             .foregroundStyle(.bizarreOnSurface)
                             .autocorrectionDisabled()
+                            .submitLabel(.search)
                             #if canImport(UIKit)
                             // BUGHUNT-2026-05-18: match search-bar convention —
                             // default `.sentences` capitalizes the first letter

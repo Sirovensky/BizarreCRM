@@ -127,6 +127,7 @@ struct PosSearchPanel: View {
             ))
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
+            .submitLabel(.search)
             .accessibilityIdentifier("pos.searchField")
             if !search.query.isEmpty {
                 Button {

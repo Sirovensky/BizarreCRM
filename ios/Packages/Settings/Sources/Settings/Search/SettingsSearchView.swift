@@ -44,6 +44,7 @@ public struct SettingsSearchView: View {
             TextField("Search settings", text: $vm.query)
                 .textFieldStyle(.plain)
                 .autocorrectionDisabled()
+                .submitLabel(.search)
                 #if canImport(UIKit)
                 .textInputAutocapitalization(.never)
                 #endif

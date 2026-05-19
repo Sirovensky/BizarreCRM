@@ -495,6 +495,7 @@ struct PosSearchBar: View {
                 .focused($isFocused)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .submitLabel(.search)
                 .accessibilityIdentifier("pos.entry.searchField")
                 .accessibilityLabel("Search customer, part, or ticket")
                 .onChange(of: isFocused) { _, focused in

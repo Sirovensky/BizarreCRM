@@ -314,6 +314,7 @@ private struct AddMembersPickerView: View {
                 .font(.brandBodyMedium())
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
+                .submitLabel(.search)
         }
         .padding(BrandSpacing.sm)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))

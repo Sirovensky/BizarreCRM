@@ -132,6 +132,7 @@ public struct CustomerBulkTagSheet: View {
                     .textFieldStyle(.roundedBorder)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
+                    .submitLabel(.search)
                     .onChange(of: query) { _, new in scheduleAutosuggest(new) }
                     .accessibilityLabel("Tag search field")
 

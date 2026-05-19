@@ -126,6 +126,7 @@ public struct AuditLogFilterSheet: View {
                 .textInputAutocapitalization(.never)
                 #endif
                 .disableAutocorrection(true)
+                .submitLabel(.search)
                 .accessibilityIdentifier("auditlog.filter.search")
         }
         .listRowBackground(Color.bizarreSurface1)
