@@ -603,7 +603,13 @@ public struct CustomerListView: View {
         Button(role: .destructive) {
             Task {
                 let req = BulkDeleteRequest(customerIds: [customer.id])
-                _ = try? await listRepo.bulkDelete(req)
+                do {
+                    _ = try await listRepo.bulkDelete(req)
+                } catch let e where AppError.isCancellation(e) {
+                    // View tear-down — silent.
+                } catch {
+                    vm.reportError(error.localizedDescription)
+                }
                 await vm.load()
             }
         } label: {
@@ -614,7 +620,13 @@ public struct CustomerListView: View {
             // Mark VIP: apply the "vip" tag.
             Task {
                 let req = BulkTagRequest(customerIds: [customer.id], tag: "vip")
-                _ = try? await listRepo.bulkTag(req)
+                do {
+                    _ = try await listRepo.bulkTag(req)
+                } catch let e where AppError.isCancellation(e) {
+                    return
+                } catch {
+                    vm.reportError(error.localizedDescription)
+                }
             }
         } label: {
             Label("Mark VIP", systemImage: "star.fill")
@@ -709,7 +721,13 @@ public struct CustomerListView: View {
         Button(role: .destructive) {
             Task {
                 let req = BulkDeleteRequest(customerIds: [customer.id])
-                _ = try? await listRepo.bulkDelete(req)
+                do {
+                    _ = try await listRepo.bulkDelete(req)
+                } catch let e where AppError.isCancellation(e) {
+                    // View tear-down — silent.
+                } catch {
+                    vm.reportError(error.localizedDescription)
+                }
                 await vm.load()
             }
         } label: {

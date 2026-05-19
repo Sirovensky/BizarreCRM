@@ -230,6 +230,17 @@ public final class CustomerListViewModel {
         await load()
     }
 
+    /// Routes a swipe-action error into the same errorMessage banner that
+    /// bulkDelete / bulkTag use. Needed because errorMessage is
+    /// `private(set)` and the swipe actions live in the view layer.
+    /// BUGHUNT-2026-05-19: prior to this, single-row swipe-archive and
+    /// swipe-mark-VIP wrapped their listRepo call in `try?` so a 403 / 5xx
+    /// silently no-op'd — the user thought the action succeeded and was
+    /// surprised when the customer reappeared on the next refresh.
+    public func reportError(_ message: String) {
+        errorMessage = message
+    }
+
     // MARK: - §5.4 Concurrent-edit
 
     public func dismissConflictBanner() {
