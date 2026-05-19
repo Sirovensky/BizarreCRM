@@ -45,6 +45,22 @@ function initials(first?: string, last?: string) {
   return `${(first || '?').charAt(0)}${(last || '').charAt(0)}`.toUpperCase();
 }
 
+// BUGHUNT-2026-05-19: only accept http(s) URLs from the supplier-catalog
+// `product_url` field. Without this, a poisoned catalog row carrying
+// `javascript:alert(document.cookie)` would execute in the operator's
+// tab the moment they clicked the "open product page" icon — target=
+// "_blank" + rel="noopener noreferrer" don't help against javascript:
+// URLs since the script runs in-page before any navigation happens.
+// Same guard pattern as safeProductUrl in CatalogPage.tsx.
+function safeProductUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string' || !raw) return null;
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return parsed.href;
+  } catch { /* fall through */ }
+  return null;
+}
+
 interface InlinePriceEditorProps {
   value: number;
   onCommit: (next: number) => void;
@@ -796,12 +812,15 @@ function PartsSearchModal({
                           {item.source} · {item.sku ? `SKU: ${item.sku} · ` : ''}{formatCurrency(item.price || 0)}
                         </p>
                       </div>
-                      {item.product_url && (
-                        <a href={item.product_url} target="_blank" rel="noopener noreferrer"
-                          className="p-1 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded">
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </a>
-                      )}
+                      {(() => {
+                        const safeUrl = safeProductUrl(item.product_url);
+                        return safeUrl ? (
+                          <a href={safeUrl} target="_blank" rel="noopener noreferrer"
+                            className="p-1 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded">
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        ) : null;
+                      })()}
                       <button
                         onClick={() => addSupplierPartMut.mutate(item)}
                         disabled={addSupplierPartMut.isPending}
