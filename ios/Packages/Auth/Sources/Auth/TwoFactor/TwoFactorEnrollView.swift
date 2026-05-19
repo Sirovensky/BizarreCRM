@@ -226,6 +226,7 @@ private struct QRStep: View {
             TextField("000000", text: $vm.verifyCode)
                 .keyboardType(.numberPad)
                 .textContentType(.oneTimeCode)
+                .submitLabel(.go)
                 .font(.system(.title2, design: .monospaced))
                 .multilineTextAlignment(.center)
                 .padding(BrandSpacing.md)

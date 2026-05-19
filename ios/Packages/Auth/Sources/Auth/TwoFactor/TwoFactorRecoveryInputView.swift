@@ -82,6 +82,7 @@ public struct TwoFactorRecoveryInputView: View {
                 .textInputAutocapitalization(.characters)
                 #endif
                 .disableAutocorrection(true)
+                .submitLabel(.go)
                 .font(.system(.body, design: .monospaced))
                 .padding(BrandSpacing.md)
                 .background(.bizarreSurface1, in: RoundedRectangle(cornerRadius: 10))

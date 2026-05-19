@@ -83,6 +83,7 @@ public struct SerialReceiveSheet: View {
             }
             .padding(.vertical, BrandSpacing.md)
         }
+        .scrollDismissesKeyboard(.interactively)
     }
 
     private var serialInputRow: some View {

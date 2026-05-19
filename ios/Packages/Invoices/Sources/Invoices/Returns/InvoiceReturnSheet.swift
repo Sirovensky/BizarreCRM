@@ -83,6 +83,7 @@ public struct InvoiceReturnSheet: View {
                 }
                 .padding(BrandSpacing.base)
             }
+            .scrollDismissesKeyboard(.interactively)
         }
         // Fraud warning alert
         .alert("High-Value Return", isPresented: $vm.showFraudWarning) {

@@ -136,6 +136,7 @@ public struct InventoryAdjustSheet: View {
                     }
                     .padding(BrandSpacing.base)
                 }
+                .scrollDismissesKeyboard(.interactively)
 
                 if let text = toastText {
                     toastBanner(text)

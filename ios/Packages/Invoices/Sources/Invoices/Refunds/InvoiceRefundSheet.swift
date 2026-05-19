@@ -83,6 +83,7 @@ public struct InvoiceRefundSheet: View {
                 }
                 .padding(BrandSpacing.base)
             }
+            .scrollDismissesKeyboard(.interactively)
         }
         .sheet(isPresented: $vm.showManagerPinPrompt) {
             ManagerPinSheet { pin in

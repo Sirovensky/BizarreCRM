@@ -93,6 +93,7 @@ public struct InvoicePaymentSheet: View {
                 }
                 .padding(BrandSpacing.base)
             }
+            .scrollDismissesKeyboard(.interactively)
         }
     }
 
