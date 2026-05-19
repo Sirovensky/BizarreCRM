@@ -29,6 +29,7 @@ import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import com.bizarreelectronics.crm.data.remote.dto.CreateLeadRequest
 import com.bizarreelectronics.crm.data.remote.dto.EmployeeListItem
 import com.bizarreelectronics.crm.data.repository.LeadRepository
+import com.bizarreelectronics.crm.util.CurrencyFormatter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -591,7 +592,9 @@ fun LeadCreateScreen(
                 onValueChange = viewModel::updateValueInput,
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Estimated Value") },
-                leadingIcon = { Text("$", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                // BUGHUNT-2026-05-18: was hard-coded "$" — route through
+                // CurrencyFormatter so non-USD tenants see their override.
+                leadingIcon = { Text(CurrencyFormatter.currencySymbol(), color = MaterialTheme.colorScheme.onSurfaceVariant) },
                 placeholder = { Text("0.00") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(
