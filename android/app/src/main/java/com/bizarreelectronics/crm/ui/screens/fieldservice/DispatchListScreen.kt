@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.bizarreelectronics.crm.data.remote.dto.DispatchJobDetail
 import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
+import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -157,22 +158,15 @@ fun DispatchListScreen(
                     }
                 }
                 state.jobs.isEmpty() -> {
+                    // Migrated from a hand-rolled Box + Column to the shared
+                    // EmptyState so the dispatch view picks up the WaveDivider,
+                    // type ramp, and 7:1 onSurfaceVariant tone used elsewhere.
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Icon(
-                                Icons.Default.CheckCircle,
-                                contentDescription = null,
-                                modifier = Modifier.size(48.dp),
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                            Text(
-                                "No jobs scheduled for today",
-                                style = MaterialTheme.typography.bodyLarge,
-                            )
-                        }
+                        EmptyState(
+                            icon = Icons.Default.CheckCircle,
+                            title = "No jobs scheduled for today",
+                            subtitle = "Field-service jobs assigned to your team will appear here.",
+                        )
                     }
                 }
                 else -> {
