@@ -223,6 +223,7 @@ public struct InvoiceReturnSheet: View {
                 .lineLimit(3...6)
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurface)
+                .textInputAutocapitalization(.sentences)
                 .padding(BrandSpacing.sm)
                 .background(Color.bizarreSurface2,
                             in: RoundedRectangle(cornerRadius: DesignTokens.Radius.sm))

@@ -80,6 +80,7 @@ public struct InvoiceSMSSheet: View {
             TextField("Message to customer", text: $vm.messageBody, axis: .vertical)
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurface)
+                .textInputAutocapitalization(.sentences)
                 .lineLimit(4...)
                 .accessibilityLabel("SMS message body")
         }

@@ -35,11 +35,13 @@ public struct SerialTraceReport: View {
         HStack {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.bizarreOnSurfaceMuted)
+                .accessibilityHidden(true)
             TextField("Enter IMEI or serial number", text: $searchInput)
                 .textInputAutocapitalization(.characters)
                 .disableAutocorrection(true)
                 .font(.brandMono(size: 15))
                 .submitLabel(.search)
+                .accessibilityLabel("IMEI or serial number")
                 .onSubmit { Task { await vm.trace(serialNumber: searchInput) } }
             if vm.isLoading {
                 ProgressView().scaleEffect(0.8)
@@ -51,6 +53,7 @@ public struct SerialTraceReport: View {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                 }
+                .accessibilityLabel("Clear search")
             }
         }
         .padding(BrandSpacing.sm)
