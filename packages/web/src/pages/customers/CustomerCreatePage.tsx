@@ -366,8 +366,9 @@ export function CustomerCreatePage() {
                   />
                 </FormField>
               </div>
-              <FormField label="Type">
+              <FormField label="Type" htmlFor="customer-type">
                 <select
+                  id="customer-type"
                   value={form.type}
                   onChange={(e) =>
                     updateField('type', e.target.value as 'individual' | 'business')
