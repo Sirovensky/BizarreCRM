@@ -47,6 +47,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -381,6 +383,10 @@ private fun SelfBookingCustomerInfoContent(
                 onValueChange = onNameChange,
                 label = { Text(stringResource(R.string.self_booking_field_name)) },
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Words,
+                    imeAction = ImeAction.Next,
+                ),
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -391,7 +397,10 @@ private fun SelfBookingCustomerInfoContent(
                 onValueChange = onPhoneChange,
                 label = { Text(stringResource(R.string.self_booking_field_phone)) },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Phone,
+                    imeAction = ImeAction.Next,
+                ),
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -402,7 +411,10 @@ private fun SelfBookingCustomerInfoContent(
                 onValueChange = onEmailChange,
                 label = { Text(stringResource(R.string.self_booking_field_email)) },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Email,
+                    imeAction = ImeAction.Next,
+                ),
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -413,6 +425,10 @@ private fun SelfBookingCustomerInfoContent(
                 onValueChange = onServiceChange,
                 label = { Text(stringResource(R.string.self_booking_field_service)) },
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Sentences,
+                    imeAction = ImeAction.Next,
+                ),
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -424,6 +440,10 @@ private fun SelfBookingCustomerInfoContent(
                 label = { Text(stringResource(R.string.self_booking_field_notes)) },
                 minLines = 2,
                 maxLines = 4,
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Sentences,
+                    imeAction = ImeAction.Done,
+                ),
                 modifier = Modifier.fillMaxWidth(),
             )
         }
