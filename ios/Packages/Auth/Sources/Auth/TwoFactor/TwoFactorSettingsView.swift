@@ -133,9 +133,11 @@ public struct TwoFactorSettingsView: View {
             // "fill from messages" suggestion — user had to type 6 digits
             // by hand while the code sat in their Messages app.
             .textContentType(.oneTimeCode)
+            .submitLabel(.go)
         Button("Regenerate") {
             Task { await vm.regenerateCodes() }
         }
+        .disabled(vm.regenerateCode.filter(\.isNumber).count != 6)
         Button("Cancel", role: .cancel) {
             vm.regenerateCode = ""
         }

@@ -55,7 +55,8 @@ public struct WaitlistAddSheet: View {
                         ProgressView().scaleEffect(0.8)
                     } else {
                         Button("Add") { Task { await submit() } }
-                            .disabled(customerId.isEmpty || serviceType.isEmpty)
+                            .disabled(customerId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                      || serviceType.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                 }
             }
@@ -79,6 +80,9 @@ public struct WaitlistAddSheet: View {
     private var serviceSection: some View {
         Section("Service Type") {
             TextField("e.g. Haircut, Massage", text: $serviceType)
+                #if !os(macOS)
+                .textInputAutocapitalization(.words)
+                #endif
                 .accessibilityLabel("Requested service type")
         }
     }
@@ -149,9 +153,9 @@ public struct WaitlistAddSheet: View {
         do {
             let body = WaitlistCreateBody(
                 customerId: cid,
-                requestedServiceType: serviceType,
+                requestedServiceType: serviceType.trimmingCharacters(in: .whitespacesAndNewlines),
                 preferredWindows: preferredWindows,
-                note: note.isEmpty ? nil : note
+                note: note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : note.trimmingCharacters(in: .whitespacesAndNewlines)
             )
             _ = try await api.createWaitlistEntry(body)
             dismiss()
