@@ -133,8 +133,13 @@ export function MyQueuePage() {
       </header>
 
       {isLoading && (
-        <div className="flex items-center justify-center py-12 text-surface-500 dark:text-surface-400">
-          <Clock className="w-5 h-5 animate-spin mr-2" /> Loading queue...
+        <div
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+          className="flex items-center justify-center py-12 text-surface-500 dark:text-surface-400"
+        >
+          <Clock className="w-5 h-5 animate-spin mr-2" aria-hidden="true" /> Loading queue...
         </div>
       )}
 
