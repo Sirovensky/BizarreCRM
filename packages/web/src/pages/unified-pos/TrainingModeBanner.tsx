@@ -47,7 +47,13 @@ function notifyTrainingChanged(): void {
 export async function startTrainingSession(): Promise<TrainingSession> {
   const res = await api.post<TrainingResponse>('/pos-enrich/training/start');
   const session = res.data.data;
-  localStorage.setItem(TRAINING_SESSION_KEY, String(session.id));
+  // BUGHUNT-2026-05-19: a private-mode QuotaExceededError here would
+  // throw out of startTrainingSession after the server has already
+  // opened the training session — the caller would handle the throw
+  // as "training failed to start" but the server thinks it's running.
+  // Swallow the persistence failure; readTrainingSessionId returns
+  // null and the UI prompts the cashier to restart cleanly.
+  try { localStorage.setItem(TRAINING_SESSION_KEY, String(session.id)); } catch { /* private mode / quota */ }
   notifyTrainingChanged();
   return session;
 }

@@ -999,7 +999,7 @@ export function LeadListPage() {
                   value={pageSize}
                   onChange={(e) => {
                     const v = e.target.value;
-                    localStorage.setItem('leads_pagesize', v);
+                    try { localStorage.setItem('leads_pagesize', v); } catch { /* private mode / quota */ }
                     const p = new URLSearchParams(searchParams);
                     p.set('pagesize', v);
                     p.set('page', '1');

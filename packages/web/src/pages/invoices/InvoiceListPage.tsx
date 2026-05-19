@@ -705,7 +705,7 @@ export function InvoiceListPage() {
                       value={pageSize}
                       onChange={(e) => {
                         const v = e.target.value;
-                        localStorage.setItem('invoices_pagesize', v);
+                        try { localStorage.setItem('invoices_pagesize', v); } catch { /* private mode / quota */ }
                         const p = new URLSearchParams(searchParams);
                         p.set('pagesize', v);
                         p.set('page', '1');

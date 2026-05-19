@@ -1005,7 +1005,11 @@ export function TicketListPage() {
     setVisibleColumns((prev) => {
       const next = new Set(prev);
       if (next.has(col)) next.delete(col); else next.add(col);
-      localStorage.setItem('ticket-list-columns', JSON.stringify(Array.from(next)));
+      // BUGHUNT-2026-05-19: a quota / private-mode throw inside the state
+      // setter would crash the React render and the column toggle would
+      // appear to do nothing. Swallow — column persistence degrades to
+      // session-only on private mode.
+      try { localStorage.setItem('ticket-list-columns', JSON.stringify(Array.from(next))); } catch { /* private mode / quota */ }
       return next;
     });
   }, []);
