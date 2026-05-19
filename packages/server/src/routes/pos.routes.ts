@@ -1790,7 +1790,19 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
       const ticketSeq = await adb.get<AnyRow>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 3) AS INTEGER)), 0) + 1 as next_num FROM tickets");
       ticketOrderId = generateOrderId('T', ticketSeq!.next_num);
     }
-    newTicketTrackingToken = crypto.randomUUID().split('-')[0];
+    // BUGHUNT-2026-05-19: previously `crypto.randomUUID().split('-')[0]` —
+    // 8 hex chars (32-bit entropy). Two failures:
+    //   (1) tracking.routes.ts:117 rejects every token shorter than 32 chars
+    //       (`MIN_TRACKING_TOKEN_LEN`), so the customer-facing tracking link
+    //       always 400'd for POS-created tickets. tickets.routes.ts:1339
+    //       already uses `crypto.randomBytes(16).toString('hex')` (32 chars)
+    //       which passes the validator — POS diverged.
+    //   (2) 32-bit entropy is brute-forceable. The validator comment
+    //       explicitly calls out 128-bit (16 byte) as the minimum safe
+    //       entropy for an unauthenticated lookup over an indexed column.
+    // Match tickets.routes.ts so customers can actually open the tracking
+    // page they get texted, and the token resists guessing.
+    newTicketTrackingToken = crypto.randomBytes(16).toString('hex');
 
     // Auto-calculate due date if not provided (same logic as tickets.routes.ts F16)
     newTicketDueOn = ticketData.due_on ?? ticketData.due_date ?? null;
