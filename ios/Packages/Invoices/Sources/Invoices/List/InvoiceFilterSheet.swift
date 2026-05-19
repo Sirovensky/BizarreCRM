@@ -41,6 +41,7 @@ public struct InvoiceFilterSheet: View {
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
+                .scrollDismissesKeyboard(.interactively)
             }
             .navigationTitle("Filter Invoices")
             .navigationBarTitleDisplayMode(.inline)
