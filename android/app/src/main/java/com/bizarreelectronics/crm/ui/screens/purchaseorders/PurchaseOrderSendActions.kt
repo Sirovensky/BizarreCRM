@@ -32,13 +32,13 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.bizarreelectronics.crm.data.remote.dto.PurchaseOrderItem
 import com.bizarreelectronics.crm.data.remote.dto.PurchaseOrderRow
+import com.bizarreelectronics.crm.util.CurrencyFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.File
 import java.io.FileOutputStream
-import java.util.Locale
 
 /**
  * PurchaseOrderSendActions — §6.7 (ActionPlan lines 1538–1546)
@@ -82,12 +82,12 @@ fun PurchaseOrderSendActions(
             val name = item.itemName ?: "Item #${item.inventoryItemId}"
             val sku  = if (!item.sku.isNullOrBlank()) " (SKU: ${item.sku})" else ""
             val qty  = item.quantityOrdered
-            val cost = String.format(Locale.US, "%.2f", item.costPrice)
-            val line = String.format(Locale.US, "%.2f", item.quantityOrdered * item.costPrice)
-            appendLine("  • $name$sku — qty $qty @ \$$cost = \$$line")
+            val cost = CurrencyFormatter.format(item.costPrice)
+            val line = CurrencyFormatter.format(item.quantityOrdered * item.costPrice)
+            appendLine("  • $name$sku — qty $qty @ $cost = $line")
         }
         appendLine()
-        appendLine("TOTAL: $${String.format(Locale.US, "%.2f", order.total)}")
+        appendLine("TOTAL: ${CurrencyFormatter.format(order.total)}")
         if (!order.notes.isNullOrBlank()) {
             appendLine()
             appendLine("Notes: ${order.notes}")
@@ -148,8 +148,8 @@ fun PurchaseOrderSendActions(
             val name     = (item.itemName ?: "Item #${item.inventoryItemId}").take(42)
             val sku      = item.sku?.take(14)
             val qty      = item.quantityOrdered.toString()
-            val unit     = String.format(Locale.US, "%.2f", item.costPrice)
-            val lineAmt  = String.format(Locale.US, "%.2f", item.quantityOrdered * item.costPrice)
+            val unit     = CurrencyFormatter.format(item.costPrice)
+            val lineAmt  = CurrencyFormatter.format(item.quantityOrdered * item.costPrice)
 
             if (y > pageH - 80) {
                 // Avoid overflow on very long POs — truncate gracefully
@@ -169,7 +169,7 @@ fun PurchaseOrderSendActions(
         // Total
         y += 6f
         cv.drawLine(margin, y, pageW - margin, y, divPaint); y += 16f
-        val totalText = "TOTAL: $${String.format(Locale.US, "%.2f", order.total)}"
+        val totalText = "TOTAL: ${CurrencyFormatter.format(order.total)}"
         cv.drawText(totalText, margin, y, headPaint); y += 22f
 
         // Notes
