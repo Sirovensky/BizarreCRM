@@ -558,7 +558,7 @@ private fun LeadCard(
         append(", stage $stageLabel")
         append(", score ${lead.leadScore}")
         lead.source?.takeIf { it.isNotBlank() }?.let { append(", source $it") }
-        append(". Tap to open.")
+        append(". Tap to open. Long-press for more options.")
     }
 
     val containerColor = if (isSelected)
