@@ -184,6 +184,15 @@ function LoginModal({ onClose }: { onClose: () => void }) {
   const [slug, setSlug] = useState('');
   const [error, setError] = useState('');
 
+  // Escape-to-close; mirrors the pattern used by every other modal in the
+  // app. Without this, mouse-less users had no way out of the overlay
+  // except hitting Cancel/Tab.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   const handleGo = () => {
     const cleaned = slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
     if (!cleaned || cleaned.length < 3) {
@@ -199,12 +208,15 @@ function LoginModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-surface-950/70 p-4 backdrop-blur" onClick={onClose}>
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-surface-950/70 p-4 backdrop-blur" role="presentation" onClick={onClose}>
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="landing-login-title"
         className="w-full max-w-[420px] rounded-xl border border-surface-200 bg-white p-8 shadow-2xl dark:border-surface-700 dark:bg-surface-900"
         onClick={e => e.stopPropagation()}
       >
-        <h3 className={`${displayText} mb-2 text-[28px] leading-tight text-cyan-700 dark:text-cyan-300`}>Login to Your Shop</h3>
+        <h3 id="landing-login-title" className={`${displayText} mb-2 text-[28px] leading-tight text-cyan-700 dark:text-cyan-300`}>Login to Your Shop</h3>
         <p className="mb-6 text-sm text-surface-600 dark:text-surface-300">Enter your shop name to go to your CRM login page.</p>
         <div className="mb-2 flex">
           <input
