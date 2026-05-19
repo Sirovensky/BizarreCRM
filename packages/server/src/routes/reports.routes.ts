@@ -10,6 +10,7 @@ import { requireStepUpTotp } from '../middleware/stepUpTotp.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { validateId } from '../utils/validate.js';
 import { getTenantTz, tzModifier } from '../utils/timezone.js';
+import { escapeLike } from '../utils/query.js';
 
 const router = Router();
 
@@ -2908,7 +2909,12 @@ router.get('/tax-report.pdf', asyncHandler(async (req, res) => {
     jurisdictionRaw.length > 0 &&
     jurisdictionRaw.toLowerCase() !== 'default' &&
     jurisdictionRaw.toLowerCase() !== 'all';
-  const jurisdictionPattern = `%${jurisdictionRaw}%`;
+  // BUGHUNT-2026-05-19: user-typed jurisdiction was interpolated into the LIKE
+  // pattern raw. An accountant typing `100%` or `_state` would silently match
+  // every tax class via SQLite's `%` / `_` LIKE wildcards, inflating the
+  // report and confusing the audit trail. escapeLike + ESCAPE '\\' makes the
+  // input literal.
+  const jurisdictionPattern = `%${escapeLike(jurisdictionRaw)}%`;
 
   const rows = await adb.all<{ tax_class: string; rate: number | null; collected: number }>(
     `SELECT COALESCE(tc.name, 'Unclassified') AS tax_class,
@@ -2919,7 +2925,7 @@ router.get('/tax-report.pdf', asyncHandler(async (req, res) => {
      LEFT JOIN tax_classes tc ON tc.id = ili.tax_class_id
      WHERE i.status IN ('paid', 'partial', 'overpaid')
        AND DATE(i.created_at) BETWEEN ? AND ?
-       ${hasJurisdictionFilter ? 'AND LOWER(COALESCE(tc.name, \'\')) LIKE LOWER(?)' : ''}
+       ${hasJurisdictionFilter ? "AND LOWER(COALESCE(tc.name, '')) LIKE LOWER(?) ESCAPE '\\'" : ''}
      GROUP BY tc.id
      HAVING collected > 0
      ORDER BY collected DESC`,
