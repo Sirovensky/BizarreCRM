@@ -65,9 +65,16 @@ public final class WebSocketClient {
 
         var req = URLRequest(url: url)
         req.timeoutInterval = 15
-        if let authToken {
-            req.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
-        }
+        // BUGHUNT-2026-05-19: do NOT put the bearer in the `Authorization`
+        // upgrade header. The server (`packages/server/src/ws/server.ts`)
+        // authenticates via the inline `{type:"auth",token}` frame and
+        // ignores the upgrade-time Authorization header entirely. Setting
+        // it here only leaked the access token into reverse-proxy / load-
+        // balancer upgrade-request logs (mirrors the WebSocketConnection
+        // fix on 2026-05-19). The `authToken` parameter is retained on the
+        // API surface so callers can pass it forward to whichever post-
+        // connect sender ultimately emits the auth frame.
+        _ = authToken
         req.setValue("ios", forHTTPHeaderField: "X-Origin")
 
         let socket = WebSocket(request: req)
