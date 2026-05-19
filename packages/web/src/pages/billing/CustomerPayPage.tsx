@@ -130,8 +130,23 @@ export function CustomerPayPage() {
       const res = await axios.post(`${PUBLIC_BASE}/${encodeURIComponent(token)}/pay`);
       const result = res.data?.data as { checkout_available: boolean; checkout_url?: string; error?: string } | undefined;
       if (result?.checkout_available && result.checkout_url) {
-        // Redirect the customer to the hosted card entry page.
-        window.location.href = result.checkout_url;
+        // BUGHUNT-2026-05-19: validate the URL scheme before assigning
+        // location.href — a poisoned or misrouted response sending a
+        // `javascript:` URL would otherwise fire script in the customer
+        // pay page's origin. Same guard pattern as UpgradeModal.
+        let safeUrl: string | null = null;
+        try {
+          const parsed = new URL(result.checkout_url);
+          if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+            safeUrl = parsed.href;
+          }
+        } catch { /* invalid URL — treated as unavailable below */ }
+        if (safeUrl) {
+          // Redirect the customer to the hosted card entry page.
+          window.location.href = safeUrl;
+        } else {
+          setView({ kind: 'checkout_unavailable', link: view.link, reason: 'Invalid checkout URL' });
+        }
       } else {
         // Checkout provider not configured for this tenant — show "call shop" message.
         setView({ kind: 'checkout_unavailable', link: view.link, reason: result?.error });
