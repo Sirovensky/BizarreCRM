@@ -729,7 +729,7 @@ private fun TicketListRow(
         statusLabel?.let { append(", status: $it") }
         append(", urgency: ${urgency.label}")
         append(", ${ticket.total.formatAsMoney()}")
-        append(". Tap to open.")
+        append(". Tap to open. Long-press for more options.")
     }
 
     Box {

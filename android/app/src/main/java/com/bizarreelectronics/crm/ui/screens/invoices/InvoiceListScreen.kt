@@ -562,7 +562,7 @@ private fun InvoiceListRow(
         val dateStr = DateFormatter.formatRelative(invoice.createdAt)
         if (dateStr.isNotBlank()) append(", dated $dateStr")
         if (isSelected) append(", selected")
-        append(". Tap to open.")
+        append(". Tap to open. Long-press for more options.")
     }
 
     val chipState = remember(invoice) { invoiceChipStateFor(invoice) }
