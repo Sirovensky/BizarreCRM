@@ -49,6 +49,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.bizarreelectronics.crm.data.remote.dto.ActivityEventDto
+import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.screens.activity.components.ActivityFilterChips
 import com.bizarreelectronics.crm.ui.screens.activity.components.EventReactionRow
 
@@ -308,20 +309,11 @@ private fun ActivityEventRow(
 @Composable
 private fun ActivityEmptyState() {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                imageVector = Icons.Default.History,
-                contentDescription = null,
-                modifier = Modifier.size(40.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "No activity yet",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        EmptyState(
+            icon = Icons.Default.History,
+            title = "No activity yet",
+            subtitle = "Team activity (notes, status changes, photos) will appear here.",
+        )
     }
 }
 
