@@ -59,9 +59,23 @@ public final class EstimateVersionsViewModel {
         }
     }
 
-    /// §8 — Fetches a specific version for diff comparison. Returns nil on error.
+    /// §8 — Fetches a specific version for diff comparison.
+    /// Throws on transport / server errors so the caller can surface them.
     public func fetchVersion(_ version: EstimateVersion) async throws -> Estimate? {
-        try? await api.estimateVersion(estimateId: estimateId, versionId: version.id)
+        // BUGHUNT-2026-05-19: previously `try? await ...` swallowed the
+        // throw inside this `async throws` function — the signature was a
+        // lie and `loadDiff`'s `catch` could never fire. So a permission
+        // failure or 5xx on either version left the user staring at no
+        // diff sheet with no banner: the "Compare versions" button
+        // appeared dead. Let the error propagate to the caller's catch.
+        try await api.estimateVersion(estimateId: estimateId, versionId: version.id)
+    }
+
+    /// Lets the diff loader hand its error to the same banner the VM's
+    /// own `load`/`selectVersion` paths use. Without this, `errorMessage`
+    /// is `private(set)` and the view's `loadDiff` catch can't write it.
+    public func reportError(_ message: String) {
+        errorMessage = message
     }
 }
 
@@ -219,8 +233,18 @@ public struct EstimateVersionsView: View {
             guard let o, let n else { return }
             activeDiff = EstimateVersionDiff.compute(older: o, newer: n)
             showingDiff = true
+        } catch let e where AppError.isCancellation(e) {
+            return
         } catch {
             AppLog.ui.warning("Version diff load failed: \(error.localizedDescription, privacy: .public)")
+            // BUGHUNT-2026-05-19: companion to the fetchVersion throws fix
+            // above. Surfacing to the VM's errorMessage so the
+            // existing .alert binding on the screen renders the failure
+            // instead of leaving the user staring at a dead "Compare"
+            // button. Without this, both halves of the diff need to
+            // resolve to nil silently for the user to know something
+            // went wrong, and even then they see no banner.
+            vm.reportError(error.localizedDescription)
         }
     }
 }
