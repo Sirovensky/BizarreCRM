@@ -97,6 +97,7 @@ public struct PosCashDropSheet: View {
             Section("Reason (optional)") {
                 TextField("e.g. Manager drop to safe", text: $vm.reason, axis: .vertical)
                     .lineLimit(2...4)
+                    .textInputAutocapitalization(.sentences)
                     .accessibilityIdentifier("pos.cashDrop.reason")
             }
 

@@ -104,6 +104,7 @@ public struct CashDepositSheet: View {
                 Section {
                     TextField("Authorization code, reference, or other notes", text: $notes, axis: .vertical)
                         .lineLimit(2...4)
+                        .textInputAutocapitalization(.sentences)
                         .accessibilityLabel("Deposit notes")
                         .accessibilityIdentifier("cashDeposit.notes")
                 } header: {

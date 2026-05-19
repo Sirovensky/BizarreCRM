@@ -56,9 +56,10 @@ public struct FieldSignatureView: View {
                     Button("Cancel", action: onCancel)
                 }
                 ToolbarItem(placement: .primaryAction) {
-                    Button("Clear") { clearCanvas() }
+                    Button("Clear", role: .destructive) { clearCanvas() }
                         .foregroundStyle(.secondary)
                         .disabled(!hasSignature)
+                        .accessibilityLabel("Clear signature")
                 }
             }
         }

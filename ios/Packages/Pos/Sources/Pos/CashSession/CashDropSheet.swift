@@ -94,6 +94,7 @@ public struct CashDropSheet: View {
                 Section {
                     TextField("e.g. excess to safe, manager override", text: $reason, axis: .vertical)
                         .lineLimit(2...4)
+                        .textInputAutocapitalization(.sentences)
                         .accessibilityLabel("Reason for cash drop")
                         .accessibilityIdentifier("pos.cashDrop.reason")
                 } header: {
