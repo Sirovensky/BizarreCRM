@@ -59,7 +59,13 @@ public struct HolidayPresetsSheet: View {
                 }
                 #endif
             }
-            .alert("Error", isPresented: .constant(errorMessage != nil)) {
+            // BUGHUNT-2026-05-19: `.constant` is read-only; a system-initiated
+            // dismiss calls the setter with `false` but errorMessage stays
+            // non-nil, so the alert re-fires on the next render.
+            .alert("Error", isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )) {
                 Button("OK") { errorMessage = nil }
             } message: {
                 Text(errorMessage ?? "")

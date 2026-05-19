@@ -84,7 +84,13 @@ public struct HolidayEditorSheet: View {
                     .disabled(!viewModel.isValid || viewModel.isSaving)
                 }
             }
-            .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
+            // BUGHUNT-2026-05-19: `.constant` is read-only; a system-initiated
+            // dismiss calls the setter with `false` but errorMessage stays
+            // non-nil, so the alert re-fires on the next render.
+            .alert("Error", isPresented: Binding(
+                get: { viewModel.errorMessage != nil },
+                set: { if !$0 { viewModel.errorMessage = nil } }
+            )) {
                 Button("OK") { viewModel.errorMessage = nil }
             } message: {
                 Text(viewModel.errorMessage ?? "")

@@ -98,7 +98,14 @@ public struct HolidayListView: View {
         .sheet(isPresented: $showPresetsSheet) {
             HolidayPresetsSheet(repository: viewModel.repository, onDone: { await viewModel.load() })
         }
-        .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
+        // BUGHUNT-2026-05-19: `.constant` is read-only; a system-initiated
+        // dismiss (e.g. nav transition, VoiceOver escape) calls the setter
+        // with `false` but errorMessage stays non-nil, so the alert flicks
+        // back on the next render. Use a real two-way Binding.
+        .alert("Error", isPresented: Binding(
+            get: { viewModel.errorMessage != nil },
+            set: { if !$0 { viewModel.errorMessage = nil } }
+        )) {
             Button("OK") { viewModel.errorMessage = nil }
         } message: {
             Text(viewModel.errorMessage ?? "")

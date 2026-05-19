@@ -29,7 +29,17 @@ public struct DeadLetterListView: View {
         #endif
         .task { await viewModel.load() }
         .refreshable { await viewModel.load() }
-        .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
+        // BUGHUNT-2026-05-19: `.constant(...)` is a read-only Binding — its
+        // setter is a no-op. When SwiftUI dismisses the alert via any path
+        // other than the OK button (system dismiss on nav, scene transition,
+        // VoiceOver escape gesture), the setter fires with `false` but
+        // errorMessage stays non-nil — the alert re-presents on the next
+        // render in an infinite loop. Use a real two-way Binding that clears
+        // the error when isPresented goes false.
+        .alert("Error", isPresented: Binding(
+            get: { viewModel.errorMessage != nil },
+            set: { if !$0 { viewModel.clearError() } }
+        )) {
             Button("OK") { viewModel.clearError() }
         } message: {
             Text(viewModel.errorMessage ?? "")
