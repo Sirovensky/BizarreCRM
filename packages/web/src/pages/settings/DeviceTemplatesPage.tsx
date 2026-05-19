@@ -338,7 +338,7 @@ export function DeviceTemplatesPage() {
               <h2 id="device-tpl-edit-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">
                 {editing.id ? 'Edit template' : 'New template'}
               </h2>
-              <button onClick={() => setEditing(null)} className="btn-icon btn-xs text-surface-400 hover:text-surface-600">
+              <button aria-label="Close template editor" onClick={() => setEditing(null)} className="btn-icon btn-xs text-surface-400 hover:text-surface-600">
                 <X className="h-5 w-5" />
               </button>
             </div>

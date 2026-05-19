@@ -373,7 +373,7 @@ function IssueModal({ onClose }: IssueModalProps) {
       >
         <div className="flex items-center justify-between mb-5">
           <h2 id="issue-gift-card-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">Issue gift card</h2>
-          <button onClick={onClose} className="text-surface-400 hover:text-surface-700 dark:hover:text-surface-200">
+          <button aria-label="Close issue gift card dialog" onClick={onClose} className="text-surface-400 hover:text-surface-700 dark:hover:text-surface-200">
             <X className="h-5 w-5" />
           </button>
         </div>

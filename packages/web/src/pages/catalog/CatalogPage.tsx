@@ -548,7 +548,7 @@ export function CatalogPage() {
               placeholder='Search catalog — e.g. "iPhone 14 OLED", "Galaxy S23 battery"…'
             />
             {search && (
-              <button onClick={() => { setSearch(''); setDebouncedSearch(''); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600">
+              <button aria-label="Clear search" onClick={() => { setSearch(''); setDebouncedSearch(''); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600">
                 <X className="h-4 w-4" />
               </button>
             )}
@@ -575,7 +575,7 @@ export function CatalogPage() {
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-700 text-sm">
                 <Filter className="h-3.5 w-3.5 text-primary-500" />
                 <span className="flex-1 text-primary-800 dark:text-primary-200 truncate">{deviceModelName}</span>
-                <button onClick={() => { setDeviceModelId(null); setDeviceModelName(''); setModelSearch(''); setModelResults([]); }}>
+                <button aria-label="Clear device model filter" onClick={() => { setDeviceModelId(null); setDeviceModelName(''); setModelSearch(''); setModelResults([]); }}>
                   <X className="h-3.5 w-3.5 text-primary-400" />
                 </button>
               </div>
@@ -777,7 +777,7 @@ export function CatalogPage() {
           >
             <div className="flex items-center justify-between mb-4">
               <h2 id="catalog-import-title" className="text-lg font-bold text-surface-900 dark:text-surface-100">Import to Inventory</h2>
-              <button onClick={() => setImportModal(null)} className="text-surface-400 hover:text-surface-600">
+              <button aria-label="Close import dialog" onClick={() => setImportModal(null)} className="text-surface-400 hover:text-surface-600">
                 <X className="h-5 w-5" />
               </button>
             </div>

@@ -336,6 +336,7 @@ function TemplateCard({
                   }}
                 />
                 <button
+                  aria-label="Save check label"
                   onClick={() => {
                     if (editingLabel.trim()) updateCheckMutation.mutate({ id: check.id, data: { label: editingLabel.trim() } });
                   }}
@@ -343,7 +344,7 @@ function TemplateCard({
                 >
                   <Check className="h-3.5 w-3.5" />
                 </button>
-                <button onClick={() => setEditingCheckId(null)} className="btn-icon btn-xs text-surface-400 hover:text-surface-600">
+                <button aria-label="Cancel editing" onClick={() => setEditingCheckId(null)} className="btn-icon btn-xs text-surface-400 hover:text-surface-600">
                   <X className="h-3.5 w-3.5" />
                 </button>
               </div>

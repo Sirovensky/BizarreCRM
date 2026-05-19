@@ -1818,13 +1818,14 @@ function UsersTab() {
                         <td className="px-4 py-2 text-right">
                           <div className="flex gap-1 justify-end">
                             <button
+                              aria-label="Save user"
                               onClick={() => updateMutation.mutate({ id: u.id, data: editForm })}
                               disabled={updateMutation.isPending}
                               className="btn-icon btn-xs text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30"
                             >
                               {updateMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                             </button>
-                            <button onClick={() => setEditingId(null)} className="btn-icon btn-xs text-surface-400 hover:text-surface-600">
+                            <button aria-label="Cancel editing user" onClick={() => setEditingId(null)} className="btn-icon btn-xs text-surface-400 hover:text-surface-600">
                               <X className="h-3.5 w-3.5" />
                             </button>
                           </div>

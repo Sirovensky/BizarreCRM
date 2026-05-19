@@ -1081,7 +1081,7 @@ export function InventoryListPage() {
           <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-md max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 id="bulk-price-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">Update Prices</h3>
-              <button onClick={() => { setShowBulkPriceModal(false); setPriceAdjustPct(''); setPriceAdjustReason(''); }} className="text-surface-400 hover:text-surface-600">
+              <button aria-label="Close bulk price update dialog" onClick={() => { setShowBulkPriceModal(false); setPriceAdjustPct(''); setPriceAdjustReason(''); }} className="text-surface-400 hover:text-surface-600">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -1166,7 +1166,7 @@ export function InventoryListPage() {
           <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-2xl max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 id="import-csv-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">Import Inventory CSV</h3>
-              <button onClick={() => { setShowImportModal(false); setImportText(''); setImportPreview([]); }} className="text-surface-400 hover:text-surface-600">
+              <button aria-label="Close import CSV dialog" onClick={() => { setShowImportModal(false); setImportText(''); setImportPreview([]); }} className="text-surface-400 hover:text-surface-600">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -1764,7 +1764,7 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
                     </div>
 
                     {/* Remove */}
-                    <button onClick={() => removeItem(idx)} className="text-surface-400 hover:text-red-500 shrink-0">
+                    <button aria-label={`Remove import preview row ${idx + 1}`} onClick={() => removeItem(idx)} className="text-surface-400 hover:text-red-500 shrink-0">
                       <X className="h-4 w-4" />
                     </button>
                   </div>

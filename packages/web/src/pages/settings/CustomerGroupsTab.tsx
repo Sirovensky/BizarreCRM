@@ -278,13 +278,14 @@ export function CustomerGroupsTab() {
                         <td className="px-4 py-2 text-right">
                           <div className="flex items-center justify-end gap-1">
                             <button
+                              aria-label="Save customer group"
                               onClick={() => updateMutation.mutate({ id: group.id, data: editForm })}
                               disabled={updateMutation.isPending}
                               className="btn-icon btn-xs text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20"
                             >
                               <Check className="h-4 w-4" />
                             </button>
-                            <button onClick={() => setEditing(null)} className="btn-icon btn-xs text-surface-400 hover:text-surface-600">
+                            <button aria-label="Cancel editing customer group" onClick={() => setEditing(null)} className="btn-icon btn-xs text-surface-400 hover:text-surface-600">
                               <X className="h-4 w-4" />
                             </button>
                           </div>
