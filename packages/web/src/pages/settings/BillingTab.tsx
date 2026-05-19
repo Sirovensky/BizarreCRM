@@ -236,7 +236,14 @@ function UsageMeter({ label, current, limit, format = 'count' }: UsageMeterProps
         </span>
       </div>
       {limit != null && (
-        <div className="h-1.5 w-full rounded-full bg-surface-200 dark:bg-surface-700">
+        <div
+          className="h-1.5 w-full rounded-full bg-surface-200 dark:bg-surface-700"
+          role="progressbar"
+          aria-valuenow={Math.round(percent)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`${label} usage: ${fmt(current)} of ${fmt(limit)}`}
+        >
           <div
             className={`h-full rounded-full transition-all ${isOver ? 'bg-red-500' : isNear ? 'bg-amber-500' : 'bg-primary-500'}`}
             style={{ width: `${percent}%` }}
