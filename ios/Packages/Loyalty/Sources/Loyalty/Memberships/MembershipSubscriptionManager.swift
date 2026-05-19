@@ -223,10 +223,15 @@ public struct MembershipDTO: Decodable, Sendable {
 
     /// Map DTO → domain model.
     public func toDomain() -> Membership {
-        let isoFormatter = ISO8601DateFormatter()
+        // Server emits Node Date.toISOString() (millisecond precision); default
+        // ISO8601DateFormatter rejects that, so try fractional first and fall back.
+        let isoFractional = ISO8601DateFormatter()
+        isoFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let isoPlain = ISO8601DateFormatter()
+        isoPlain.formatOptions = [.withInternetDateTime]
         func parseDate(_ s: String?) -> Date? {
             guard let s else { return nil }
-            return isoFormatter.date(from: s)
+            return isoFractional.date(from: s) ?? isoPlain.date(from: s)
         }
         return Membership(
             id: id,

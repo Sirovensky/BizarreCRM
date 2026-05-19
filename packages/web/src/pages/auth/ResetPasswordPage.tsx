@@ -139,6 +139,7 @@ export function ResetPasswordPage() {
                   autoFocus
                   required
                   minLength={8}
+                  autoComplete="new-password"
                   placeholder="Min 8 characters"
                   aria-invalid={!!error}
                   aria-describedby={error ? 'reset-password-error' : undefined}
@@ -156,6 +157,7 @@ export function ResetPasswordPage() {
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     required
                     minLength={8}
+                    autoComplete="new-password"
                     placeholder="Confirm new password"
                     aria-invalid={!!error || (hasConfirmValue && !passwordsMatch)}
                     aria-describedby={error ? 'reset-password-error' : hasConfirmValue ? 'reset-password-match-status' : undefined}

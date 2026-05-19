@@ -2940,6 +2940,8 @@ function DataImportTab() {
             value={wipePassword}
             onChange={(e) => setWipePassword(e.target.value)}
             placeholder="Admin password"
+            autoComplete="current-password"
+            aria-label="Admin password (required to confirm factory wipe)"
             className="input w-44"
           />
           <button
@@ -3130,6 +3132,8 @@ function RepairDeskImportSection({ importStatus, onStarted }: { importStatus: an
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             placeholder="RepairDesk API Key (Bearer token)"
+            autoComplete="off"
+            aria-label="RepairDesk API key"
             className="flex-1 input"
           />
           <button onClick={() => testMut.mutate()} disabled={testMut.isPending || !apiKey}
@@ -3172,6 +3176,8 @@ function RepairDeskImportSection({ importStatus, onStarted }: { importStatus: an
             value={nuclearPassword}
             onChange={(e) => setNuclearPassword(e.target.value)}
             placeholder="Your password"
+            autoComplete="current-password"
+            aria-label="Your password (required to confirm nuclear reset)"
             className="input w-full"
           />
           <button
@@ -3251,6 +3257,8 @@ function RepairShoprImportSection({ importStatus, onStarted }: { importStatus: a
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             placeholder="RepairShopr API Key"
+            autoComplete="off"
+            aria-label="RepairShopr API key"
             className="flex-1 input"
           />
           <div className="flex items-center rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 overflow-hidden">
@@ -3315,6 +3323,7 @@ function RepairShoprImportSection({ importStatus, onStarted }: { importStatus: a
             aria-label='Type "NUCLEAR" to confirm destructive reset'
             placeholder='Type "NUCLEAR" to confirm' className="input w-full" />
           <input type="password" value={nuclearPassword} onChange={(e) => setNuclearPassword(e.target.value)}
+            autoComplete="current-password"
             aria-label="Your password (required to confirm nuclear reset)"
             placeholder="Your password" className="input w-full" />
           <button
@@ -3393,6 +3402,8 @@ function MyRepairAppImportSection({ importStatus, onStarted }: { importStatus: a
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             placeholder="MyRepairApp API Key"
+            autoComplete="off"
+            aria-label="MyRepairApp API key"
             className="flex-1 input"
           />
           <button onClick={() => testMut.mutate()} disabled={testMut.isPending || !apiKey}
@@ -3447,6 +3458,7 @@ function MyRepairAppImportSection({ importStatus, onStarted }: { importStatus: a
             aria-label='Type "NUCLEAR" to confirm destructive reset'
             placeholder='Type "NUCLEAR" to confirm' className="input w-full" />
           <input type="password" value={nuclearPassword} onChange={(e) => setNuclearPassword(e.target.value)}
+            autoComplete="current-password"
             aria-label="Your password (required to confirm nuclear reset)"
             placeholder="Your password" className="input w-full" />
           <button
