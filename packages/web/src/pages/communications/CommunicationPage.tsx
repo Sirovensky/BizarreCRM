@@ -12,6 +12,7 @@ import toast from 'react-hot-toast';
 import { smsApi, customerApi, ticketApi, voiceApi, emailApi } from '@/api/endpoints';
 import type { SmsFollowupReminder } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useAuthStore } from '@/stores/authStore';
 // @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): added formatCurrency import; ticket-total tooltip used hardcoded "$".
 import {
@@ -1273,6 +1274,7 @@ function ThreadSearchBar({
 
 // ─── Main Component ─────────────────────────────────────────────────
 export function CommunicationPage() {
+  useDocumentTitle('Communications');
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   // WEB-UIUX-898: role gate for the Bulk SMS trigger — server requires

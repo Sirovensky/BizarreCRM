@@ -9,6 +9,7 @@ import {
   ShieldAlert, Smartphone, Cpu, UserPlus, Lock, FileText, Loader2, RefreshCw,
 } from 'lucide-react';
 import { api } from '@/api/client';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { usePlanStore } from '@/stores/planStore';
 import { toCsvRow } from '@/utils/csv';
 import type { PlanFeatures } from '@bizarre-crm/shared';
@@ -1407,6 +1408,7 @@ function InsightsTab({
 // ─── Main ReportsPage ─────────────────────────────────────────────────────────
 
 export function ReportsPage() {
+  useDocumentTitle('Reports');
   // WEB-FK-010: report URLs carry validated view state for refresh/share links.
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTabState] = useState<Tab>(() => (

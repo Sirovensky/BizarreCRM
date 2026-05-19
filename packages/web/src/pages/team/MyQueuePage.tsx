@@ -11,6 +11,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Clock, AlertCircle, CheckCircle2, ArrowRight, ArrowUp, ArrowDown } from 'lucide-react';
 import { api } from '@/api/client';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { formatCurrency } from '@/utils/format';
 
 interface QueueTicket {
@@ -63,6 +64,7 @@ type SortKey = 'due_on' | 'created_at' | 'updated_at' | 'order_id' | 'total' | '
 type SortOrder = 'asc' | 'desc';
 
 export function MyQueuePage() {
+  useDocumentTitle('My Queue');
   // WEB-UIUX-543: server now accepts keyword + sort params so the page can
   // narrow/re-sort against the bounded 200-row response without rolling a
   // brittle client-only ordering that disagrees with the default. Empty
