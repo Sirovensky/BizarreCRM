@@ -814,14 +814,22 @@ function NewMessageModal({ onClose, onStart }: {
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
+  // Escape closes the modal; keep focus-trap minimal — autofocus on phone input
+  // gives a sane starting point, and Tab order from there flows naturally.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   // SCAN-1003b: typed unwrap.
   const customers = unwrap<CommCustomerSummary[]>(searchResults as AxiosLike<CommCustomerSummary[]>) ?? [];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="w-full max-w-md rounded-xl bg-white shadow-2xl dark:bg-surface-800" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="presentation" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-labelledby="new-message-title" className="w-full max-w-md rounded-xl bg-white shadow-2xl dark:bg-surface-800" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-surface-200 px-4 py-3 dark:border-surface-700">
-          <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100">New Message</h3>
+          <h3 id="new-message-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">New Message</h3>
           <button aria-label="Close" onClick={onClose} className="rounded-lg p-1 hover:bg-surface-100 dark:hover:bg-surface-700">
             <X className="h-5 w-5 text-surface-500" />
           </button>
