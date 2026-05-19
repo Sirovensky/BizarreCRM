@@ -458,7 +458,7 @@ export default function KanbanBoard() {
 
   if (isLoading) {
     return (
-      <div className="flex gap-4 overflow-x-auto pb-4" style={{ minHeight: 'calc(100vh - 290px - var(--dev-banner-h, 0px))' }}>
+      <div className="flex gap-4 overflow-x-auto pb-4" role="status" aria-busy="true" aria-live="polite" aria-label="Loading Kanban board" style={{ minHeight: 'calc(100vh - 290px - var(--dev-banner-h, 0px))' }}>
         {Array.from({ length: 4 }).map((_, colIdx) => (
           <div
             key={colIdx}

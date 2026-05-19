@@ -52,9 +52,9 @@ export function PhotoMementosWallet({ customerId }: PhotoMementosWalletProps) {
           <Camera className="h-4 w-4" />
           <h3 className="text-sm font-semibold">Photo Mementos</h3>
         </header>
-        <div className="flex gap-3 overflow-hidden">
+        <div className="flex gap-3 overflow-hidden" role="status" aria-busy="true" aria-live="polite" aria-label="Loading photo mementos">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="w-32 h-32 rounded-lg bg-surface-100 dark:bg-surface-800 animate-pulse" />
+            <div key={i} className="w-32 h-32 rounded-lg bg-surface-100 dark:bg-surface-800 animate-pulse" aria-hidden="true" />
           ))}
         </div>
       </section>
