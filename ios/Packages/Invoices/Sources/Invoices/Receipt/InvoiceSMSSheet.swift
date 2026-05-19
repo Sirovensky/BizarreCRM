@@ -46,14 +46,22 @@ public struct InvoiceSMSSheet: View {
                     dismiss()
                 }
             }
-            .alert("Send Failed", isPresented: .constant({
-                if case .failed = vm.state { return true }
-                return false
-            }()), actions: {
-                Button("OK") { vm.resetToIdle() }
-            }, message: {
-                if case let .failed(msg) = vm.state { Text(msg) }
-            })
+            .alert(
+                "Send Failed",
+                isPresented: Binding(
+                    get: {
+                        if case .failed = vm.state { return true }
+                        return false
+                    },
+                    set: { if !$0 { vm.resetToIdle() } }
+                ),
+                actions: {
+                    Button("OK") { vm.resetToIdle() }
+                },
+                message: {
+                    if case let .failed(msg) = vm.state { Text(msg) }
+                }
+            )
         }
         .presentationDetents(Platform.isCompact ? [.medium, .large] : [.large])
     }

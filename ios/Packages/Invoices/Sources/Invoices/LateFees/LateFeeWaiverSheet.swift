@@ -198,10 +198,16 @@ public struct LateFeeWaiverSheet: View {
                 dismiss()
             }
         }
-        .alert("Waiver Failed", isPresented: .constant({
-            if case .failed = vm.state { return true }
-            return false
-        }())) {
+        .alert(
+            "Waiver Failed",
+            isPresented: Binding(
+                get: {
+                    if case .failed = vm.state { return true }
+                    return false
+                },
+                set: { if !$0 { vm.resetToIdle() } }
+            )
+        ) {
             Button("OK") { vm.resetToIdle() }
         } message: {
             if case let .failed(msg) = vm.state { Text(msg) }
