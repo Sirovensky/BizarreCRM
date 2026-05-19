@@ -155,15 +155,24 @@ final class DictationSession {
     }
 
     private func startPulse() {
-        pulseTask = Task { @MainActor in
+        // BUGHUNT-2026-05-19: weak-self the pulse task. self owns pulseTask
+        // and the Task captures self strongly via the implicit `self.` on
+        // pulseScale/pulseOpacity writes → retain cycle, never broken because
+        // the while-loop is infinite. If the surrounding view disappears
+        // without the button being toggled off (e.g. parent sheet dismissed,
+        // navigation pop mid-dictation), the DictationSession leaks along
+        // with its audio engine and speech recognition task.
+        pulseTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
+                guard let strongSelf = self else { break }
                 withAnimation(.easeInOut(duration: 0.8)) {
-                    pulseScale = 1.4
-                    pulseOpacity = 0
+                    strongSelf.pulseScale = 1.4
+                    strongSelf.pulseOpacity = 0
                 }
                 try? await Task.sleep(nanoseconds: 800_000_000)
-                pulseScale = 1.0
-                pulseOpacity = 0.6
+                guard let strongSelf2 = self else { break }
+                strongSelf2.pulseScale = 1.0
+                strongSelf2.pulseOpacity = 0.6
                 try? await Task.sleep(nanoseconds: 200_000_000)
             }
         }

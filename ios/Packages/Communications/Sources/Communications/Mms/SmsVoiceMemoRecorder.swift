@@ -66,16 +66,25 @@ public final class SmsVoiceMemoRecorder {
                 try startRecordingEngine()
                 secondsRecorded = 0
                 state = .recording(seconds: 0)
-                timerTask = Task { @MainActor in
+                // BUGHUNT-2026-05-19: weak-self the duration tick task. The
+                // recorder owns timerTask, the Task closure captures self
+                // strongly through every implicit `self.` (secondsRecorded,
+                // state, stop()) — a retain cycle that the infinite 0.1s
+                // loop never breaks. If the user dismisses the SMS thread
+                // mid-recording without tapping stop, the recorder + open
+                // AVAudioEngine would leak (silent battery drain and an
+                // orphaned mic indicator until process exit).
+                timerTask = Task { @MainActor [weak self] in
                     while !Task.isCancelled {
                         try? await Task.sleep(for: .seconds(0.1))
-                        secondsRecorded += 0.1
-                        if secondsRecorded >= Self.maxDurationSeconds {
-                            _ = stop()
+                        guard let strongSelf = self else { break }
+                        strongSelf.secondsRecorded += 0.1
+                        if strongSelf.secondsRecorded >= Self.maxDurationSeconds {
+                            _ = strongSelf.stop()
                             return
                         }
-                        if case .recording = self.state {
-                            self.state = .recording(seconds: self.secondsRecorded)
+                        if case .recording = strongSelf.state {
+                            strongSelf.state = .recording(seconds: strongSelf.secondsRecorded)
                         }
                     }
                 }
