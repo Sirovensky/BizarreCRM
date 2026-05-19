@@ -1000,10 +1000,11 @@ function LinkCustomerPopover({
         <div className="p-3 space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">
+              <label htmlFor="comm-create-customer-first-name" className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">
                 First Name <span className="text-red-500">*</span>
               </label>
               <input
+                id="comm-create-customer-first-name"
                 type="text"
                 value={createForm.first_name}
                 onChange={(e) => setCreateForm((p) => ({ ...p, first_name: e.target.value }))}
@@ -1013,10 +1014,11 @@ function LinkCustomerPopover({
               />
             </div>
             <div>
-              <label className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">
+              <label htmlFor="comm-create-customer-last-name" className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">
                 Last Name <span className="text-red-500">*</span>
               </label>
               <input
+                id="comm-create-customer-last-name"
                 type="text"
                 value={createForm.last_name}
                 onChange={(e) => setCreateForm((p) => ({ ...p, last_name: e.target.value }))}
@@ -1026,8 +1028,9 @@ function LinkCustomerPopover({
             </div>
           </div>
           <div>
-            <label className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">Phone</label>
+            <label htmlFor="comm-create-customer-phone" className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">Phone</label>
             <input
+              id="comm-create-customer-phone"
               type="tel"
               value={createForm.phone}
               onChange={(e) => setCreateForm((p) => ({ ...p, phone: e.target.value }))}
@@ -1036,8 +1039,9 @@ function LinkCustomerPopover({
             />
           </div>
           <div>
-            <label className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">Email</label>
+            <label htmlFor="comm-create-customer-email" className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">Email</label>
             <input
+              id="comm-create-customer-email"
               type="email"
               value={createForm.email}
               onChange={(e) => setCreateForm((p) => ({ ...p, email: e.target.value }))}
