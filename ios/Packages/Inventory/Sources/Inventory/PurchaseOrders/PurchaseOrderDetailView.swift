@@ -148,6 +148,7 @@ public struct PurchaseOrderDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbarContent }
         .task { await vm.load() }
+        .refreshable { await vm.load() }
         .sheet(isPresented: $vm.showReceiveSheet) {
             PurchaseOrderReceiveSheet(
                 order: displayOrder,

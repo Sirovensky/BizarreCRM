@@ -144,6 +144,7 @@ public struct AgeReportView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { clearanceSuggestionsButton }
         .task { await vm.load() }
+        .refreshable { await vm.load() }
         .sheet(isPresented: $showClearanceSuggestions) {
             clearanceSuggestionsSheet
         }

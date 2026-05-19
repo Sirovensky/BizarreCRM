@@ -150,6 +150,7 @@ public struct ShrinkageReportView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { periodPicker }
         .task { await vm.load() }
+        .refreshable { await vm.load() }
     }
 
     // MARK: Report Content

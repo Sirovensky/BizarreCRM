@@ -36,6 +36,7 @@ struct CustomerDeviceDetailView: View {
                 }
             }
             .task { await loadTickets() }
+            .refreshable { await loadTickets() }
         }
         .presentationDetents([.large])
     }

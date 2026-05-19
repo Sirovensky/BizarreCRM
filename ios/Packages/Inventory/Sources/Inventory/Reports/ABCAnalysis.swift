@@ -138,6 +138,7 @@ public struct ABCAnalysisView: View {
         .navigationTitle("ABC Analysis")
         .navigationBarTitleDisplayMode(.inline)
         .task { await vm.load() }
+        .refreshable { await vm.load() }
     }
 
     // MARK: Main Content
