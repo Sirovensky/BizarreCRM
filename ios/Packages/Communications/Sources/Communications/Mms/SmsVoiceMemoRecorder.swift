@@ -102,6 +102,14 @@ public final class SmsVoiceMemoRecorder {
         engine?.stop()
         engine?.inputNode.removeTap(onBus: 0)
         engine = nil
+        // BUGHUNT-2026-05-19: startRecordingEngine activated the shared
+        // AVAudioSession with category .record. Without setActive(false,
+        // .notifyOthersOnDeactivation) after stop, music/podcast playback
+        // in other apps stays paused and the mic indicator can linger
+        // until the next session change. The Camera VoiceMemoRecorder
+        // already does this — mirror it here.
+        try? AVAudioSession.sharedInstance()
+            .setActive(false, options: .notifyOthersOnDeactivation)
         guard let url = outputURL else {
             state = .idle
             return nil
