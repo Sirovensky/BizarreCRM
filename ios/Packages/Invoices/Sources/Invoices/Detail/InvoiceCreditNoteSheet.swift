@@ -97,6 +97,7 @@ public struct InvoiceCreditNoteSheet: View {
                     }
                     .padding(BrandSpacing.base)
                 }
+                .scrollDismissesKeyboard(.interactively)
             }
             .navigationTitle("Issue Credit Note")
             .navigationBarTitleDisplayMode(.inline)
