@@ -126,10 +126,10 @@ public struct FormFocusChainModifier<Field: FormFocusField>: ViewModifier {
                 }
             }
             // Keep chain.focused and localFocus in sync (two-way).
-            .onChange(of: chain.focused) { newValue in
+            .onChange(of: chain.focused) { _, newValue in
                 localFocus = newValue
             }
-            .onChange(of: localFocus) { newValue in
+            .onChange(of: localFocus) { _, newValue in
                 if chain.focused != newValue { chain.focused = newValue }
             }
     }

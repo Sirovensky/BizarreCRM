@@ -350,7 +350,7 @@ private struct LegRow: View {
                     .keyboardType(.decimalPad)
                     .font(.brandHeadlineMedium())
                     .foregroundStyle(.bizarreOnSurface)
-                    .onChange(of: amountStr) { commitUpdate() }
+                    .onChange(of: amountStr) { _, _ in commitUpdate() }
                     .accessibilityLabel("Payment amount in dollars")
             }
 
@@ -358,7 +358,7 @@ private struct LegRow: View {
                 TextField("Reference / last 4", text: $ref)
                     .font(.brandBodyMedium())
                     .foregroundStyle(.bizarreOnSurface)
-                    .onChange(of: ref) { commitUpdate() }
+                    .onChange(of: ref) { _, _ in commitUpdate() }
                     .accessibilityLabel("Transaction reference or last four digits")
             }
         }

@@ -140,7 +140,7 @@ public struct ReceiptTemplateEditorView: View {
             footerSection
         }
         .formStyle(.grouped)
-        .onChange(of: template) { isDirty = true }
+        .onChange(of: template) { _, _ in isDirty = true }
     }
 
     private var headerSection: some View {
