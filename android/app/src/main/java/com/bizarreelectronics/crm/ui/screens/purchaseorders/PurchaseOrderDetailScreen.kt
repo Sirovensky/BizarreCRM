@@ -18,9 +18,9 @@ import com.bizarreelectronics.crm.data.remote.dto.PurchaseOrderItem
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
+import com.bizarreelectronics.crm.util.CurrencyFormatter
 import com.bizarreelectronics.crm.viewmodels.purchaseorders.PurchaseOrderDetailViewModel
 import com.bizarreelectronics.crm.viewmodels.purchaseorders.ReceiveEntry
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -129,7 +129,7 @@ fun PurchaseOrderDetailScreen(
                                     Column(horizontalAlignment = Alignment.End) {
                                         PoStatusBadge(status = order.status)
                                         Text(
-                                            "$${String.format(Locale.US, "%.2f", order.total)}",
+                                            CurrencyFormatter.format(order.total),
                                             style = MaterialTheme.typography.titleSmall,
                                             color = MaterialTheme.colorScheme.primary,
                                         )
@@ -257,7 +257,7 @@ private fun PoLineItemRow(poItem: PurchaseOrderItem) {
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Text(
-                    "$${String.format(Locale.US, "%.2f", poItem.costPrice)} ea",
+                    "${CurrencyFormatter.format(poItem.costPrice)} ea",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
