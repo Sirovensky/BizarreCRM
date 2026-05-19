@@ -379,7 +379,13 @@ public struct CustomerPortalMagicLinkCopy: View {
         .disabled(isLoading)
         .accessibilityLabel(isCopied ? "Portal link copied to clipboard" : "Copy customer portal link")
         .accessibilityHint("Generates a one-time login link for the customer self-service portal")
-        .alert("Couldn't generate link", isPresented: .constant(errorMessage != nil)) {
+        .alert(
+            "Couldn't generate link",
+            isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )
+        ) {
             Button("OK") { errorMessage = nil }
         } message: {
             if let e = errorMessage { Text(e) }

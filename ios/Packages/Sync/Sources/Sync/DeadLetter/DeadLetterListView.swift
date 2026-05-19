@@ -30,7 +30,7 @@ public struct DeadLetterListView: View {
         .task { await viewModel.load() }
         .refreshable { await viewModel.load() }
         .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
-            Button("OK") { }
+            Button("OK") { viewModel.clearError() }
         } message: {
             Text(viewModel.errorMessage ?? "")
         }

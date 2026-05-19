@@ -91,7 +91,7 @@ public struct InventoryDetailView: View {
         }
         .alert("Action failed", isPresented: Binding(
             get: { actionError != nil },
-            set: { _ in }
+            set: { if !$0 { actionError = nil } }
         )) {
             Button("OK") { actionError = nil }
         } message: {

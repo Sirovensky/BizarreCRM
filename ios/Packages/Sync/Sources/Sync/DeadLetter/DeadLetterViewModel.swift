@@ -81,4 +81,13 @@ public final class DeadLetterViewModel {
             AppLog.sync.error("DeadLetterViewModel.discard \(id, privacy: .public) failed: \(error, privacy: .public)")
         }
     }
+
+    // MARK: - Error dismissal
+
+    /// Clear the surfaced error so a constant-bound `.alert` doesn't re-fire on
+    /// the next render. Called by the alert's OK button (and any swipe-to-dismiss
+    /// path that needs to reset the surface).
+    public func clearError() {
+        errorMessage = nil
+    }
 }
