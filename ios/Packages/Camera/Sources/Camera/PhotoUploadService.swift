@@ -181,6 +181,53 @@ public actor PhotoUploadService {
     ///             supported by server; defaults to JPEG).
     /// - Returns: Sanitised, compressed JPEG data.
     public func stripExifAndCompress(_ data: Data, format: ExifStripOutputFormat = .jpeg) async throws -> Data {
+        // BUGHUNT-2026-05-19: previously this used
+        // `CGImageDestinationAddImageFromSource` and merely removed the
+        // orientation tag from the destination metadata. That stripped the
+        // tag but DID NOT rotate the pixel buffer, so a photo captured in
+        // portrait on a rotated sensor (EXIF orientation 6, "rotate 90°
+        // CW") arrived at the server as sideways pixels with no metadata
+        // telling the viewer to compensate. The receipt PDF and the
+        // ticket-detail thumbnail both rendered the image sideways. The
+        // doc-comment for this function even claims "EXIF orientation is
+        // baked into pixel geometry (consistent display)" — that claim was
+        // a lie.
+        //
+        // For the .jpeg path (every current caller), route through UIImage
+        // which respects the source orientation, then draw into a
+        // renderer at the upright size. UIImage.jpegData re-encodes
+        // without any EXIF — meeting the privacy bar (no GPS / timestamp
+        // / camera-make leak) AND baking orientation into the pixels at
+        // the same time. The .preserveOriginal branch (no current caller,
+        // kept for API symmetry) keeps the legacy ImageIO path that at
+        // least removes the privacy-sensitive keys.
+        if format == .jpeg {
+            guard let img = UIImage(data: data) else {
+                throw PhotoUploadError.decodeFailed
+            }
+            let baked: UIImage
+            if img.imageOrientation == .up {
+                baked = img
+            } else {
+                let renderer = UIGraphicsImageRenderer(size: img.size)
+                baked = renderer.image { _ in
+                    img.draw(in: CGRect(origin: .zero, size: img.size))
+                }
+            }
+            guard var result = baked.jpegData(compressionQuality: Self.jpegQuality) else {
+                throw PhotoUploadError.encodeFailed
+            }
+            if result.count > Self.maxBytes {
+                result = try compressToLimit(result)
+            }
+            AppLog.ui.info("PhotoUploadService: EXIF stripped + orientation baked + compressed (\(result.count / 1024, privacy: .public) KB)")
+            return result
+        }
+
+        // .preserveOriginal: legacy ImageIO path — strip privacy keys but
+        // do not re-render. Used only when a caller explicitly opts out
+        // of JPEG (PNG signatures etc.) and is comfortable with the
+        // metadata-only strip semantics.
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
             throw PhotoUploadError.decodeFailed
         }
@@ -193,24 +240,17 @@ public actor PhotoUploadService {
         if var exif = props[kCGImagePropertyExifDictionary] as? [CFString: Any] {
             exif.removeValue(forKey: "DateTimeOriginal" as CFString)
             exif.removeValue(forKey: "DateTimeDigitized" as CFString)
-            // Bake orientation so display is consistent.
-            exif.removeValue(forKey: kCGImagePropertyOrientation)
             props[kCGImagePropertyExifDictionary] = exif
         }
-        // Remove TIFF orientation (covered by UIImage rendering below).
-        props.removeValue(forKey: kCGImagePropertyOrientation)
         if var tiff = props[kCGImagePropertyTIFFDictionary] as? [CFString: Any] {
             tiff.removeValue(forKey: kCGImagePropertyTIFFOrientation)
             props[kCGImagePropertyTIFFDictionary] = tiff
         }
 
-        // Re-encode to JPEG with stripped metadata.
         let destData = NSMutableData()
-        let outputUTI: CFString = format == .jpeg ? kJPEGUTI : uti
-        guard let dest = CGImageDestinationCreateWithData(destData, outputUTI, 1, nil) else {
+        guard let dest = CGImageDestinationCreateWithData(destData, uti, 1, nil) else {
             throw PhotoUploadError.encodeFailed
         }
-
         let options: [CFString: Any] = [
             kCGImageDestinationLossyCompressionQuality: Self.jpegQuality
         ]
@@ -219,14 +259,10 @@ public actor PhotoUploadService {
         guard CGImageDestinationFinalize(dest) else {
             throw PhotoUploadError.encodeFailed
         }
-
         var result = destData as Data
-
-        // Iterative compression to stay ≤ 1.5 MB.
         if result.count > Self.maxBytes {
             result = try compressToLimit(result)
         }
-
         AppLog.ui.info("PhotoUploadService: EXIF stripped + compressed (\(result.count / 1024, privacy: .public) KB)")
         return result
     }
