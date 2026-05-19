@@ -16,6 +16,14 @@ import CoreLocation
 private final class LocationFetcher: NSObject, CLLocationManagerDelegate, @unchecked Sendable {
     private let manager = CLLocationManager()
     private var continuation: CheckedContinuation<CLLocationCoordinate2D, Error>?
+    // BUGHUNT-2026-05-19: CLLocationManager.delegate is weak. The caller pattern
+    // `let fetcher = LocationFetcher(); try await fetcher.fetchOnce()` leaves
+    // only one strong ref to fetcher (the local), which the Swift optimizer
+    // may release while we're suspended on the continuation. Once that
+    // happens the weak delegate ref drops to nil and CoreLocation has no one
+    // to call back — the continuation is leaked (and Swift eventually traps
+    // with "leak of checked continuation"). Self-retain until resume.
+    private var selfRetention: LocationFetcher?
 
     override init() {
         super.init()
@@ -26,6 +34,7 @@ private final class LocationFetcher: NSObject, CLLocationManagerDelegate, @unche
     func fetchOnce() async throws -> CLLocationCoordinate2D {
         try await withCheckedThrowingContinuation { cont in
             self.continuation = cont
+            self.selfRetention = self
             manager.requestWhenInUseAuthorization()
             manager.requestLocation()
         }
@@ -35,11 +44,13 @@ private final class LocationFetcher: NSObject, CLLocationManagerDelegate, @unche
         guard let loc = locations.last else { return }
         continuation?.resume(returning: loc.coordinate)
         continuation = nil
+        selfRetention = nil
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         continuation?.resume(throwing: error)
         continuation = nil
+        selfRetention = nil
     }
 }
 #endif
