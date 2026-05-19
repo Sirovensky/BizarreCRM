@@ -173,17 +173,28 @@ router.get('/export-all-data', adminOnly, async (req: Request, res: Response) =>
     if (!res.writableEnded) res.end();
   });
 
-  res.on('finish', () => {
-    // Best-effort cleanup of the temp export file after delivery.
+  // BUGHUNT-2026-05-19: previously cleanup ran only on `res.on('finish')`,
+  // which fires only when the response was fully sent. A client that
+  // started the download and then aborted (closed tab, network drop,
+  // cancel button) emitted `close` but never `finish`, so the temp file
+  // leaked. Over time and across many tenant exports, this filled the
+  // server's temp dir and could OOM the export pipeline. Use `close` —
+  // which fires for both successful and aborted responses — and guard
+  // against double-cleanup with a flag.
+  let cleanedUp = false;
+  const cleanupTempFile = (): void => {
+    if (cleanedUp) return;
+    cleanedUp = true;
     fs.unlink(filePath, (unlinkErr) => {
-      if (unlinkErr) {
+      if (unlinkErr && unlinkErr.code !== 'ENOENT') {
         logger.warn('export temp file cleanup failed', {
           filePath,
           error: unlinkErr.message,
         });
       }
     });
-  });
+  };
+  res.on('close', cleanupTempFile);
 
   readStream.pipe(res);
 
