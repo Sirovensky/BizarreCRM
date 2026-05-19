@@ -96,6 +96,7 @@ public struct ShiftSwapRequestSheet: View {
                 Section("Note (optional)") {
                     TextField("Reason or note", text: $vm.note, axis: .vertical)
                         .lineLimit(2, reservesSpace: true)
+                        .textInputAutocapitalization(.sentences)
                         .accessibilityLabel("Optional swap note")
                 }
 

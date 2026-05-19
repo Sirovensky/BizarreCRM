@@ -43,6 +43,7 @@ public struct HoldCartSheet: View {
                     Section {
                         TextField("Note (optional)", text: $note, axis: .vertical)
                             .lineLimit(2...4)
+                            .textInputAutocapitalization(.sentences)
                             .accessibilityIdentifier("holdCart.note")
                     } header: {
                         Text("Note")

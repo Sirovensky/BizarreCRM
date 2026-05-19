@@ -45,6 +45,7 @@ struct PosHoldCartSheet: View {
                     Section {
                         TextField("Note (optional)", text: $vm.note, axis: .vertical)
                             .lineLimit(2...4)
+                            .textInputAutocapitalization(.sentences)
                             .accessibilityIdentifier("pos.holdCart.note")
                     } header: {
                         Text("Note")

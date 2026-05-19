@@ -421,6 +421,7 @@ public struct DiscountApplySheet: View {
                 .lineLimit(3...5)
                 .font(.brandBodyLarge())
                 .foregroundStyle(.bizarreOnSurface)
+                .textInputAutocapitalization(.sentences)
                 .padding(BrandSpacing.md)
                 .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
                 .accessibilityLabel("Discount reason note")

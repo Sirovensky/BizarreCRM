@@ -145,6 +145,7 @@ public struct InvoiceCreditNoteSheet: View {
                     .foregroundStyle(.bizarreOnSurfaceMuted)
                 TextField("Enter reason for credit note", text: $vm.reason, axis: .vertical)
                     .lineLimit(3...6)
+                    .textInputAutocapitalization(.sentences)
                     .padding(BrandSpacing.sm)
                     .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 10))
                     .accessibilityLabel("Reason for credit note")

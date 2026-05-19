@@ -81,6 +81,7 @@ public struct InvoiceEmailReceiptSheet: View {
             TextField("Add a personal note...", text: $vm.message, axis: .vertical)
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurface)
+                .textInputAutocapitalization(.sentences)
                 .lineLimit(4...)
                 .accessibilityLabel("Optional message to include with receipt")
         }

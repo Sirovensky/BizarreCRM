@@ -126,6 +126,7 @@ public struct WaitlistAddSheet: View {
         Section("Note (optional)") {
             TextField("Any special requests…", text: $note, axis: .vertical)
                 .lineLimit(3...6)
+                .textInputAutocapitalization(.sentences)
                 .accessibilityLabel("Note")
         }
     }
