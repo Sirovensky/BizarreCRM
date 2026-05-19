@@ -189,7 +189,13 @@ internal fun EmployeePerformanceCard(
     rank: Int,
     item: EmployeePerformanceItem,
 ) {
-    val currencyFmt = NumberFormat.getCurrencyInstance(Locale.US)
+    // BUGHUNT-2026-05-18: was Locale.US — honour tenant currencyOverride so
+    // employee revenue + commission chips render in the right currency.
+    val currencyFmt = NumberFormat.getCurrencyInstance(Locale.getDefault()).also { fmt ->
+        com.bizarreelectronics.crm.util.CurrencyFormatter.defaultCurrencyCode?.let { code ->
+            runCatching { fmt.currency = java.util.Currency.getInstance(code) }
+        }
+    }
 
     Card(
         modifier = Modifier
