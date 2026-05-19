@@ -163,7 +163,13 @@ class StocktakeListViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "POST /stocktake/$id/cancel failed: ${e.message}")
-                _state.value = _state.value.copy(error = "Failed to cancel session")
+                // Include the underlying reason so users can distinguish a
+                // network outage from a server-side validation error.
+                val reason = e.message?.takeIf { it.isNotBlank() }
+                _state.value = _state.value.copy(
+                    error = if (reason != null) "Failed to cancel session: $reason"
+                    else "Failed to cancel session",
+                )
             }
         }
     }

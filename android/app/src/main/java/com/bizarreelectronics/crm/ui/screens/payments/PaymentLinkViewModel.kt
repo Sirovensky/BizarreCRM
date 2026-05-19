@@ -172,9 +172,13 @@ class PaymentLinkViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 val is404 = (e as? HttpException)?.code() == 404
+                val reason = e.message?.takeIf { it.isNotBlank() }
                 _listState.value = _listState.value.copy(
-                    actionMessage = if (is404) "Void not supported on this server"
-                    else "Failed to void link",
+                    actionMessage = when {
+                        is404 -> "Void not supported on this server"
+                        reason != null -> "Failed to void link: $reason"
+                        else -> "Failed to void payment link"
+                    },
                 )
             }
         }
@@ -188,7 +192,13 @@ class PaymentLinkViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _listState.value = _listState.value.copy(actionMessage = "Failed to resend")
+                // Surface the underlying failure (network/auth/etc) so the user
+                // can act on it instead of staring at a bare "Failed to resend".
+                val reason = e.message?.takeIf { it.isNotBlank() }
+                _listState.value = _listState.value.copy(
+                    actionMessage = if (reason != null) "Failed to resend: $reason"
+                    else "Failed to resend payment request",
+                )
             }
         }
     }
@@ -201,7 +211,12 @@ class PaymentLinkViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _listState.value = _listState.value.copy(actionMessage = "Failed to send reminder")
+                // Same rationale as resendLink — opaque "Failed" hides the cause.
+                val reason = e.message?.takeIf { it.isNotBlank() }
+                _listState.value = _listState.value.copy(
+                    actionMessage = if (reason != null) "Failed to send reminder: $reason"
+                    else "Failed to send payment reminder",
+                )
             }
         }
     }
