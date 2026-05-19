@@ -314,13 +314,6 @@ public struct InventoryKitDetailView: View {
     }
 }
 
-// MARK: - Color extensions
-
-private extension Color {
-    static var bizarreSuccess: Color { .green }
-    static var bizarreError: Color { Color(red: 0.9, green: 0.2, blue: 0.2) }
-}
-
 // MARK: - ViewModel
 
 @MainActor
