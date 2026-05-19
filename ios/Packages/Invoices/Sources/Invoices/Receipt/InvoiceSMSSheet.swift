@@ -29,6 +29,7 @@ public struct InvoiceSMSSheet: View {
                     }
                     .padding(BrandSpacing.base)
                 }
+                .scrollDismissesKeyboard(.interactively)
             }
             .navigationTitle("Send Invoice by SMS")
             .navigationBarTitleDisplayMode(.inline)

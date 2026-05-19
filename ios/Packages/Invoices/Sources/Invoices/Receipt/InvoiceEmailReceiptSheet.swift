@@ -29,6 +29,7 @@ public struct InvoiceEmailReceiptSheet: View {
                     }
                     .padding(BrandSpacing.base)
                 }
+                .scrollDismissesKeyboard(.interactively)
             }
             .navigationTitle("Email Receipt")
             .navigationBarTitleDisplayMode(.inline)

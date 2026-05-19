@@ -204,6 +204,7 @@ public struct InvoiceReceiptDeliverySheet: View {
                     }
                     .padding(BrandSpacing.base)
                 }
+                .scrollDismissesKeyboard(.interactively)
             }
             .navigationTitle("Send Receipt")
             .navigationBarTitleDisplayMode(.inline)
