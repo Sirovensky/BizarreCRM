@@ -75,6 +75,9 @@ fun TicketPrintActions(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var menuExpanded by remember { mutableStateOf(false) }
+    // Capture the last PDF build failure so the snackbar can surface a useful
+    // "Failed to generate PDF: <reason>" message instead of a bare "Failed".
+    var lastPdfError: Throwable? = null
 
     // Lazily generate the PDF file when needed
     fun buildPdf(): File? {
@@ -108,6 +111,7 @@ fun TicketPrintActions(
             doc.close()
             pdfFile
         }.onFailure { e ->
+            lastPdfError = e
             Timber.tag("TicketPrintActions").e(e, "Failed to build PDF for ticket $ticketId")
         }.getOrNull()
     }
@@ -139,7 +143,11 @@ fun TicketPrintActions(
                 scope.launch {
                     val pdfFile = buildPdf()
                     if (pdfFile == null) {
-                        snackbarHost.showSnackbar("Failed to generate PDF")
+                        val reason = lastPdfError?.message?.takeIf { it.isNotBlank() }
+                        snackbarHost.showSnackbar(
+                            if (reason != null) "Failed to generate PDF: $reason"
+                            else "Failed to generate PDF",
+                        )
                         return@launch
                     }
                     val pdfUri = getPdfUri(pdfFile)
@@ -198,7 +206,11 @@ fun TicketPrintActions(
                         )
                     }.onFailure { e ->
                         Timber.tag("TicketPrintActions").e(e, "PrintManager failed")
-                        snackbarHost.showSnackbar("Printing not available")
+                        val reason = e.message?.takeIf { it.isNotBlank() }
+                        snackbarHost.showSnackbar(
+                            if (reason != null) "Printing not available: $reason"
+                            else "Printing not available on this device",
+                        )
                     }
                 }
             },
@@ -213,7 +225,11 @@ fun TicketPrintActions(
                     val pdfFile = buildPdf()
                     val pdfUri = pdfFile?.let { getPdfUri(it) }
                     if (pdfUri == null) {
-                        snackbarHost.showSnackbar("Failed to generate PDF")
+                        val reason = lastPdfError?.message?.takeIf { it.isNotBlank() }
+                        snackbarHost.showSnackbar(
+                            if (reason != null) "Failed to generate PDF: $reason"
+                            else "Failed to generate PDF",
+                        )
                         return@launch
                     }
                     val intent = Intent(Intent.ACTION_SEND).apply {

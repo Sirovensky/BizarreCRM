@@ -314,7 +314,11 @@ fun PurchaseOrderSendActions(
                         )
                     }.onFailure { e ->
                         Timber.tag("POSendActions").e(e, "PrintManager failed")
-                        snackbarHost.showSnackbar("Printing not available")
+                        val reason = e.message?.takeIf { it.isNotBlank() }
+                        snackbarHost.showSnackbar(
+                            if (reason != null) "Printing not available: $reason"
+                            else "Printing not available on this device",
+                        )
                     }
                 }
             },
