@@ -1,3 +1,4 @@
+import Core
 import Foundation
 import Networking
 
@@ -42,9 +43,9 @@ public actor MembershipPassUpdater {
                 body: EmptyPassBody(),
                 as: PassRefreshResult.self
             )
-            AppLog.debug("[MembershipPassUpdater] refreshed pass \(response.passId)")
+            AppLog.networking.debug("[MembershipPassUpdater] refreshed pass \(response.passId, privacy: .public)")
         } catch {
-            AppLog.error("[MembershipPassUpdater] refresh failed for \(passId): \(error)")
+            AppLog.networking.error("[MembershipPassUpdater] refresh failed for \(passId, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -72,17 +73,3 @@ private struct PassRefreshResult: Decodable, Sendable {
     }
 }
 
-// MARK: - AppLog shim (avoids importing Core for a log call)
-
-/// Thin shim so this file compiles without a hard Core import.
-/// The real `AppLog` lives in `Core/Logging/AppLog.swift`.
-private enum AppLog {
-    static func debug(_ msg: String) {
-        #if DEBUG
-        print("[DEBUG] \(msg)")
-        #endif
-    }
-    static func error(_ msg: String) {
-        print("[ERROR] \(msg)")
-    }
-}
