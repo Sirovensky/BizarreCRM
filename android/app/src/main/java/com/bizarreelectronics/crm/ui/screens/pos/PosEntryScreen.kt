@@ -661,6 +661,7 @@ private fun CreateCustomerDialog(
                     singleLine = true,
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                         capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Words,
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Next,
                     ),
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -671,6 +672,7 @@ private fun CreateCustomerDialog(
                     singleLine = true,
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                         capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Words,
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Next,
                     ),
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -681,6 +683,7 @@ private fun CreateCustomerDialog(
                     singleLine = true,
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                         keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone,
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Next,
                     ),
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -692,6 +695,12 @@ private fun CreateCustomerDialog(
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                         keyboardType = androidx.compose.ui.text.input.KeyboardType.Email,
                         autoCorrect = false,
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Done,
+                    ),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                        onDone = {
+                            if (canSubmit) onSubmit(firstName.trim(), lastName.trim(), phone.trim(), email.trim())
+                        },
                     ),
                     modifier = Modifier.fillMaxWidth(),
                 )
