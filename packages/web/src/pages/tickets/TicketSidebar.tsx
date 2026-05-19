@@ -370,8 +370,9 @@ function AppointmentsCard({ ticketId }: { ticketId: number }) {
       {showForm && (
         <div className="mb-3 space-y-2 rounded-lg border border-surface-200 p-3 dark:border-surface-700">
           <div>
-            <label className="block text-[10px] font-medium text-surface-500 mb-0.5">Start Time *</label>
+            <label htmlFor="ticket-time-entry-start" className="block text-[10px] font-medium text-surface-500 mb-0.5">Start Time *</label>
             <input
+              id="ticket-time-entry-start"
               type="datetime-local"
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
@@ -379,8 +380,9 @@ function AppointmentsCard({ ticketId }: { ticketId: number }) {
             />
           </div>
           <div>
-            <label className="block text-[10px] font-medium text-surface-500 mb-0.5">End Time</label>
+            <label htmlFor="ticket-time-entry-end" className="block text-[10px] font-medium text-surface-500 mb-0.5">End Time</label>
             <input
+              id="ticket-time-entry-end"
               type="datetime-local"
               value={endTime}
               onChange={(e) => setEndTime(e.target.value)}
@@ -388,8 +390,9 @@ function AppointmentsCard({ ticketId }: { ticketId: number }) {
             />
           </div>
           <div>
-            <label className="block text-[10px] font-medium text-surface-500 mb-0.5">Note</label>
+            <label htmlFor="ticket-time-entry-note" className="block text-[10px] font-medium text-surface-500 mb-0.5">Note</label>
             <input
+              id="ticket-time-entry-note"
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="Optional note..."

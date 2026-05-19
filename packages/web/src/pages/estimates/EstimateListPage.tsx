@@ -406,8 +406,9 @@ function CreateEstimateModal({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Valid Until</label>
+              <label htmlFor="estimate-valid-until" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Valid Until</label>
               <input
+                id="estimate-valid-until"
                 type="date"
                 value={validUntil}
                 onChange={(e) => setValidUntil(e.target.value)}
@@ -415,8 +416,9 @@ function CreateEstimateModal({
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Notes</label>
+              <label htmlFor="estimate-notes" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Notes</label>
               <input
+                id="estimate-notes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"

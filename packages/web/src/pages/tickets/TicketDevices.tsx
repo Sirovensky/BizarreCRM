@@ -451,13 +451,13 @@ function DeviceEditForm({
       </div>
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className="block text-xs font-medium text-surface-500 mb-1">Device Due Date</label>
-          <input type="date" value={form.due_on} onChange={(e) => setForm({ ...form, due_on: e.target.value })}
+          <label htmlFor="ticket-device-due-on" className="block text-xs font-medium text-surface-500 mb-1">Device Due Date</label>
+          <input id="ticket-device-due-on" type="date" value={form.due_on} onChange={(e) => setForm({ ...form, due_on: e.target.value })}
             className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-surface-500 mb-1">Collected Date</label>
-          <input type="date" value={form.collected_date} onChange={(e) => setForm({ ...form, collected_date: e.target.value })}
+          <label htmlFor="ticket-device-collected-date" className="block text-xs font-medium text-surface-500 mb-1">Collected Date</label>
+          <input id="ticket-device-collected-date" type="date" value={form.collected_date} onChange={(e) => setForm({ ...form, collected_date: e.target.value })}
             className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20" />
         </div>
         <div>
