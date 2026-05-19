@@ -9,6 +9,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -54,21 +55,23 @@ class WarrantyLookupViewModel @Inject constructor(
     val state: StateFlow<WarrantyLookupUiState> = _state.asStateFlow()
 
     fun onQueryChange(query: String) {
-        _state.value = _state.value.copy(query = query, error = null)
+        _state.update { it.copy(query = query, error = null) }
     }
 
     fun onQueryTypeChange(type: WarrantyLookupQueryType) {
-        _state.value = _state.value.copy(
-            queryType = type,
-            results = emptyList(),
-            error = null,
-        )
+        _state.update {
+            it.copy(
+                queryType = type,
+                results = emptyList(),
+                error = null,
+            )
+        }
     }
 
     fun search() {
         val current = _state.value
         if (current.query.isBlank()) return
-        _state.value = current.copy(isLoading = true, error = null, results = emptyList())
+        _state.update { it.copy(isLoading = true, error = null, results = emptyList()) }
 
         viewModelScope.launch {
             try {
@@ -79,11 +82,13 @@ class WarrantyLookupViewModel @Inject constructor(
                     WarrantyLookupQueryType.Phone  -> warrantyApi.warrantyLookup(phone = q)
                 }
                 val rows = resp.data ?: emptyList()
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    results = rows,
-                    error = if (rows.isEmpty()) "No warranty records found." else null,
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        results = rows,
+                        error = if (rows.isEmpty()) "No warranty records found." else null,
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: re-throw cancellation so back-nav or
                 // a rapid new-search doesn't paint "Lookup failed:
@@ -91,20 +96,22 @@ class WarrantyLookupViewModel @Inject constructor(
                 // lookup screen.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = "Lookup failed: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = "Lookup failed: ${e.message}",
+                    )
+                }
             }
         }
     }
 
     /** User tapped a row's "Create warranty-return ticket" CTA — show confirm dialog. */
     fun requestCreateTicket(row: WarrantyLookupRowDto) {
-        _state.value = _state.value.copy(pendingCreateTicket = row)
+        _state.update { it.copy(pendingCreateTicket = row) }
     }
 
     fun dismissCreateTicket() {
-        _state.value = _state.value.copy(pendingCreateTicket = null)
+        _state.update { it.copy(pendingCreateTicket = null) }
     }
 }

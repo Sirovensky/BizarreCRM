@@ -11,6 +11,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -61,17 +62,17 @@ class WarrantyClaimViewModel @Inject constructor(
     // ─── Query ────────────────────────────────────────────────────────────────
 
     fun onQueryChange(query: String) {
-        _state.value = _state.value.copy(query = query, searchError = null)
+        _state.update { it.copy(query = query, searchError = null) }
     }
 
     fun onQueryTypeChange(type: QueryType) {
-        _state.value = _state.value.copy(queryType = type, searchResults = emptyList(), searchError = null)
+        _state.update { it.copy(queryType = type, searchResults = emptyList(), searchError = null) }
     }
 
     fun search() {
         val current = _state.value
         if (current.query.isBlank()) return
-        _state.value = current.copy(isSearching = true, searchError = null, searchResults = emptyList())
+        _state.update { it.copy(isSearching = true, searchError = null, searchResults = emptyList()) }
 
         viewModelScope.launch {
             try {
@@ -82,20 +83,24 @@ class WarrantyClaimViewModel @Inject constructor(
                     QueryType.Name    -> warrantyApi.searchWarranties(name = q)
                 }
                 val results = resp.data?.warranties ?: emptyList()
-                _state.value = _state.value.copy(
-                    isSearching = false,
-                    searchResults = results,
-                    searchError = if (results.isEmpty()) "No warranty records found." else null,
-                )
+                _state.update {
+                    it.copy(
+                        isSearching = false,
+                        searchResults = results,
+                        searchError = if (results.isEmpty()) "No warranty records found." else null,
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: re-throw so back-nav doesn't paint a
                 // fake "Search failed" banner.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSearching = false,
-                    searchError = "Search failed: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isSearching = false,
+                        searchError = "Search failed: ${e.message}",
+                    )
+                }
             }
         }
     }
@@ -103,24 +108,28 @@ class WarrantyClaimViewModel @Inject constructor(
     // ─── Selection ────────────────────────────────────────────────────────────
 
     fun selectWarranty(warranty: WarrantyRecordDto) {
-        _state.value = _state.value.copy(
-            selectedWarranty = warranty,
-            claimResult = null,
-            claimError = null,
-        )
+        _state.update {
+            it.copy(
+                selectedWarranty = warranty,
+                claimResult = null,
+                claimError = null,
+            )
+        }
     }
 
     fun onClaimNotesChange(notes: String) {
-        _state.value = _state.value.copy(claimNotes = notes)
+        _state.update { it.copy(claimNotes = notes) }
     }
 
     fun clearSelection() {
-        _state.value = _state.value.copy(
-            selectedWarranty = null,
-            claimNotes = "",
-            claimResult = null,
-            claimError = null,
-        )
+        _state.update {
+            it.copy(
+                selectedWarranty = null,
+                claimNotes = "",
+                claimResult = null,
+                claimError = null,
+            )
+        }
     }
 
     // ─── Claim ───────────────────────────────────────────────────────────────
@@ -134,7 +143,7 @@ class WarrantyClaimViewModel @Inject constructor(
      */
     fun fileClaim() {
         val selected = _state.value.selectedWarranty ?: return
-        _state.value = _state.value.copy(isSubmitting = true, claimError = null)
+        _state.update { it.copy(isSubmitting = true, claimError = null) }
 
         viewModelScope.launch {
             try {
@@ -148,25 +157,29 @@ class WarrantyClaimViewModel @Inject constructor(
                 )
                 val result = resp.data
                 if (result != null) {
-                    _state.value = _state.value.copy(isSubmitting = false, claimResult = result)
+                    _state.update { it.copy(isSubmitting = false, claimResult = result) }
                 } else {
-                    _state.value = _state.value.copy(
-                        isSubmitting = false,
-                        claimError = resp.message ?: "Claim failed — no data returned.",
-                    )
+                    _state.update {
+                        it.copy(
+                            isSubmitting = false,
+                            claimError = resp.message ?: "Claim failed — no data returned.",
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSubmitting = false,
-                    claimError = "Failed to file claim: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isSubmitting = false,
+                        claimError = "Failed to file claim: ${e.message}",
+                    )
+                }
             }
         }
     }
 
     fun clearClaimResult() {
-        _state.value = _state.value.copy(claimResult = null, claimError = null)
+        _state.update { it.copy(claimResult = null, claimError = null) }
     }
 }

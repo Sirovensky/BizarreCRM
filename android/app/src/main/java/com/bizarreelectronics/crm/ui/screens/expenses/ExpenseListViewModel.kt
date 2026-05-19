@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -42,7 +43,7 @@ class ExpenseListViewModel @Inject constructor(
     fun loadExpenses() {
         collectJob?.cancel()
         collectJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = _state.value.expenses.isEmpty(), error = null)
+            _state.update { it.copy(isLoading = it.expenses.isEmpty(), error = null) }
             val query = _state.value.searchQuery.trim()
             val categoryFilter = _state.value.selectedCategory
             val advFilter = _state.value.advancedFilter
@@ -97,36 +98,40 @@ class ExpenseListViewModel @Inject constructor(
                     result to employeeOptions
                 }
                 .catch {
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        isRefreshing = false,
-                        error = "Failed to load expenses. Check your connection and try again.",
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            isRefreshing = false,
+                            error = "Failed to load expenses. Check your connection and try again.",
+                        )
+                    }
                 }
                 .collectLatest { (expenses, employeeOptions) ->
                     val sorted = sortExpenses(expenses, _state.value.currentSort)
-                    _state.value = _state.value.copy(
-                        expenses = sorted,
-                        totalAmount = sorted.sumOf { it.amount },
-                        categorySlices = buildCategorySlices(sorted),
-                        reimbursablePendingAmount = sorted
-                            .filter { it.approvalStatus == "pending" }
-                            .sumOf { it.amount },
-                        employeeOptions = employeeOptions,
-                        isLoading = false,
-                        isRefreshing = false,
-                    )
+                    _state.update {
+                        it.copy(
+                            expenses = sorted,
+                            totalAmount = sorted.sumOf { e -> e.amount },
+                            categorySlices = buildCategorySlices(sorted),
+                            reimbursablePendingAmount = sorted
+                                .filter { e -> e.approvalStatus == "pending" }
+                                .sumOf { e -> e.amount },
+                            employeeOptions = employeeOptions,
+                            isLoading = false,
+                            isRefreshing = false,
+                        )
+                    }
                 }
         }
     }
 
     fun refresh() {
-        _state.value = _state.value.copy(isRefreshing = true)
+        _state.update { it.copy(isRefreshing = true) }
         loadExpenses()
     }
 
     fun onSearchChanged(query: String) {
-        _state.value = _state.value.copy(searchQuery = query)
+        _state.update { it.copy(searchQuery = query) }
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             delay(300)
@@ -135,18 +140,20 @@ class ExpenseListViewModel @Inject constructor(
     }
 
     fun onCategoryChanged(category: String) {
-        _state.value = _state.value.copy(selectedCategory = category)
+        _state.update { it.copy(selectedCategory = category) }
         loadExpenses()
     }
 
     fun onSortChanged(sort: ExpenseSort) {
-        val sorted = sortExpenses(_state.value.expenses, sort)
-        _state.value = _state.value.copy(currentSort = sort, expenses = sorted)
+        _state.update {
+            val sorted = sortExpenses(it.expenses, sort)
+            it.copy(currentSort = sort, expenses = sorted)
+        }
     }
 
     /** Called from [ExpenseFilterSheet] when the user taps "Apply". */
     fun onAdvancedFilterChanged(filter: ExpenseFilterState) {
-        _state.value = _state.value.copy(advancedFilter = filter)
+        _state.update { it.copy(advancedFilter = filter) }
         loadExpenses()
     }
 

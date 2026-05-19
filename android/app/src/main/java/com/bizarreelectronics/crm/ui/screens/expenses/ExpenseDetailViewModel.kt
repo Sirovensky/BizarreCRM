@@ -10,6 +10,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 import javax.inject.Inject
@@ -39,101 +40,121 @@ class ExpenseDetailViewModel @Inject constructor(
     init {
         val role = authPreferences.userRole
         val isApprover = role == "admin" || role == "manager"
-        _state.value = _state.value.copy(isApprover = isApprover)
+        _state.update { it.copy(isApprover = isApprover) }
         load()
     }
 
     fun load() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val response = expenseApi.getExpense(expenseId)
-                _state.value = _state.value.copy(
-                    expense = response.data,
-                    isLoading = false,
-                )
+                _state.update {
+                    it.copy(
+                        expense = response.data,
+                        isLoading = false,
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: re-throw cancellation so back-nav
                 // mid-load doesn't paint a fake "Failed to load expense"
                 // error.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = "Failed to load expense. ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = "Failed to load expense. ${e.message}",
+                    )
+                }
             }
         }
     }
 
     fun approve(comment: String) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isApprovalLoading = true, approvalError = null)
+            _state.update { it.copy(isApprovalLoading = true, approvalError = null) }
             try {
                 expenseApi.approveExpense(expenseId, comment.takeIf { it.isNotBlank() })
-                _state.value = _state.value.copy(
-                    isApprovalLoading = false,
-                    approvalSuccess = "Expense approved",
-                )
+                _state.update {
+                    it.copy(
+                        isApprovalLoading = false,
+                        approvalSuccess = "Expense approved",
+                    )
+                }
                 load()
             } catch (e: HttpException) {
                 if (e.code() == 404) {
                     // 404 tolerated — server may not have approval endpoint yet
-                    _state.value = _state.value.copy(
-                        isApprovalLoading = false,
-                        approvalSuccess = "Approved (pending server sync)",
-                    )
+                    _state.update {
+                        it.copy(
+                            isApprovalLoading = false,
+                            approvalSuccess = "Approved (pending server sync)",
+                        )
+                    }
                 } else {
-                    _state.value = _state.value.copy(
-                        isApprovalLoading = false,
-                        approvalError = "Failed to approve: ${e.message}",
-                    )
+                    _state.update {
+                        it.copy(
+                            isApprovalLoading = false,
+                            approvalError = "Failed to approve: ${e.message}",
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isApprovalLoading = false,
-                    approvalError = "Failed to approve: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isApprovalLoading = false,
+                        approvalError = "Failed to approve: ${e.message}",
+                    )
+                }
             }
         }
     }
 
     fun reject(comment: String) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isApprovalLoading = true, approvalError = null)
+            _state.update { it.copy(isApprovalLoading = true, approvalError = null) }
             try {
                 expenseApi.rejectExpense(expenseId, comment.takeIf { it.isNotBlank() })
-                _state.value = _state.value.copy(
-                    isApprovalLoading = false,
-                    approvalSuccess = "Expense rejected",
-                )
+                _state.update {
+                    it.copy(
+                        isApprovalLoading = false,
+                        approvalSuccess = "Expense rejected",
+                    )
+                }
                 load()
             } catch (e: HttpException) {
                 if (e.code() == 404) {
-                    _state.value = _state.value.copy(
-                        isApprovalLoading = false,
-                        approvalSuccess = "Rejected (pending server sync)",
-                    )
+                    _state.update {
+                        it.copy(
+                            isApprovalLoading = false,
+                            approvalSuccess = "Rejected (pending server sync)",
+                        )
+                    }
                 } else {
-                    _state.value = _state.value.copy(
-                        isApprovalLoading = false,
-                        approvalError = "Failed to reject: ${e.message}",
-                    )
+                    _state.update {
+                        it.copy(
+                            isApprovalLoading = false,
+                            approvalError = "Failed to reject: ${e.message}",
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isApprovalLoading = false,
-                    approvalError = "Failed to reject: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isApprovalLoading = false,
+                        approvalError = "Failed to reject: ${e.message}",
+                    )
+                }
             }
         }
     }
 
     fun clearApprovalMessage() {
-        _state.value = _state.value.copy(approvalError = null, approvalSuccess = null)
+        _state.update { it.copy(approvalError = null, approvalSuccess = null) }
     }
 }

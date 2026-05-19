@@ -10,6 +10,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -40,56 +41,66 @@ class CustomerHealthScoreViewModel @Inject constructor(
 
     fun load(customerId: Long) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val response = customerApi.getHealthScore(customerId)
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    healthScore = response.data,
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        healthScore = response.data,
+                    )
+                }
             } catch (e: HttpException) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = if (e.code() == 404) null else "Failed to load health score (${e.code()})",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = if (e.code() == 404) null else "Failed to load health score (${e.code()})",
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: re-throw cancellation so leaving the
                 // health-score screen mid-load doesn't paint a fake error.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = "Failed to load health score: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = "Failed to load health score: ${e.message}",
+                    )
+                }
             }
         }
     }
 
     fun recalculate(customerId: Long) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isRecalculating = true)
+            _state.update { it.copy(isRecalculating = true) }
             try {
                 val response = customerApi.recalculateHealthScore(customerId)
-                _state.value = _state.value.copy(
-                    isRecalculating = false,
-                    healthScore = response.data ?: _state.value.healthScore,
-                )
+                _state.update {
+                    it.copy(
+                        isRecalculating = false,
+                        healthScore = response.data ?: it.healthScore,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isRecalculating = false,
-                    error = "Recalculation failed: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isRecalculating = false,
+                        error = "Recalculation failed: ${e.message}",
+                    )
+                }
             }
         }
     }
 
     fun openExplanationSheet() {
-        _state.value = _state.value.copy(showExplanationSheet = true)
+        _state.update { it.copy(showExplanationSheet = true) }
     }
 
     fun dismissExplanationSheet() {
-        _state.value = _state.value.copy(showExplanationSheet = false)
+        _state.update { it.copy(showExplanationSheet = false) }
     }
 }
