@@ -18,6 +18,7 @@ import {
 import toast from 'react-hot-toast';
 import { campaignsApi, crmApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { formatDateTime } from '@/utils/format';
 import { formatApiError } from '@/utils/apiError';
@@ -96,6 +97,7 @@ const STATUS_STYLES: Record<Campaign['status'], string> = {
 };
 
 export function CampaignsPage() {
+  useDocumentTitle('Campaigns');
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);

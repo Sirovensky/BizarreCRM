@@ -4,6 +4,7 @@ import { Plus, Trash2, Pencil, DollarSign, Search, Loader2, X, ChevronLeft, Chev
 import toast from 'react-hot-toast';
 import { expenseApi } from '@/api/endpoints';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { cn } from '@/utils/cn';
 import { formatApiError } from '@/utils/apiError';
 import { formatCurrency, formatDate } from '@/utils/format';
@@ -59,6 +60,7 @@ interface ExpenseRow {
 }
 
 export function ExpensesPage() {
+  useDocumentTitle('Expenses');
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [keyword, setKeyword] = useState('');

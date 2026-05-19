@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, BarChart3, TrendingUp, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { api } from '@/api/client';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 // BUGHUNT-2026-05-16: nps_responses.responded_at is stored via SQLite
 // datetime('now') → 'YYYY-MM-DD HH:MM:SS' (UTC, no 'Z' suffix). V8 parses
@@ -47,6 +48,7 @@ interface NpsTrendResponse {
 }
 
 export function NpsTrendPage() {
+  useDocumentTitle('NPS Trend');
   // WEB-FC-011 (Fixer-B23 2026-04-25): stop swallowing query errors into a
   // synthetic empty payload. Owners need to distinguish "no responses yet"
   // (200 OK + empty arrays) from "session expired / server bug / CORS"

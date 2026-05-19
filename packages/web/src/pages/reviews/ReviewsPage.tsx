@@ -6,6 +6,7 @@ import {
 import toast from 'react-hot-toast';
 import { crmApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { formatApiError } from '@/utils/apiError';
 import { cn } from '@/utils/cn';
 import { formatDate } from '@/utils/format';
@@ -163,6 +164,7 @@ function ReplyModal({ review, onClose }: ReplyModalProps) {
 // ─── Main Page ────────────────────────────────────────────────────
 
 export function ReviewsPage() {
+  useDocumentTitle('Reviews');
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [ratingFilter, setRatingFilter] = useState<number | ''>('');
