@@ -366,6 +366,7 @@ public struct ManagerPinSheet: View {
                     SecureField("Enter PIN", text: $pin)
                         .keyboardType(.numberPad)
                         .textContentType(.oneTimeCode)
+                        .submitLabel(.go)
                         .font(.brandHeadlineMedium())
                         .multilineTextAlignment(.center)
                         .padding(BrandSpacing.base)

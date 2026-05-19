@@ -25,6 +25,7 @@ public struct ChangePINView: View {
                     SecureField("Current PIN", text: $vm.currentPIN)
                         .keyboardType(.numberPad)
                         .textContentType(.password)
+                        .submitLabel(.next)
                         .onChange(of: vm.currentPIN) { _, v in
                             vm.currentPIN = String(v.filter(\.isNumber).prefix(6))
                         }
@@ -34,6 +35,7 @@ public struct ChangePINView: View {
                 Section("New PIN") {
                     SecureField("New PIN (4–6 digits)", text: $vm.newPIN)
                         .keyboardType(.numberPad)
+                        .submitLabel(.next)
                         .onChange(of: vm.newPIN) { _, v in
                             vm.newPIN = String(v.filter(\.isNumber).prefix(6))
                         }
@@ -41,6 +43,7 @@ public struct ChangePINView: View {
 
                     SecureField("Confirm new PIN", text: $vm.confirmPIN)
                         .keyboardType(.numberPad)
+                        .submitLabel(.done)
                         .onChange(of: vm.confirmPIN) { _, v in
                             vm.confirmPIN = String(v.filter(\.isNumber).prefix(6))
                         }
