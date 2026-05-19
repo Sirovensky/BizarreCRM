@@ -530,7 +530,9 @@ private fun InventoryListRow(
         append(", quantity ${item.inStock} in stock")
         append(", ${CurrencyFormatter.format(item.retailPrice)}")
         if (!item.itemType.isNullOrBlank()) append(", ${item.itemType.replaceFirstChar { it.uppercase() }}")
-        append(". Tap to open.")
+        // Row supports long-press for quick-adjust / context menu; previously
+        // undiscoverable for screen-reader and visual users alike.
+        append(". Tap to open. Long-press for more options.")
     }
 
     // Context-menu state — driven by overflow "…" button

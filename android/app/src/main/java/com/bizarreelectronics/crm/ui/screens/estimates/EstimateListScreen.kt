@@ -359,7 +359,8 @@ private fun EstimateCard(
         append(", $statusLabel")
         val dateStr = estimate.validUntil?.take(10)?.takeIf { it.isNotBlank() }
         if (dateStr != null) append(", valid until $dateStr")
-        append(". Tap to open.")
+        // Card supports long-press for context menu; previously undiscoverable.
+        append(". Tap to open. Long-press for more options.")
     }
 
     // Days remaining for expiring chip

@@ -96,6 +96,9 @@ fun PurchaseOrderSendActions(
 
     // ── Build PDF file ───────────────────────────────────────────────────────
 
+    // Returns the file on success, or a non-null Throwable on the failure path so
+    // the snackbar can show a useful "Failed to generate PDF: <reason>" message.
+    var lastPdfError: Throwable? = null
     fun buildPdf(): File? = runCatching {
         val dir = File(context.cacheDir, "purchase-orders").apply { mkdirs() }
         val pdfFile = File(dir, "po-${order.id}.pdf")
@@ -185,6 +188,7 @@ fun PurchaseOrderSendActions(
         doc.close()
         pdfFile
     }.onFailure { e ->
+        lastPdfError = e
         Timber.tag("POSendActions").e(e, "PDF build failed for PO ${order.id}")
     }.getOrNull()
 
@@ -245,12 +249,16 @@ fun PurchaseOrderSendActions(
                 scope.launch {
                     val pdfFile = withContext(Dispatchers.IO) { buildPdf() }
                     if (pdfFile == null) {
-                        snackbarHost.showSnackbar("Failed to generate PDF")
+                        val reason = lastPdfError?.message?.takeIf { it.isNotBlank() }
+                        snackbarHost.showSnackbar(
+                            if (reason != null) "Failed to generate PDF: $reason"
+                            else "Failed to generate PDF",
+                        )
                         return@launch
                     }
                     val pdfUri = getPdfUri(pdfFile)
                     if (pdfUri == null) {
-                        snackbarHost.showSnackbar("Cannot export PDF")
+                        snackbarHost.showSnackbar("Cannot export PDF — sharing provider unavailable")
                         return@launch
                     }
                     runCatching {
