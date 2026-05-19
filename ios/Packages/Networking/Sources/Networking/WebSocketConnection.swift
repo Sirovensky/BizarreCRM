@@ -38,9 +38,20 @@ public final class WebSocketConnection: @unchecked Sendable {
 
     public func connect() {
         intentionallyClosed = false
-        var req = URLRequest(url: url)
-        // §21.5: auth token in Sec-WebSocket-Protocol header
-        req.setValue("Bearer \(authToken)", forHTTPHeaderField: "Sec-WebSocket-Protocol")
+        let req = URLRequest(url: url)
+        // BUGHUNT-2026-05-19: don't set the bearer token in the
+        // `Sec-WebSocket-Protocol` upgrade header. The server (`ws/server.ts`)
+        // deliberately ignores that header and authenticates via the inline
+        // `{type:"auth",token}` frame sent by the `WSConnection` adapter
+        // immediately after this connect resumes. Setting the protocol header
+        // here:
+        //   1. leaks the access token into upgrade-request logs that any
+        //      reverse proxy / SSL terminator inevitably records, and
+        //   2. is an RFC 6455 violation (subprotocol value should be a token,
+        //      not `Bearer <jwt>`) — strict servers / middleboxes can outright
+        //      reject the upgrade with a 400.
+        // The auth frame in WSConnection is the only credential path that
+        // actually works server-side, so removing this header is a pure win.
         // BUGHUNT-2026-05-18: cancel the prior wsTask before assigning a new
         // one. Reconnect paths (and any caller that hits connect() twice)
         // would otherwise leak the prior URLSessionWebSocketTask and keep
