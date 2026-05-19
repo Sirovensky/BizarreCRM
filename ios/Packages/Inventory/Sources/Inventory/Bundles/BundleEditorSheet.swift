@@ -268,9 +268,4 @@ private extension Array {
     }
 }
 
-// MARK: - Warning color placeholder
-
-private extension Color {
-    static var bizarreWarning: Color { .orange }
-}
 #endif
