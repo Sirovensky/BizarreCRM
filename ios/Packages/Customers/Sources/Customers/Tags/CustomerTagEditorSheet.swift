@@ -89,6 +89,7 @@ public struct CustomerTagEditorSheet: View {
                 .foregroundStyle(.bizarreOnSurface)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
+                .submitLabel(.done)
                 .accessibilityLabel("Tag search or new tag entry")
                 .onSubmit {
                     vm.addQueryAsTag()

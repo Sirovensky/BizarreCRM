@@ -78,6 +78,7 @@ public struct TagPicker: View {
                 .foregroundStyle(.bizarreOnSurface)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
+                .submitLabel(.done)
                 .accessibilityLabel("Tag input")
                 .onSubmit { commitInput() }
 

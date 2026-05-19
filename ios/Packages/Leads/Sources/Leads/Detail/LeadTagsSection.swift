@@ -170,6 +170,7 @@ public struct LeadTagEditorSheet: View {
                 .font(.brandBodyMedium())
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
+                .submitLabel(.done)
                 .accessibilityLabel("Tag entry field")
                 .onSubmit { vm.addTag() }
             if !vm.query.isEmpty {

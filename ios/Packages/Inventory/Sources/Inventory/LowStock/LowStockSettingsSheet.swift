@@ -108,6 +108,7 @@ public struct LowStockSettingsSheet: View {
                     Button("Save") { saveAndDismiss() }
                         .fontWeight(.semibold)
                         .foregroundStyle(.bizarreOrange)
+                        .disabled(emailAlertsEnabled && alertEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }

@@ -108,6 +108,7 @@ public struct CustomerExtendedFieldsSection: View {
                     TextField("Add tag…", text: $tagInput)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
+                        .submitLabel(.done)
                         .accessibilityLabel("New tag")
                         .onSubmit { addTag() }
                     if !tagInput.isEmpty {
