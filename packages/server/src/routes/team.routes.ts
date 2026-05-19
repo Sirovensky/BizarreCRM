@@ -1276,6 +1276,12 @@ router.get(
       const str = (s ?? '').replace(/[",\n\r]/g, ' ').trim();
       return /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
     };
+    // BUGHUNT-2026-05-19: usernames are user-chosen, never regex-restricted
+    // (see settings.routes.ts /users POST), and were previously inlined raw
+    // and UNQUOTED into the payroll CSV. A username like `=cmd|'/C calc'!A0`
+    // (or a comma/quote-bearing one) skips both the formula guard AND the
+    // CSV quoting, so opening the export in Excel/Calc/Sheets executed the
+    // injected formula. Quote + sanitize alongside first/last name.
     // WEB-UIUX-1156: detect empty payroll periods so the export doesn't
     // hand the operator a "header + zeros for every employee" CSV without
     // any signal. We aggregate as we build each row; if every user landed
@@ -1289,7 +1295,7 @@ router.get(
       const gross = (Number(h) + Number(c) + Number(t)).toFixed(2);
       totalActivity += Number(h) + Number(c) + Number(t);
       csvLines.push(
-        `${u.id},"${sanitize(u.first_name)}","${sanitize(u.last_name)}",${u.username},${h},0.00,${c},${t},${gross},${period.start_date},${period.end_date}`,
+        `${u.id},"${sanitize(u.first_name)}","${sanitize(u.last_name)}","${sanitize(u.username)}",${h},0.00,${c},${t},${gross},${period.start_date},${period.end_date}`,
       );
     }
     const isEmpty = totalActivity === 0;
