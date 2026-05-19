@@ -167,14 +167,15 @@ export function ScheduledSendModal({
 
   return (
     <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="scheduled-send-title"
+      role="presentation"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={onClose}
     >
       <div
         ref={dialogRef as RefObject<HTMLDivElement>}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="scheduled-send-title"
         className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-800"
         onClick={(e) => e.stopPropagation()}
       >
