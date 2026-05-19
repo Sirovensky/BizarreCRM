@@ -22,6 +22,7 @@ import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material3.*
 import com.bizarreelectronics.crm.ui.components.shared.brandColors
+import com.bizarreelectronics.crm.util.CurrencyFormatter
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.*
@@ -1003,7 +1004,7 @@ private fun MiscItemDialog(onAdd: (String, Long) -> Unit, onDismiss: () -> Unit)
                     value = priceInput,
                     onValueChange = { raw -> priceInput = raw.filter { it.isDigit() || it == '.' } },
                     label = { Text("Price") },
-                    prefix = { Text("$") },
+                    prefix = { Text(CurrencyFormatter.currencySymbol()) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Decimal,
@@ -1054,7 +1055,7 @@ private fun CartDiscountDialog(
                 value = input,
                 onValueChange = { raw -> input = raw.filter { it.isDigit() || it == '.' } },
                 label = { Text("Amount") },
-                prefix = { Text("$") },
+                prefix = { Text(CurrencyFormatter.currencySymbol()) },
                 singleLine = true,
                 isError = overflow,
                 supportingText = if (overflow) {
@@ -1157,7 +1158,7 @@ private fun TipDialog(
                             else filtered
                         },
                         label = { Text("Tip amount") },
-                        prefix = { Text("$") },
+                        prefix = { Text(CurrencyFormatter.currencySymbol()) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Decimal,

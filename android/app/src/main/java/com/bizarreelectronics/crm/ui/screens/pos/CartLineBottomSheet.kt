@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.view.HapticFeedbackConstantsCompat
 import androidx.core.view.ViewCompat
 import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
+import com.bizarreelectronics.crm.util.CurrencyFormatter
 
 /**
  * Bottom sheet shown when user taps a cart line.
@@ -200,7 +201,7 @@ fun CartLineBottomSheet(
                                     filtered.substring(dotIdx + 1).filter { it.isDigit() }.take(2)
                             else filtered
                         },
-                        prefix = { Text("$") },
+                        prefix = { Text(CurrencyFormatter.currencySymbol()) },
                         label = { Text("Override price") },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(

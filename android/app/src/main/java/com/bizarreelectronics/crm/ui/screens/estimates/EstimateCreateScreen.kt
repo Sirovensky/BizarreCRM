@@ -36,6 +36,7 @@ import com.bizarreelectronics.crm.data.remote.dto.CustomerListItem
 import com.bizarreelectronics.crm.data.remote.dto.InventoryListItem
 import com.bizarreelectronics.crm.data.remote.dto.RepairServiceItem
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.util.CurrencyFormatter
 import com.bizarreelectronics.crm.util.formatAsMoney
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -708,7 +709,7 @@ private fun EstimateLineItemRowCard(
             OutlinedTextField(value = row.description, onValueChange = onDescChanged, label = { Text("Description") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = row.qty, onValueChange = onQtyChanged, label = { Text("Qty") }, modifier = Modifier.weight(1f), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                OutlinedTextField(value = row.unitPrice, onValueChange = onPriceChanged, label = { Text("Unit price") }, prefix = { Text("$") }, modifier = Modifier.weight(2f), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                OutlinedTextField(value = row.unitPrice, onValueChange = onPriceChanged, label = { Text("Unit price") }, prefix = { Text(CurrencyFormatter.currencySymbol()) }, modifier = Modifier.weight(2f), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
             }
         }
     }
@@ -911,7 +912,7 @@ private fun FreeFormTab(state: EstimateCreateUiState, viewModel: EstimateCreateV
     OutlinedTextField(value = state.freeFormDesc, onValueChange = viewModel::onFreeFormDescChanged, label = { Text("Description") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedTextField(value = state.freeFormQty, onValueChange = viewModel::onFreeFormQtyChanged, label = { Text("Qty") }, modifier = Modifier.weight(1f), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-        OutlinedTextField(value = state.freeFormPrice, onValueChange = viewModel::onFreeFormPriceChanged, label = { Text("Price") }, prefix = { Text("$") }, modifier = Modifier.weight(2f), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+        OutlinedTextField(value = state.freeFormPrice, onValueChange = viewModel::onFreeFormPriceChanged, label = { Text("Price") }, prefix = { Text(CurrencyFormatter.currencySymbol()) }, modifier = Modifier.weight(2f), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
     }
     Button(
         onClick = viewModel::addFreeFormLine,

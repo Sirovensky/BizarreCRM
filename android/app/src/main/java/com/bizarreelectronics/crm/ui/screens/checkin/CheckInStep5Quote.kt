@@ -18,6 +18,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import com.bizarreelectronics.crm.ui.components.shared.brandColors
+import com.bizarreelectronics.crm.util.CurrencyFormatter
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -202,7 +203,7 @@ private fun RepairLinesPlaceholder(
                     onSubtotalChange(cents)
                 },
                 label = { Text("Estimated repair cost") },
-                prefix = { Text("$") },
+                prefix = { Text(CurrencyFormatter.currencySymbol()) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 singleLine = true,
                 modifier = Modifier

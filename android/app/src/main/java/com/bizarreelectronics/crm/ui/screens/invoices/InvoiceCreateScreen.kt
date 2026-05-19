@@ -36,6 +36,7 @@ import com.bizarreelectronics.crm.data.remote.dto.CustomerListItem
 import com.bizarreelectronics.crm.data.remote.dto.InventoryListItem
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.screens.invoices.components.InvoiceCatalogLineItemPicker
+import com.bizarreelectronics.crm.util.CurrencyFormatter
 import com.bizarreelectronics.crm.util.formatAsMoney
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -812,7 +813,7 @@ private fun LineItemRowCard(
                     value = row.unitPrice,
                     onValueChange = onUnitPriceChanged,
                     label = { Text("Unit price") },
-                    prefix = { Text("$") },
+                    prefix = { Text(CurrencyFormatter.currencySymbol()) },
                     modifier = Modifier
                         .weight(2f)
                         .semantics { contentDescription = "Unit price for $rowLabel" },

@@ -32,6 +32,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.bizarreelectronics.crm.ui.screens.pos.components.PosOfflineBanner
 import com.bizarreelectronics.crm.ui.screens.pos.components.PosSplitTenderDialog
 import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
+import com.bizarreelectronics.crm.util.CurrencyFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -692,7 +693,7 @@ private fun CashTenderDialog(
                     value = input,
                     onValueChange = { raw -> input = raw.filter { it.isDigit() || it == '.' } },
                     label = { Text("Amount") },
-                    prefix = { Text("$") },
+                    prefix = { Text(CurrencyFormatter.currencySymbol()) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Decimal,
