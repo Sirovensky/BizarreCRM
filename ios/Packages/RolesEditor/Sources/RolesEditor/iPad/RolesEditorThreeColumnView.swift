@@ -136,11 +136,10 @@ public struct RolesEditorThreeColumnView: View {
             Button("Rename") {
                 guard let role = renameTarget else { return }
                 let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty {
-                    Task { await viewModel.renameRole(role, newName: trimmed) }
-                }
+                Task { await viewModel.renameRole(role, newName: trimmed) }
                 renameTarget = nil
             }
+            .disabled(renameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             Button("Cancel", role: .cancel) { renameTarget = nil }
         } message: {
             Text("Enter a new name for this role.")
