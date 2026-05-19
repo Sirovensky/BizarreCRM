@@ -980,8 +980,12 @@ private fun CatalogTile(
 
 @Composable
 private fun MiscItemDialog(onAdd: (String, Long) -> Unit, onDismiss: () -> Unit) {
-    var name by remember { mutableStateOf("") }
-    var priceInput by remember { mutableStateOf("") }
+    // BUGHUNT-2026-05-19: the parent screen retains showMiscDialog via
+    // rememberSaveable, so the dialog survives rotation — but the typed
+    // name + price were on plain `remember` and disappeared every spin
+    // of the device, forcing the cashier to retype mid-checkout.
+    var name by rememberSaveable { mutableStateOf("") }
+    var priceInput by rememberSaveable { mutableStateOf("") }
     // Math.round avoids float-truncation (e.g. 16.31 → 1630.999... → 1630).
     val priceCents = Math.round((priceInput.toDoubleOrNull() ?: 0.0) * 100)
     val canAdd = name.isNotBlank() && priceCents > 0L

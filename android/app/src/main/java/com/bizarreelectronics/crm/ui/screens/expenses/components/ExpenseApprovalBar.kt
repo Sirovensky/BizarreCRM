@@ -7,6 +7,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -28,7 +29,12 @@ fun ExpenseApprovalBar(
     if (!isApprover) return
     if (currentStatus != "pending") return
 
-    var comment by remember { mutableStateOf("") }
+    // BUGHUNT-2026-05-19: rememberSaveable so the approver's typed comment
+    // survives configuration changes (rotation, dark-mode toggle, system
+    // language change). With plain `remember` a half-written rejection
+    // reason would vanish the moment the screen rotates, which is the
+    // common failure mode on tablets running this approver workflow.
+    var comment by rememberSaveable { mutableStateOf("") }
 
     Surface(
         tonalElevation = 4.dp,

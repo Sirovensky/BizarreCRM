@@ -578,7 +578,11 @@ private fun WalkInPhoneCaptureDialog(
     onContinue: (phone: String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var phone by remember { mutableStateOf("") }
+    // BUGHUNT-2026-05-19: walk-in dialog visibility lives in the ViewModel
+    // (state.showWalkInPhoneDialog) so it survives configuration changes,
+    // but the typed phone number was on plain `remember` and reset on
+    // every rotation — cashier had to retype mid-flow.
+    var phone by rememberSaveable { mutableStateOf("") }
 
     val digitsOnly = phone.filter { it.isDigit() }
     val isUsFormat = digitsOnly.length == 10
