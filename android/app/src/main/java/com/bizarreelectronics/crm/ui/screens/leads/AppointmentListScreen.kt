@@ -55,6 +55,16 @@ import javax.inject.Inject
  */
 enum class AppointmentViewMode { DAY, WEEK }
 
+// BUGHUNT-2026-05-19: rememberSaveable needs a Saver to round-trip an enum.
+// Bundle the enum name as a String — same shape as ViewModeSaver in
+// LeadListScreen. Without this, the technician's Week view bounces back to
+// Day on device rotation / dark-mode toggle.
+private val AppointmentViewModeSaver: androidx.compose.runtime.saveable.Saver<AppointmentViewMode, String> =
+    androidx.compose.runtime.saveable.Saver(
+        save = { it.name },
+        restore = { runCatching { AppointmentViewMode.valueOf(it) }.getOrDefault(AppointmentViewMode.DAY) },
+    )
+
 // ─── Constants & helpers ─────────────────────────────────────────────────────
 
 private val SERVER_DATE_FORMAT: SimpleDateFormat
@@ -238,7 +248,9 @@ fun AppointmentListScreen(
     var showDatePicker by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
 
     // §10: view-mode toggle — Day (default) or Week.
-    var viewMode by remember { mutableStateOf(AppointmentViewMode.DAY) }
+    var viewMode by androidx.compose.runtime.saveable.rememberSaveable(stateSaver = AppointmentViewModeSaver) {
+        mutableStateOf(AppointmentViewMode.DAY)
+    }
 
     // Week-start anchored to Monday (ISO 8601). Immutable: LocalDate.with() returns
     // a new instance. rememberSaveable not needed — week navigates via buttons.
