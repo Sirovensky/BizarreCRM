@@ -90,6 +90,9 @@ public struct ManagerPinResetView: View {
         VStack(spacing: BrandSpacing.md) {
             SecureField("Your manager PIN", text: $viewModel.managerPin)
                 .keyboardType(.numberPad)
+                .textContentType(.password)
+                .submitLabel(.go)
+                .onSubmit { Task { await viewModel.resetStaffPin() } }
                 .onChange(of: viewModel.managerPin) { _, new in
                     viewModel.managerPin = String(new.filter(\.isNumber).prefix(6))
                 }

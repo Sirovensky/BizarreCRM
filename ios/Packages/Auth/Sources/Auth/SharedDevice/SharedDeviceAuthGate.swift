@@ -94,6 +94,13 @@ public struct SharedDeviceAuthGate: View {
 
                 SecureField("Management PIN", text: $managementPin)
                     .keyboardType(.numberPad)
+                    .textContentType(.password)
+                    .submitLabel(.go)
+                    .onSubmit {
+                        if managementPin.count >= 4 && !isVerifying {
+                            Task { await verifyManagementPin() }
+                        }
+                    }
                     .onChange(of: managementPin) { _, new in
                         managementPin = String(new.filter(\.isNumber).prefix(6))
                     }
