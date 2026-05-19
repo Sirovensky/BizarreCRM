@@ -230,7 +230,8 @@ private fun SaleTransactionRow(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(
-                onClick = {},
+                onClick = { menuExpanded = true },
+                onClickLabel = "Show actions for order ${transaction.orderId}",
                 onLongClick = { menuExpanded = true },
                 onLongClickLabel = "Show actions for order ${transaction.orderId}",
             ),
