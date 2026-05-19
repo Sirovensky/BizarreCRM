@@ -157,6 +157,9 @@ public struct IssuedStoreCreditSheet: View {
             .accessibilityIdentifier("storeCredit.issue.category")
             TextField("Notes (optional)", text: $vm.notes, axis: .vertical)
                 .lineLimit(2...4)
+                #if canImport(UIKit)
+                .textInputAutocapitalization(.sentences)
+                #endif
                 .accessibilityIdentifier("storeCredit.issue.notes")
         }
     }
