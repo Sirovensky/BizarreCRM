@@ -28,13 +28,12 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.util.CurrencyFormatter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-import java.text.NumberFormat
-import java.util.Locale
 import javax.inject.Inject
 
 // ── UiState ──────────────────────────────────────────────────────────────────
@@ -317,7 +316,6 @@ private fun AgingContent(
             ) {
                 bucketOrder.forEach { key ->
                     val bucket = state.buckets[key]
-                    val formatter = NumberFormat.getCurrencyInstance(Locale.US)
                     OutlinedCard(
                         modifier = Modifier
                             .weight(1f)
@@ -342,7 +340,10 @@ private fun AgingContent(
                                 color = if (key == "90+") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
                             )
                             Text(
-                                formatter.format((bucket?.totalCents ?: 0L) / 100.0),
+                                // BUGHUNT-2026-05-18: was formatter.format(...) backed
+                                // by NumberFormat(Locale.US) — route through
+                                // CurrencyFormatter to honour tenant currencyOverride.
+                                CurrencyFormatter.format((bucket?.totalCents ?: 0L) / 100.0),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -433,8 +434,7 @@ private fun SendReminderDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val formatter = NumberFormat.getCurrencyInstance(Locale.US)
-    val amountFormatted = formatter.format(row.amountDueCents / 100.0)
+    val amountFormatted = CurrencyFormatter.format(row.amountDueCents / 100.0)
     val customerLabel = row.customerName ?: "the customer"
 
     // Pre-fill a standard reminder template with the invoice details.
@@ -570,8 +570,7 @@ private fun AgingInvoiceCard(
     onWriteOff: () -> Unit,
 ) {
     var showMenu by remember { mutableStateOf(false) }
-    val formatter = NumberFormat.getCurrencyInstance(Locale.US)
-    val amountDue = formatter.format(row.amountDueCents / 100.0)
+    val amountDue = CurrencyFormatter.format(row.amountDueCents / 100.0)
     val overdueLabel = if (row.daysOverdue > 0) "${row.daysOverdue}d overdue" else "Due today"
 
     BrandCard(modifier = Modifier.fillMaxWidth()) {
