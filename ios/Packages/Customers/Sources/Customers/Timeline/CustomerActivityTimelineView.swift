@@ -423,13 +423,19 @@ public struct CustomerActivityTimelineView: View {
         return "\(sign)$\(String(format: "%.2f", val))"
     }
 
+    // Format path on @MainActor SwiftUI views is safe; hoisting avoids
+    // a DateFormatter alloc per row × 2 (cell + a11y label).
+    nonisolated(unsafe) private static let monthDayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d"
+        return f
+    }()
+
     private func shortDate(_ date: Date) -> String {
         let cal = Calendar.current
         if cal.isDateInToday(date) { return "Today" }
         if cal.isDateInYesterday(date) { return "Yesterday" }
-        let fmt = DateFormatter()
-        fmt.dateFormat = "MMM d"
-        return fmt.string(from: date)
+        return Self.monthDayFormatter.string(from: date)
     }
 
     private func buildA11yLabel(_ e: CustomerTimelineEvent) -> String {
