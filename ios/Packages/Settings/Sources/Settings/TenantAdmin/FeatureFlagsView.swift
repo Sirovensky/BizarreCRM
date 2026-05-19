@@ -78,6 +78,7 @@ public struct FeatureFlagsView: View {
                     #if canImport(UIKit)
                     .textInputAutocapitalization(.never)
                     #endif
+                    .submitLabel(.search)
                     .accessibilityLabel("Filter feature flags")
                     .accessibilityIdentifier("featureFlags.search")
             }

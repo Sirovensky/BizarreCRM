@@ -29,6 +29,7 @@ struct PartSkuPicker: View {
                     #endif
                     .font(.brandBodyMedium())
                     .foregroundStyle(.bizarreOnSurface)
+                    .submitLabel(.search)
                     .onChange(of: query) { _, new in onQueryChange(new) }
                     .accessibilityLabel("Search parts by SKU or name")
                     .accessibilityIdentifier("partSkuPicker.search")

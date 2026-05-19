@@ -56,6 +56,7 @@ public struct ThreadSearchView: View {
                 .foregroundStyle(.bizarreOnSurface)
                 .focused($searchFocused)
                 .autocorrectionDisabled()
+                .submitLabel(.search)
 
             if !vm.query.isEmpty {
                 Button {
