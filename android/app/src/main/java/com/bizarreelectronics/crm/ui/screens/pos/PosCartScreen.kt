@@ -95,13 +95,13 @@ fun PosCartScreen(
         val role = authPreferences?.userRole?.lowercase()
         role == "admin" || role == "manager"
     }
-    var showDetachConfirm by remember { mutableStateOf(false) }
-    var showMiscDialog by remember { mutableStateOf(false) }
-    var showDiscountDialog by remember { mutableStateOf(false) }
-    var showNoteDialog by remember { mutableStateOf(false) }
+    var showDetachConfirm by rememberSaveable { mutableStateOf(false) }
+    var showMiscDialog by rememberSaveable { mutableStateOf(false) }
+    var showDiscountDialog by rememberSaveable { mutableStateOf(false) }
+    var showNoteDialog by rememberSaveable { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
-    var showParkedCarts by remember { mutableStateOf(false) }
-    var showTipDialog by remember { mutableStateOf(false) }
+    var showParkedCarts by rememberSaveable { mutableStateOf(false) }
+    var showTipDialog by rememberSaveable { mutableStateOf(false) }
     // Mockup PHONE 3 path tabs: Catalog | Cart · N · $X — selected tab
     // index 1 by default since cashier reaches this screen with intent to
     // tender. Catalog tab populates from quick-add (Today's Top-5).

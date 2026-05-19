@@ -22,6 +22,7 @@ import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -142,8 +143,8 @@ fun ExpenseListScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val categories = listOf("All") + EXPENSE_CATEGORIES + listOf(FILTER_PENDING_APPROVAL)
-    var chartExpanded by remember { mutableStateOf(false) }
-    var showFilterSheet by remember { mutableStateOf(false) }
+    var chartExpanded by rememberSaveable { mutableStateOf(false) }
+    var showFilterSheet by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }

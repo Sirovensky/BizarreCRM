@@ -48,6 +48,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -119,7 +120,7 @@ fun StocktakeSessionDetailScreen(
     val sessionStatus = state.session?.status ?: "open"
     val isOpen = sessionStatus == "open"
 
-    var showCommitDialog by remember { mutableStateOf(false) }
+    var showCommitDialog by rememberSaveable { mutableStateOf(false) }
 
     if (showCommitDialog) {
         ConfirmDialog(

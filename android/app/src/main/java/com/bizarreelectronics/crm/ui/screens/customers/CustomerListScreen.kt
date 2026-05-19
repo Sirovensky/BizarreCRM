@@ -64,6 +64,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -133,9 +134,11 @@ fun CustomerListScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    // 5.6.1: bulk tag input dialog state
-    var showBulkTagDialog by remember { mutableStateOf(false) }
-    var bulkTagInput by remember { mutableStateOf("") }
+    // 5.6.1: bulk tag input dialog state — survives rotation so the typed
+    // tag isn't lost mid-flow if the user spins the device while the dialog
+    // is open.
+    var showBulkTagDialog by rememberSaveable { mutableStateOf(false) }
+    var bulkTagInput by rememberSaveable { mutableStateOf("") }
 
     // 5.6.2: bulk delete undo snackbar — triggered by ViewModel
     LaunchedEffect(state.pendingUndoDeleteIds) {
