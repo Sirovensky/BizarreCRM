@@ -206,7 +206,13 @@ public struct BlockChypTerminalPairingView: View {
         }
         PairingKeychainStore.save(data: data, key: Self.keychainKey)
 
-        AppLog.pos.info("BlockChyp terminal pairing saved: ip=\(ip) code=\(code)")
+        // BUGHUNT-2026-05-19: never log the pairing code. It's effectively an
+        // authentication token for the BlockChyp terminal — anyone with read
+        // access to the OSLog stream (sysdiagnose, Console.app, a future
+        // remote-log aggregator) could re-pair against the same terminal.
+        // The IP + nickname are operationally useful for debugging without
+        // exposing the credential. The full pairing only lives in Keychain.
+        AppLog.pos.info("BlockChyp terminal pairing saved: ip=\(ip, privacy: .public) nickname=\(nick.isEmpty ? "—" : nick, privacy: .public)")
         BrandHaptics.success()
         savedSuccessfully = true
     }
