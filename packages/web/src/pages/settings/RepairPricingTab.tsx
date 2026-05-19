@@ -729,11 +729,13 @@ function PricesSubTab() {
           />
         </div>
         <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}
+          aria-label="Filter by category"
           className="px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100">
           <option value="">All Categories</option>
           {CATEGORIES.map((c) => <option key={c} value={c}>{formatCategoryLabel(c)}</option>)}
         </select>
         <select value={filterServiceId} onChange={(e) => setFilterServiceId(e.target.value ? Number(e.target.value) : '')}
+          aria-label="Filter by service"
           className="px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100">
           <option value="">All Services</option>
           {services?.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.category})</option>)}
