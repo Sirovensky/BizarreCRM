@@ -39,6 +39,7 @@ import toast from 'react-hot-toast';
 import { customerApi, settingsApi, onboardingApi } from '@/api/endpoints';
 import type { ImportCustomerItem } from '@/api/types';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useHasRole } from '@/hooks/useHasRole';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
@@ -54,6 +55,7 @@ function looksLikeDeviceName(name: string): boolean {
 }
 
 export function CustomerListPage() {
+  useDocumentTitle('Customers');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();

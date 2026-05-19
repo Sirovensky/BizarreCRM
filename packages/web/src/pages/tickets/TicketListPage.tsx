@@ -946,6 +946,7 @@ function SkeletonRow() {
 
 // ─── Main Component ─────────────────────────────────────────────────
 export function TicketListPage() {
+  useDocumentTitle('Tickets');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();

@@ -139,6 +139,7 @@ interface InvoiceRow {
 }
 
 export function InvoiceListPage() {
+  useDocumentTitle('Invoices');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();

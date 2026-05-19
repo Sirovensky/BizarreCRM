@@ -57,6 +57,7 @@ interface InventoryImportRow {
 }
 
 export function InventoryListPage() {
+  useDocumentTitle('Inventory');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();

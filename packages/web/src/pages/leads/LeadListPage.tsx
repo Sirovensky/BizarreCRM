@@ -388,6 +388,7 @@ function SortHeader({
 
 // ─── Main Component ─────────────────────────────────────────────
 export function LeadListPage() {
+  useDocumentTitle('Leads');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();

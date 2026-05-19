@@ -449,6 +449,7 @@ function CreateEstimateModal({
 
 // ─── Main Component ─────────────────────────────────────────────
 export function EstimateListPage() {
+  useDocumentTitle('Estimates');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
