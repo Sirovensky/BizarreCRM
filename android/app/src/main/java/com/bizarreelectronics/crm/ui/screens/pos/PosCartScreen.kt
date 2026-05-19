@@ -1043,7 +1043,11 @@ private fun CartDiscountDialog(
     onApply: (Long) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var input by remember(currentCents) {
+    // BUGHUNT-2026-05-19: parent retains showDiscountDialog via
+    // rememberSaveable so the dialog re-renders after rotation — but a
+    // plain `remember(currentCents) { ... }` resets the typed input
+    // every spin of the device, forcing the cashier to retype mid-flow.
+    var input by rememberSaveable(currentCents) {
         mutableStateOf(if (currentCents > 0) "%.2f".format(currentCents / 100.0) else "")
     }
     val cents = Math.round((input.toDoubleOrNull() ?: 0.0) * 100)
@@ -1101,8 +1105,11 @@ private fun TipDialog(
 ) {
     // Tip presets in percent — TODO: read from AppPreferences / tenant config
     val tipPresets = listOf(15, 18, 20)
-    var selectedPct by remember { mutableStateOf<Int?>(null) }
-    var customInput by remember {
+    // BUGHUNT-2026-05-19: parent retains showTipDialog via rememberSaveable.
+    // Use rememberSaveable for the inner state so the cashier's typed
+    // custom tip + selected preset survive rotation.
+    var selectedPct by rememberSaveable { mutableStateOf<Int?>(null) }
+    var customInput by rememberSaveable {
         mutableStateOf(
             if (currentTipCents > 0) "%.2f".format(currentTipCents / 100.0) else ""
         )
