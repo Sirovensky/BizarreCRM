@@ -149,7 +149,16 @@ function roundMoney(value: number): number {
 
 function csvEscape(value: unknown): string {
   if (value === null || value === undefined) return '';
-  const text = String(value);
+  let text = String(value);
+  // BUGHUNT-2026-05-19: CSV formula-injection guard. If a cell starts with
+  // =/+/-/@/CR/TAB and the operator opens the export in Excel, Excel
+  // evaluates it as a formula. The repair-prices export pulls device_name
+  // and service_name straight from admin-managed tables; a malicious or
+  // compromised admin could set a name like `=cmd|'/C calc'!A0` to attack
+  // the next admin who downloads the price list. Prefix risky-leading
+  // chars with a single quote so Excel renders them as literal text. OWASP
+  // CSV-injection mitigation.
+  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
   return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
