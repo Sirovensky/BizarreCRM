@@ -18,6 +18,7 @@ import android.widget.RemoteViews
 import com.bizarreelectronics.crm.MainActivity
 import com.bizarreelectronics.crm.R
 import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
+import com.bizarreelectronics.crm.util.CurrencyFormatter
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -91,7 +92,9 @@ class DashboardWidgetProvider : AppWidgetProvider() {
     private fun buildViews(context: Context, prefs: AppPreferences): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_dashboard)
 
-        val revenue = "$" + String.format("%.2f", prefs.cachedRevenueToday)
+        // Was String.format("%.2f", …) which hard-coded "$" + en-US decimal sep.
+        // CurrencyFormatter honours the active currencyOverride + locale grouping.
+        val revenue = CurrencyFormatter.format(prefs.cachedRevenueToday)
         views.setTextViewText(R.id.widget_revenue_value, revenue)
         views.setTextViewText(R.id.widget_open_tickets_value, prefs.cachedOpenTickets.toString())
         views.setTextViewText(R.id.widget_low_stock_value, prefs.cachedLowStock.toString())
