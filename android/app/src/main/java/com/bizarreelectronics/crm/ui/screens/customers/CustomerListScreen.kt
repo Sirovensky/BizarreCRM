@@ -692,9 +692,17 @@ private fun CustomerContextMenuRow(
         customer.organization?.takeIf { it.isNotBlank() },
     ).firstOrNull()
 
+    val rowA11yDesc = buildString {
+        append(fullName)
+        if (!meta.isNullOrBlank()) append(", $meta")
+        if (isSelected) append(", selected")
+        append(". Tap to open. Long-press for more options.")
+    }
+
     Box {
         com.bizarreelectronics.crm.ui.components.shared.BrandListItem(
             modifier = Modifier
+                .semantics(mergeDescendants = true) { contentDescription = rowA11yDesc }
                 .combinedClickable(
                     onClick = onClick,
                     onLongClick = {
