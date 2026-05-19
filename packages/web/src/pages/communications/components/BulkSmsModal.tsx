@@ -555,7 +555,14 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
                   Sending bulk SMS — {jobProgress.sent} sent
                   {jobProgress.failed > 0 ? `, ${jobProgress.failed} failed` : ''} of {jobProgress.total}
                 </p>
-                <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-surface-200 dark:bg-surface-700">
+                <div
+                  className="mt-2 h-2 w-full overflow-hidden rounded-full bg-surface-200 dark:bg-surface-700"
+                  role="progressbar"
+                  aria-valuenow={jobProgress.total > 0 ? Math.round(Math.min(100, ((jobProgress.sent + jobProgress.failed) / jobProgress.total) * 100)) : 0}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label={`Bulk SMS progress: ${jobProgress.sent + jobProgress.failed} of ${jobProgress.total} processed`}
+                >
                   <div
                     className={`h-full transition-all ${jobProgress.status === 'aborted' ? 'bg-amber-500' : jobProgress.status === 'failed' ? 'bg-red-500' : 'bg-primary-500'}`}
                     style={{ width: `${jobProgress.total > 0 ? Math.min(100, ((jobProgress.sent + jobProgress.failed) / jobProgress.total) * 100) : 0}%` }}
