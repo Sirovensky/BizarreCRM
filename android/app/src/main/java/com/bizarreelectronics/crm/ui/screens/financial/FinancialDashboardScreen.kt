@@ -58,14 +58,19 @@ import com.bizarreelectronics.crm.R
 import com.bizarreelectronics.crm.ui.auth.PinDots
 import com.bizarreelectronics.crm.ui.auth.PinKeypad
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
-import java.text.NumberFormat
+import com.bizarreelectronics.crm.util.CurrencyFormatter
 import java.util.Locale
 
 // ─── Money formatter ─────────────────────────────────────────────────────────
 
-/** Format cents (Long) as US currency string, e.g. 12345L → "$123.45". */
+/**
+ * Format cents (Long) as locale-aware currency string, e.g. 12345L → "$123.45".
+ * BUGHUNT-2026-05-18: was NumberFormat.getCurrencyInstance(Locale.US) — the
+ * owner-only financial dashboard surfaces P&L, cashflow and budget figures
+ * that absolutely must honour the tenant's currencyOverride.
+ */
 private fun formatCents(cents: Long): String =
-    NumberFormat.getCurrencyInstance(Locale.US).format(cents / 100.0)
+    CurrencyFormatter.format(cents / 100.0)
 
 // ─── Screen ──────────────────────────────────────────────────────────────────
 
