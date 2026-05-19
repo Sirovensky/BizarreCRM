@@ -18,7 +18,10 @@ object PhoneIntents {
 
     /** Open the phone dialer pre-filled with [phone]. Never auto-dials. */
     fun call(context: Context, phone: String) {
-        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${phone.trim()}"))
+        // Uri.fromParts URL-encodes the SSP so spaces, parens, and slashes in
+        // formatted numbers like "+1 (555) 555-1234" don't truncate the dialer
+        // input on the system side.
+        val intent = Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", phone.trim(), null))
         context.startActivity(intent)
     }
 
@@ -29,7 +32,7 @@ object PhoneIntents {
      * the system will prefer a messaging app over the dialer.
      */
     fun sms(context: Context, phone: String) {
-        val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:${phone.trim()}"))
+        val intent = Intent(Intent.ACTION_SENDTO, Uri.fromParts("smsto", phone.trim(), null))
         context.startActivity(intent)
     }
 
@@ -37,10 +40,12 @@ object PhoneIntents {
      * Open the email composer pre-filled with [email].
      *
      * Uses ACTION_SENDTO with a `mailto:` URI so only email clients are
-     * offered — generic SEND would include sharing targets.
+     * offered — generic SEND would include sharing targets. Uri.fromParts
+     * URL-encodes the SSP so `+` in plus-tag addresses ("user+tag@x.com")
+     * doesn't decode to a space.
      */
     fun email(context: Context, email: String) {
-        val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:${email.trim()}"))
+        val intent = Intent(Intent.ACTION_SENDTO, Uri.fromParts("mailto", email.trim(), null))
         context.startActivity(intent)
     }
 
