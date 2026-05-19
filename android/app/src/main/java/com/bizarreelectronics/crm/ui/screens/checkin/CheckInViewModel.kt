@@ -480,6 +480,15 @@ class CheckInViewModel @Inject constructor(
                 checkInDraftDao.delete(customerId, deviceId)
                 _uiState.update { it.copy(isSubmitting = false) }
                 onSuccess(ticket.id)
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-19: ticket-creation is a server-side
+                // mutation that may already have succeeded; if the user
+                // navigates away mid-submit the broad catch below painted
+                // fake submitError text and called onError(message) with
+                // the CancellationException reason — tempting the cashier
+                // to retry and double-create the ticket. Re-throw so
+                // structured concurrency wins and no UI side effect runs.
+                throw e
             } catch (e: Exception) {
                 _uiState.update { it.copy(isSubmitting = false, submitError = e.message) }
                 onError(e.message ?: "Failed to create ticket")

@@ -126,7 +126,14 @@ class ShiftsScheduleViewModel @Inject constructor(
     private fun loadEmployees() {
         viewModelScope.launch {
             runCatching { settingsApi.getEmployees() }
-                .onSuccess { _state.update { it.copy(employees = it.data ?: emptyList()) } }
+                // BUGHUNT-2026-05-19: `it.copy(employees = it.data ?: …)` — the
+                // inner `it` shadows to ShiftsScheduleUiState, which has no
+                // `data` field, so this never wired the employees list.
+                // Cashier opens the Add Shift sheet and the employee dropdown
+                // is empty. Bind the outer lambda explicitly.
+                .onSuccess { response ->
+                    _state.update { it.copy(employees = response.data ?: emptyList()) }
+                }
         }
     }
 
@@ -160,6 +167,12 @@ class ShiftsScheduleViewModel @Inject constructor(
                         error = if (e.code() == 404) "Shift schedule not configured on this server" else "Failed to load shifts (${e.code()})",
                     )
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-19: prevWeek()/nextWeek() relaunch loadShifts
+                // on every tap, so an in-flight load cancels when the user
+                // pages quickly. Without re-throw the broad catch below paints
+                // "Failed to load shifts" mid-swipe.
+                throw e
             } catch (e: Exception) {
                 _state.update {
                     it.copy(

@@ -351,6 +351,16 @@ class EstimateDetailViewModel @Inject constructor(
                         deletedCounter = _state.value.deletedCounter + 1,
                     )
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-19: every other action verb on this VM
+                // re-throws cancellation; delete() was the lone holdout.
+                // Without this, a back-nav mid-DELETE catches the
+                // CancellationException and paints "Failed to delete
+                // estimate" — tempting the user to re-tap delete on what
+                // may already be gone, and inviting confusion when the
+                // refresh shows it missing.
+                _state.update { it.copy(isActionInProgress = false) }
+                throw e
             } catch (e: Exception) {
                 _state.update {
                     it.copy(
