@@ -125,7 +125,7 @@ public struct AuditLogFilterSheet: View {
                 #if canImport(UIKit)
                 .textInputAutocapitalization(.never)
                 #endif
-                .disableAutocorrection(true)
+                .autocorrectionDisabled()
                 .submitLabel(.search)
                 .accessibilityIdentifier("auditlog.filter.search")
         }

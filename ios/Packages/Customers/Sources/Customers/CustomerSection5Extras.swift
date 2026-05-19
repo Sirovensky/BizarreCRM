@@ -507,7 +507,7 @@ public struct CustomerLinkRelationshipSheet: View {
                 // characters in scanned/pasted strings; switch to `.never` for
                 // search-bar convention.
                 .textInputAutocapitalization(.never)
-                .disableAutocorrection(true)
+                .autocorrectionDisabled()
                 .submitLabel(.search)
                 .onChange(of: searchText) { _, q in
                     Task { await search(query: q) }

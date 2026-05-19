@@ -228,7 +228,7 @@ public struct PurchaseOrderComposeView: View {
             TextField("SKU", text: line.sku)
                 .font(.brandMono(size: 14))
                 .textInputAutocapitalization(.characters)
-                .disableAutocorrection(true)
+                .autocorrectionDisabled()
                 .accessibilityLabel("SKU")
             TextField("Name", text: line.name)
                 .font(.brandBodyMedium())

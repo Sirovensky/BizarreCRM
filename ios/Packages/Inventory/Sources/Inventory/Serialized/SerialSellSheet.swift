@@ -47,7 +47,7 @@ public struct SerialSellSheet: View {
         HStack {
             TextField("Scan serial / IMEI", text: $vm.scanInput)
                 .textInputAutocapitalization(.characters)
-                .disableAutocorrection(true)
+                .autocorrectionDisabled()
                 .font(.brandMono(size: 15))
                 .submitLabel(.search)
                 .onSubmit { Task { await vm.scanSerial() } }

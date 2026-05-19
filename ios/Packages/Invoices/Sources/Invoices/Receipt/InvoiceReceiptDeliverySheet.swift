@@ -364,7 +364,7 @@ public struct InvoiceReceiptDeliverySheet: View {
                 .keyboardType(keyboardType)
                 .textContentType(contentType)
                 .textInputAutocapitalization(.never)
-                .disableAutocorrection(true)
+                .autocorrectionDisabled()
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurface)
                 .padding(BrandSpacing.sm)

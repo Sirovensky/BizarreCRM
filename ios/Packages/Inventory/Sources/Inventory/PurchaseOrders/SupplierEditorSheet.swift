@@ -116,7 +116,7 @@ public struct SupplierEditorSheet: View {
                             .keyboardType(.emailAddress)
                             .textInputAutocapitalization(.never)
                             #endif
-                            .disableAutocorrection(true)
+                            .autocorrectionDisabled()
                             .accessibilityLabel("Email address")
                         TextField("Phone", text: $vm.phone)
                             #if canImport(UIKit)

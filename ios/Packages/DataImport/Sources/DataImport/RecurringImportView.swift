@@ -554,7 +554,7 @@ private struct RecurringImportEditorSheet: View {
 
                         TextField(filePathPrompt, text: $draft.filePath)
                             .textInputAutocapitalization(.never)
-                            .disableAutocorrection(true)
+                            .autocorrectionDisabled()
                             .accessibilityLabel("File path or URL")
 
                         if draft.sourceType.requiresCredentials {

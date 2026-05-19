@@ -277,10 +277,10 @@ public struct AssetEditorSheet: View {
                         .textInputAutocapitalization(.words)
                     TextField("Serial number", text: $serial)
                         .textInputAutocapitalization(.characters)
-                        .disableAutocorrection(true)
+                        .autocorrectionDisabled()
                     TextField("IMEI (admin only)", text: $imei)
                         .textInputAutocapitalization(.never)
-                        .disableAutocorrection(true)
+                        .autocorrectionDisabled()
                         .font(.brandMono(size: 15))
                 }
 

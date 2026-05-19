@@ -41,7 +41,7 @@ public struct SerialScanView: View {
             HStack {
                 TextField("Scan or enter serial…", text: $vm.serialInput)
                     .textInputAutocapitalization(.characters)
-                    .disableAutocorrection(true)
+                    .autocorrectionDisabled()
                     .font(.brandMono(size: 16))
                     .submitLabel(.search)
                     .onSubmit { Task { await vm.lookup() } }

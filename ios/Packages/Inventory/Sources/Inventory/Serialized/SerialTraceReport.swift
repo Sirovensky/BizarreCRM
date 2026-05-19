@@ -38,7 +38,7 @@ public struct SerialTraceReport: View {
                 .accessibilityHidden(true)
             TextField("Enter IMEI or serial number", text: $searchInput)
                 .textInputAutocapitalization(.characters)
-                .disableAutocorrection(true)
+                .autocorrectionDisabled()
                 .font(.brandMono(size: 15))
                 .submitLabel(.search)
                 .accessibilityLabel("IMEI or serial number")

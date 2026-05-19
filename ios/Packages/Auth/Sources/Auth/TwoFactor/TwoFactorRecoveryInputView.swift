@@ -81,7 +81,7 @@ public struct TwoFactorRecoveryInputView: View {
                 #if canImport(UIKit)
                 .textInputAutocapitalization(.characters)
                 #endif
-                .disableAutocorrection(true)
+                .autocorrectionDisabled()
                 .submitLabel(.go)
                 .font(.system(.body, design: .monospaced))
                 .padding(BrandSpacing.md)

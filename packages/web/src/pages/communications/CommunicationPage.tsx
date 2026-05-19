@@ -2579,7 +2579,7 @@ export function CommunicationPage() {
                                   return paths.length > 0 ? (
                                     <div className="flex flex-wrap gap-1 mb-1">
                                       {paths.map((p, idx) => (
-                                        <a key={idx} href={p} target="_blank" rel="noreferrer noopener">
+                                        <a key={`${idx}-${p}`} href={p} target="_blank" rel="noreferrer noopener">
                                           <img src={p} alt="MMS" className="max-w-[200px] max-h-[200px] rounded-lg object-cover" loading="lazy" referrerPolicy="no-referrer" />
                                         </a>
                                       ))}
@@ -2596,7 +2596,7 @@ export function CommunicationPage() {
                                   return urls.length > 0 ? (
                                     <div className="flex flex-wrap gap-1 mb-1">
                                       {urls.map((u, idx) => (
-                                        <a key={idx} href={u} target="_blank" rel="noreferrer noopener">
+                                        <a key={`${idx}-${u}`} href={u} target="_blank" rel="noreferrer noopener">
                                           <img src={u} alt="MMS" className="max-w-[200px] max-h-[200px] rounded-lg object-cover" loading="lazy" referrerPolicy="no-referrer" />
                                         </a>
                                       ))}

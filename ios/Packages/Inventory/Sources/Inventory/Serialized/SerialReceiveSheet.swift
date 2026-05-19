@@ -90,7 +90,7 @@ public struct SerialReceiveSheet: View {
         HStack {
             TextField("Scan IMEI / Serial", text: $vm.currentInput)
                 .textInputAutocapitalization(.characters)
-                .disableAutocorrection(true)
+                .autocorrectionDisabled()
                 .font(.brandMono(size: 15))
                 .submitLabel(.done)
                 .onSubmit { Task { await vm.addSerial() } }
