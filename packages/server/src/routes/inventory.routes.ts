@@ -567,18 +567,30 @@ router.post('/auto-reorder', requirePermission('inventory.bulk_action'), asyncHa
       });
     }
 
-    const result = await adb.run(`
-      INSERT INTO purchase_orders (order_id, supplier_id, subtotal, total, notes, expected_date, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, orderId, supplierId, subtotal, subtotal, 'Auto-generated reorder from saved rules', expectedDate, req.user!.id);
-
-    const poId = result.lastInsertRowid;
+    // BUGHUNT-2026-05-19: previously the PO header INSERT and the line-item
+    // INSERTs were separate adb.run calls. A crash between them left an
+    // empty PO ($0 subtotal but rendered as "an order from supplier X" in
+    // the dashboard) with no line items — a buyer who reopened it would
+    // see a phantom order they couldn't reconcile. Bundle the header +
+    // every line into one transaction; lastInsertRowidFrom(0) pins each
+    // line to the header row id even though intermediate INSERTs change
+    // last_insert_rowid().
+    const poTxQueries: TxQuery[] = [
+      {
+        sql: `INSERT INTO purchase_orders (order_id, supplier_id, subtotal, total, notes, expected_date, created_by)
+              VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        params: [orderId, supplierId, subtotal, subtotal, 'Auto-generated reorder from saved rules', expectedDate, req.user!.id],
+      },
+    ];
     for (const poItem of poItems) {
-      await adb.run(`
-        INSERT INTO purchase_order_items (purchase_order_id, inventory_item_id, quantity_ordered, cost_price)
-        VALUES (?, ?, ?, ?)
-      `, poId, poItem.inventory_item_id, poItem.quantity_ordered, poItem.cost_price);
+      poTxQueries.push({
+        sql: `INSERT INTO purchase_order_items (purchase_order_id, inventory_item_id, quantity_ordered, cost_price)
+              VALUES (?, ?, ?, ?)`,
+        params: [lastInsertRowidFrom(0), poItem.inventory_item_id, poItem.quantity_ordered, poItem.cost_price],
+      });
     }
+    const poTxResults = await adb.transaction(poTxQueries);
+    const poId = Number(poTxResults[0].lastInsertRowid);
 
     createdOrders.push({
       id: poId,
@@ -2141,11 +2153,21 @@ router.post('/stocktake', requirePermission('inventory.bulk_action'), asyncHandl
       // stocktake that races this write is itself an operator error that
       // last-write-wins is the correct policy for.  (SEC-H62: differential
       // pattern is NOT required here.)
-      await adb.run('UPDATE inventory_items SET in_stock = ?, updated_at = ? WHERE id = ?', counted, now, inv.id);
-      await adb.run(`
-        INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, notes, user_id, created_at, updated_at)
-        VALUES (?, 'stocktake', ?, 'stocktake', ?, ?, ?, ?)
-      `, inv.id, diff, notes || `Stocktake adjustment: ${inv.in_stock} → ${counted}`, userId, now, now);
+      // BUGHUNT-2026-05-19: bundle the stock SET and the stock_movements
+      // INSERT into one transaction. A crash between them used to leave
+      // inventory at the new physical count with no audit movement row —
+      // identical SEC-H49 audit-gap as the ticket-delete restore.
+      await adb.transaction([
+        {
+          sql: 'UPDATE inventory_items SET in_stock = ?, updated_at = ? WHERE id = ?',
+          params: [counted, now, inv.id],
+        },
+        {
+          sql: `INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, notes, user_id, created_at, updated_at)
+                VALUES (?, 'stocktake', ?, 'stocktake', ?, ?, ?, ?)`,
+          params: [inv.id, diff, notes || `Stocktake adjustment: ${inv.in_stock} → ${counted}`, userId, now, now],
+        },
+      ]);
     }
 
     adjustments.push({ id: inv.id, name: inv.name, expected: inv.in_stock, counted, diff });
@@ -2207,14 +2229,20 @@ router.post('/receive-scan', requirePermission('inventory.bulk_action'), asyncHa
       // scan-receive requests for the same barcode don't race-overwrite each
       // other's credit. AND is_active = 1 in the SELECT above ensures we never
       // credit a soft-deleted item (SEC-H62 receive-path guard).
-      await adb.run(
-        "UPDATE inventory_items SET in_stock = in_stock + ?, low_stock_dismissed_at = NULL, updated_at = datetime('now') WHERE id = ?",
-        qty, item.id,
-      );
-      await adb.run(
-        "INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, notes, user_id) VALUES (?, 'received', ?, 'scan_receive', ?, ?)",
-        item.id, qty, notes || `Scan receive: ${barcode}`, req.user!.id,
-      );
+      // BUGHUNT-2026-05-19: previously the stock UPDATE and the
+      // stock_movements INSERT were two separate adb.run calls. A crash
+      // between them credited inventory with no audit movement row —
+      // identical SEC-H49 audit-gap as the ticket-delete restore path.
+      await adb.transaction([
+        {
+          sql: "UPDATE inventory_items SET in_stock = in_stock + ?, low_stock_dismissed_at = NULL, updated_at = datetime('now') WHERE id = ?",
+          params: [qty, item.id],
+        },
+        {
+          sql: "INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, notes, user_id) VALUES (?, 'received', ?, 'scan_receive', ?, ?)",
+          params: [item.id, qty, notes || `Scan receive: ${barcode}`, req.user!.id],
+        },
+      ]);
       received.push({ id: item.id, sku: item.sku, upc: item.upc, name: item.name, quantity: qty, new_stock: item.in_stock + qty });
     } else {
       const catalogMatch = await adb.get<any>(
@@ -2313,18 +2341,26 @@ router.post('/receive-scan/create-from-catalog', requirePermission('inventory.bu
     'SELECT device_model_id FROM catalog_device_compatibility WHERE supplier_catalog_id = ?',
     catalog_id,
   );
+  // BUGHUNT-2026-05-19: previously compat INSERTs + the initial stock
+  // movement INSERT were N+1 sequential adb.run calls. A crash mid-stream
+  // left the inventory_items row created with stock=qty but no movement
+  // row (audit-gap) and/or missing compatibility rows (item shows on
+  // catalog browse but doesn't match the device the buyer was searching
+  // for). Bundle into one transaction.
+  const postCreateQueries: TxQuery[] = [];
   for (const row of compatRows) {
-    await adb.run(
-      'INSERT OR IGNORE INTO inventory_device_compatibility (inventory_item_id, device_model_id) VALUES (?, ?)',
-      itemId, row.device_model_id,
-    );
+    postCreateQueries.push({
+      sql: 'INSERT OR IGNORE INTO inventory_device_compatibility (inventory_item_id, device_model_id) VALUES (?, ?)',
+      params: [itemId, row.device_model_id],
+    });
   }
-
-  // Log stock movement
-  await adb.run(
-    "INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, notes, user_id) VALUES (?, 'received', ?, 'scan_receive', ?, ?)",
-    itemId, qty, `Created from ${catalogItem.source} catalog + received`, req.user!.id,
-  );
+  postCreateQueries.push({
+    sql: "INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, notes, user_id) VALUES (?, 'received', ?, 'scan_receive', ?, ?)",
+    params: [itemId, qty, `Created from ${catalogItem.source} catalog + received`, req.user!.id],
+  });
+  if (postCreateQueries.length > 0) {
+    await adb.transaction(postCreateQueries);
+  }
 
   const item = await adb.get('SELECT * FROM inventory_items WHERE id = ?', itemId);
 
