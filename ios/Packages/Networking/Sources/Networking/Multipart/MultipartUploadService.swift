@@ -111,11 +111,17 @@ public final class MultipartUploadService: NSObject, @unchecked Sendable {
             .appendingPathComponent(UUID().uuidString + ".multipart")
 
         try formData.write(to: tempURL)
+        // BUGHUNT-2026-05-19: previously the cleanup ran on the line AFTER
+        // the upload call, so any throw from `_session.upload(...)` (network
+        // failure, 5xx with retry-throw, task cancellation, server-side TLS
+        // hiccup) jumped past it and left the .multipart blob on disk.
+        // Over many failed ticket-photo / receipt / signature uploads the
+        // app's tmp directory accumulated megabytes of stranded payloads
+        // until iOS got around to its own purge. Use defer so cleanup
+        // happens on every exit path, including throws.
+        defer { try? FileManager.default.removeItem(at: tempURL) }
 
         let (data, response) = try await _session.upload(for: request, fromFile: tempURL)
-
-        // Clean up temp file after upload completes.
-        try? FileManager.default.removeItem(at: tempURL)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw MultipartUploadError.invalidResponse
