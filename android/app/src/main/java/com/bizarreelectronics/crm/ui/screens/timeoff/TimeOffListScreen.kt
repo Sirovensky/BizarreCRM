@@ -147,7 +147,11 @@ fun TimeOffListScreen(
                         },
                     )
 
-                    else -> LazyColumn(
+                    else -> androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+                        isRefreshing = state.isRefreshing,
+                        onRefresh = { viewModel.refresh() },
+                        modifier = Modifier.fillMaxSize(),
+                    ) { LazyColumn(
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxSize(),
@@ -160,7 +164,7 @@ fun TimeOffListScreen(
                                 onReject = { pendingRejectId = req.id },
                             )
                         }
-                    }
+                    } }
                 }
             }
         }
