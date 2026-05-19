@@ -170,6 +170,7 @@ public struct ComposeNewThreadView: View {
             } else {
                 TextField("Search customer name or phone", text: $vm.searchQuery)
                     .autocorrectionDisabled()
+                    .submitLabel(.search)
                     #if canImport(UIKit)
                     .textInputAutocapitalization(.never)
                     #endif
