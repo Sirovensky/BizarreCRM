@@ -80,6 +80,7 @@ public struct ScopedSearchBar<Filter: ScopedFilterOption>: View {
                 TextField(prompt, text: query)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
+                    .submitLabel(.search)
                     .accessibilityLabel("Search")
                 if !query.wrappedValue.isEmpty {
                     Button {

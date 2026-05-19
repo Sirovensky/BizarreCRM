@@ -177,6 +177,7 @@ public struct SimpleSearchBar: View {
             TextField(placeholder, text: $query)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
+                .submitLabel(.search)
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurface)
                 .accessibilityIdentifier("search.scopedBar")

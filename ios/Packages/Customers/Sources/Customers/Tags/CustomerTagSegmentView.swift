@@ -262,6 +262,7 @@ public struct CustomerTagSegmentView: View {
             }
         }
         .task { await vm.load() }
+        .refreshable { await vm.load() }
         .sheet(isPresented: $vm.isEditing) {
             CustomerTagSegmentEditorSheet(vm: vm)
         }
