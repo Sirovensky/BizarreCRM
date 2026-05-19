@@ -49,11 +49,18 @@ fun CashRegisterScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val actionState by viewModel.actionState.collectAsState()
-    var showOpenDialog by remember { mutableStateOf(false) }
-    var showCloseDialog by remember { mutableStateOf(false) }
+    // BUGHUNT-2026-05-19: align Open/Close dialog flags with Pay-In/Pay-Out
+    // below — every other dialog flag on this screen was rememberSaveable
+    // but these two stayed on plain remember, so a rotation mid-fill on the
+    // Open or Close form dismissed the dialog and blanked the inputs.
+    var showOpenDialog by rememberSaveable { mutableStateOf(false) }
+    var showCloseDialog by rememberSaveable { mutableStateOf(false) }
     var showPayInDialog by rememberSaveable { mutableStateOf(false) }
     var showPayOutDialog by rememberSaveable { mutableStateOf(false) }
     // Two-step close: form fills pendingClose, then ConfirmDialog submits.
+    // pendingClose stays on plain remember because Pair<Long, String?> would
+    // need a custom Saver and the close confirm flow re-derives this from
+    // the dialog inputs anyway.
     var pendingClose by remember { mutableStateOf<Pair<Long, String?>?>(null) }
     // ConfirmDialog for Z-report dismiss (after viewing).
     var showConfirmDismissZReport by rememberSaveable { mutableStateOf(false) }
@@ -524,8 +531,8 @@ private fun OpenShiftDialog(
     onDismiss: () -> Unit,
     onConfirm: (registerId: String, startingCents: Long) -> Unit,
 ) {
-    var registerId by remember { mutableStateOf("REG-01") }
-    var startingCashText by remember { mutableStateOf("") }
+    var registerId by rememberSaveable { mutableStateOf("REG-01") }
+    var startingCashText by rememberSaveable { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -583,8 +590,8 @@ private fun CloseShiftDialog(
     onDismiss: () -> Unit,
     onConfirm: (closingCents: Long, reason: String?) -> Unit,
 ) {
-    var closingCashText by remember { mutableStateOf("") }
-    var overShortReason by remember { mutableStateOf("") }
+    var closingCashText by rememberSaveable { mutableStateOf("") }
+    var overShortReason by rememberSaveable { mutableStateOf("") }
     // BUGHUNT-2026-05-17: Math.round on user-typed cash count. `(9.99 * 100).toLong()`
     // truncates to 998 in JVM IEEE-754, so a cashier closing on $9.99 reported
     // $9.98 to the server — a one-cent variance phantom in every reconciliation.
@@ -665,8 +672,8 @@ private fun PayInOutDialog(
     onDismiss: () -> Unit,
     onConfirm: (amountCents: Long, reason: String) -> Unit,
 ) {
-    var amountText by remember { mutableStateOf("") }
-    var reason by remember { mutableStateOf("") }
+    var amountText by rememberSaveable { mutableStateOf("") }
+    var reason by rememberSaveable { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,

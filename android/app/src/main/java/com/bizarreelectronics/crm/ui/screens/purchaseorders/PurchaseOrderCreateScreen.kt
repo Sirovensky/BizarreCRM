@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -38,10 +39,12 @@ fun PurchaseOrderCreateScreen(
         onCreated(id)
     }
 
+    // BUGHUNT-2026-05-19: rememberSaveable so a rotation mid-PO doesn't
+    // dismiss the picker / add-item sheets the buyer is filling in.
     // Supplier picker dialog state
-    var showSupplierPicker by remember { mutableStateOf(false) }
+    var showSupplierPicker by rememberSaveable { mutableStateOf(false) }
     // Add line-item dialog state
-    var showAddItem by remember { mutableStateOf(false) }
+    var showAddItem by rememberSaveable { mutableStateOf(false) }
 
     if (showSupplierPicker) {
         SupplierPickerDialog(
@@ -310,11 +313,11 @@ private fun AddLineItemDialog(
     onAdd: (DraftPoItem) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var inventoryItemId by remember { mutableStateOf("") }
-    var itemName by remember { mutableStateOf("") }
-    var sku by remember { mutableStateOf("") }
-    var qty by remember { mutableStateOf("1") }
-    var cost by remember { mutableStateOf("0.00") }
+    var inventoryItemId by rememberSaveable { mutableStateOf("") }
+    var itemName by rememberSaveable { mutableStateOf("") }
+    var sku by rememberSaveable { mutableStateOf("") }
+    var qty by rememberSaveable { mutableStateOf("1") }
+    var cost by rememberSaveable { mutableStateOf("0.00") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
