@@ -314,6 +314,8 @@ export function GoalsPage() {
                 <span className="text-xs font-semibold text-gray-600">Target value</span>
                 <input
                   type="number"
+                  inputMode="decimal"
+                  min="0"
                   step="0.01"
                   className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
                   value={newTarget}
@@ -419,6 +421,8 @@ export function GoalsPage() {
                 <span className="text-xs font-semibold text-gray-600">Target value</span>
                 <input
                   type="number"
+                  inputMode="decimal"
+                  min="0"
                   step="0.01"
                   className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
                   value={editTarget}

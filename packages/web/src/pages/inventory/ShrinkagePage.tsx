@@ -198,7 +198,10 @@ export function ShrinkagePage() {
               onChange={(e) => setQuantity(e.target.value)}
               placeholder="Quantity lost"
               type="number"
+              inputMode="numeric"
               min="1"
+              step="1"
+              aria-label="Quantity lost"
               className="rounded-md border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 placeholder:text-surface-400 dark:border-amber-900/60 dark:bg-surface-900 dark:text-surface-100 dark:placeholder:text-surface-500"
             />
             <select
@@ -315,7 +318,10 @@ export function ShrinkagePage() {
                     {isEditing ? (
                       <input
                         type="number"
+                        inputMode="numeric"
                         min="1"
+                        step="1"
+                        aria-label="Edit quantity lost"
                         value={editForm.quantity}
                         onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })}
                         className="w-20 text-right rounded border border-surface-300 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1 text-sm"

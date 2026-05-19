@@ -1015,10 +1015,13 @@ function CreateAppointmentModal({
           {/* WEB-UIUX-1321: location_id field — text input (locations list API not yet exposed);
               defaults to 1 (primary location). Replace with a select when getLocations is available. */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Location ID</label>
+            <label htmlFor="appt-location-id" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Location ID</label>
             <input
+              id="appt-location-id"
               type="number"
+              inputMode="numeric"
               min={1}
+              step={1}
               value={form.location_id}
               onChange={(e) => setForm((f) => ({ ...f, location_id: e.target.value }))}
               className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
