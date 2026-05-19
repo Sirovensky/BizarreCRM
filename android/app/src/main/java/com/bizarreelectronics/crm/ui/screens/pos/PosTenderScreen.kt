@@ -680,7 +680,14 @@ private fun CashTenderDialog(
     onDismiss: () -> Unit,
 ) {
     val remainingDollars = remainingCents / 100.0
-    var input by remember { mutableStateOf("%.2f".format(remainingDollars)) }
+    // BUGHUNT-2026-05-19: rememberSaveable so a rotation / dark-mode toggle
+    // mid-cash-take doesn't wipe the typed cash-received amount and snap it
+    // back to the prefilled "remaining due". Without this: cashier types
+    // $100 for a $17.99 sale, customer turns the kiosk → state recomposes →
+    // input resets to "17.99" → Apply emits receivedCents == remainingCents →
+    // change shown to customer is $0.00 instead of $82.01. Same fix family
+    // as the gift-card / drawer / loyalty dialogs in commit e898eaafbbb.
+    var input by rememberSaveable { mutableStateOf("%.2f".format(remainingDollars)) }
     val received = (input.toDoubleOrNull() ?: 0.0)
     // Math.round avoids the float-truncation bug where 16.31 * 100 = 1630.999...
     // would .toLong() to 1630 and leave \$0.01 remaining on a fully-paid sale.
