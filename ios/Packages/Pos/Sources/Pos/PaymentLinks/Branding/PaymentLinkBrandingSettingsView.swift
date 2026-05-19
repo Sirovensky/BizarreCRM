@@ -237,10 +237,13 @@ public final class PaymentLinkBrandingViewModel {
 
     /// URL used for the WKWebView preview — points at the server's sample pay page.
     public var previewURL: URL? {
-        Task { await api.currentBaseURL() }
-        // Synchronous approximation: use the stored base URL + preview path.
-        // In practice the view calls `task { await vm.load() }` first which
-        // hydrates `_cachedBase`.
+        // BUGHUNT-2026-05-19: previously this property kicked off a
+        // `Task { await api.currentBaseURL() }` and threw the result away
+        // before falling through to `_cachedBase`. The dead Task allocated
+        // on every property read (SwiftUI re-evaluates `previewURL` whenever
+        // the view body recomputes) and added an actor hop for nothing.
+        // load() — invoked from the view's .task modifier — is the only
+        // path that hydrates _cachedBase.
         guard let base = _cachedBase else { return nil }
         return base.deletingLastPathComponent()
             .deletingLastPathComponent()
