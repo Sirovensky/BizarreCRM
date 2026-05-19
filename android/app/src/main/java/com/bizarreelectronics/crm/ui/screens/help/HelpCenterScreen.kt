@@ -235,7 +235,7 @@ fun HelpCenterScreen(
                 LazyColumn(
                     contentPadding = PaddingValues(bottom = 16.dp),
                 ) {
-                    items(state.filteredTopics) { topic ->
+                    items(state.filteredTopics, key = { it.titleResId }) { topic ->
                         val topicTitle = stringResource(topic.titleResId)
                         HelpTopicRow(
                             title = topicTitle,

@@ -255,7 +255,7 @@ private fun Step1CustomerContent(
                 )
                 Spacer(Modifier.height(4.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(state.recent) { c ->
+                    items(state.recent, key = { it.id }) { c ->
                         FilterChip(
                             selected = false,
                             onClick = { onAttachRecent(c) },
@@ -319,7 +319,7 @@ private fun Step1CustomerContent(
                     }
                 }
             } else if (state.results.isNotEmpty()) {
-                items(state.results) { customer ->
+                items(state.results, key = { it.id }) { customer ->
                     CustomerSearchRow(customer = customer, onClick = { onSelectCustomer(customer) })
                     HorizontalDivider()
                 }

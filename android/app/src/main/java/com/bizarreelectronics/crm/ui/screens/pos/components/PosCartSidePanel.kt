@@ -95,7 +95,7 @@ internal fun PosCartSidePanel(
                     ),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(session.lines) { line ->
+                    items(session.lines, key = { it.id }) { line ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),

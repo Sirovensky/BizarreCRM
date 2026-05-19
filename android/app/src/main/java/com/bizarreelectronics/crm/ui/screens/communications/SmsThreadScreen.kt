@@ -815,7 +815,7 @@ private fun EmojiPickerSheet(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    items(rowEmoji) { emoji ->
+                    items(rowEmoji, key = { it }) { emoji ->
                         TextButton(onClick = { onEmojiSelected(emoji) }) {
                             Text(emoji, style = MaterialTheme.typography.titleLarge)
                         }
