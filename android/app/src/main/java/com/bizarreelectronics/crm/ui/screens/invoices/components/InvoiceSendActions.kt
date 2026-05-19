@@ -144,7 +144,7 @@ fun sendEmail(context: Context, email: String?, invoiceNumber: String, invoiceLi
         if (invoiceLink != null) append("\n\nView it here: $invoiceLink")
         append("\n\nThank you!")
     }
-    val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$target"))
+    val intent = Intent(Intent.ACTION_SENDTO, Uri.fromParts("mailto", target, null))
         .putExtra(Intent.EXTRA_SUBJECT, subject)
         .putExtra(Intent.EXTRA_TEXT, body)
     runCatching { context.startActivity(Intent.createChooser(intent, "Send email")) }

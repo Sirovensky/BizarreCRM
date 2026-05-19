@@ -2079,7 +2079,7 @@ fun TicketDetailScreen(
                                 enabled = phone != null,
                                 onClick = {
                                     if (phone != null) {
-                                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${phone}"))
+                                        val intent = Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", phone, null))
                                         context.startActivity(intent)
                                     }
                                 },
@@ -2403,7 +2403,7 @@ fun TicketDetailScreen(
                                     onCall = phone?.takeIf { it.isNotBlank() }?.let { p ->
                                         {
                                             val dialIntent = Intent(Intent.ACTION_DIAL).apply {
-                                                data = android.net.Uri.parse("tel:$p")
+                                                data = android.net.Uri.fromParts("tel", p, null)
                                             }
                                             context.startActivity(dialIntent)
                                         }

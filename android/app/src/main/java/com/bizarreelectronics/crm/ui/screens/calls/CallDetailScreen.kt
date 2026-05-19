@@ -237,7 +237,7 @@ private fun DetailRow(label: String, value: String) {
 /** §42.1 — Intent.ACTION_DIAL (no CALL_PHONE required). */
 private fun dialNumber(context: Context, number: String) {
     context.startActivity(
-        Intent(Intent.ACTION_DIAL, android.net.Uri.parse("tel:${number.replace(" ", "")}")),
+        Intent(Intent.ACTION_DIAL, android.net.Uri.fromParts("tel", number.replace(" ", ""), null)),
     )
 }
 

@@ -353,12 +353,12 @@ fun CustomerListScreen(
                         onToggleSelect = viewModel::onToggleSelect,
                         onSms = { phone ->
                             context.startActivity(
-                                Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$phone"))
+                                Intent(Intent.ACTION_SENDTO, Uri.fromParts("smsto", phone, null))
                             )
                         },
                         onCall = { phone ->
                             context.startActivity(
-                                Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
+                                Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", phone, null))
                             )
                         },
                         onMarkVip = viewModel::onMarkVip,
@@ -787,7 +787,7 @@ private fun CustomerContextMenuRow(
                     onClick = {
                         showMenu = false
                         context.startActivity(
-                            Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$primaryPhone"))
+                            Intent(Intent.ACTION_SENDTO, Uri.fromParts("smsto", primaryPhone, null))
                         )
                     },
                 )

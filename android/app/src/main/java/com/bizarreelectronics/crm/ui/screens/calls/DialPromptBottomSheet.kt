@@ -203,5 +203,5 @@ fun DialPromptBottomSheet(
 /** §42.1 — Falls back to ACTION_DIAL; no CALL_PHONE permission required. */
 private fun dialViaSystem(context: Context, number: String) {
     val normalised = number.replace("[^+\\d]".toRegex(), "")
-    context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$normalised")))
+    context.startActivity(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", normalised, null)))
 }

@@ -74,14 +74,14 @@ fun CustomerQuickActions(
                 label = "Call",
                 icon = Icons.Default.Phone,
                 onClick = onCall ?: {
-                    context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone")))
+                    context.startActivity(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", phone, null)))
                 },
             )
             QuickChip(
                 label = "SMS",
                 icon = Icons.Default.Sms,
                 onClick = onSms ?: {
-                    context.startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$phone")))
+                    context.startActivity(Intent(Intent.ACTION_SENDTO, Uri.fromParts("smsto", phone, null)))
                 },
             )
         }
@@ -91,7 +91,7 @@ fun CustomerQuickActions(
                 icon = Icons.Default.Email,
                 onClick = onEmail ?: {
                     context.startActivity(
-                        Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$email"))
+                        Intent(Intent.ACTION_SENDTO, Uri.fromParts("mailto", email, null))
                     )
                 },
             )

@@ -192,7 +192,7 @@ fun AccountLockedModal(
                                 }
 
                                 if (dto?.phone != null) {
-                                    val telUri = Uri.parse("tel:${dto.phone}")
+                                    val telUri = Uri.fromParts("tel", dto.phone, null)
                                     TextButton(
                                         onClick = {
                                             context.startActivity(

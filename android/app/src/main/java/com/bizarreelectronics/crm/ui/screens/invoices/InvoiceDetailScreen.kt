@@ -1204,7 +1204,7 @@ private fun InvoiceDetailContent(
                                 }
                                 FilledTonalButton(
                                     onClick = {
-                                        val intent = android.content.Intent(android.content.Intent.ACTION_DIAL, android.net.Uri.parse("tel:$customerPhone"))
+                                        val intent = android.content.Intent(android.content.Intent.ACTION_DIAL, android.net.Uri.fromParts("tel", customerPhone, null))
                                         runCatching { context.startActivity(intent) }
                                     },
                                 ) {
