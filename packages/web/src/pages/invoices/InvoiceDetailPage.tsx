@@ -1411,7 +1411,7 @@ export function InvoiceDetailPage() {
                 >
                   Pay {formatCurrency(invoice.amount_due)} (full balance)
                 </button>
-                <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Amount</label>
+                <label htmlFor="payment-amount" id="payment-amount-label" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Amount</label>
                 <div className="relative">
                   <span aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-400">{currencySymbol}</span>
                   <input
@@ -1450,8 +1450,9 @@ export function InvoiceDetailPage() {
                   so card/ACH/etc payments capture the reference in a dedicated field. */}
               {paymentForm.method !== 'cash' && (
                 <div>
-                  <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Reference / Transaction ID</label>
+                  <label htmlFor="payment-transaction-id" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Reference / Transaction ID</label>
                   <input
+                    id="payment-transaction-id"
                     value={paymentForm.transaction_id}
                     onChange={(e) => setPaymentForm({ ...paymentForm, transaction_id: e.target.value })}
                     className="input w-full"
@@ -1460,9 +1461,9 @@ export function InvoiceDetailPage() {
                 </div>
               )}
               <div>
-                <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Notes (optional)</label>
+                <label htmlFor="payment-notes" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Notes (optional)</label>
                 {/* WEB-UIUX-1540: now that transaction_id is its own field, notes is for free-form memo text */}
-                <input value={paymentForm.notes} onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })} className="input w-full" placeholder="Memo (e.g., 'invoice paid at front desk')" />
+                <input id="payment-notes" value={paymentForm.notes} onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })} className="input w-full" placeholder="Memo (e.g., 'invoice paid at front desk')" />
               </div>
               {/* WEB-UIUX-1532: deposit toggle. Server already distinguishes
                   payment_type ∈ {payment, deposit}; checkbox surfaces the
@@ -1853,7 +1854,7 @@ export function InvoiceDetailPage() {
               </div>
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-sm font-medium text-surface-700 dark:text-surface-300">{creditNoteForm.method === 'credit_note' ? 'Credit Amount' : 'Refund Amount'}</label>
+                  <label htmlFor="credit-amount" id="credit-amount-label" className="block text-sm font-medium text-surface-700 dark:text-surface-300">{creditNoteForm.method === 'credit_note' ? 'Credit Amount' : 'Refund Amount'}</label>
                   <button
                     type="button"
                     onClick={() => { setCreditNoteForm({ ...creditNoteForm, amount: maxCreditNoteAmount.toFixed(2) }); setCreditNoteError((prev) => ({ ...prev, amount: undefined })); }}

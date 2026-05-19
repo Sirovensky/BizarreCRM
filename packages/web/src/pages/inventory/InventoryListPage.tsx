@@ -1086,20 +1086,21 @@ export function InventoryListPage() {
               </button>
             </div>
             <div className="mb-4">
-              <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
+              <label htmlFor="bulk-price-adjustment-pct" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
                 Price adjustment (%)
               </label>
-              <input type="number" value={priceAdjustPct} onChange={e => setPriceAdjustPct(e.target.value)}
+              <input id="bulk-price-adjustment-pct" type="number" value={priceAdjustPct} onChange={e => setPriceAdjustPct(e.target.value)}
                 placeholder="e.g. 10 for +10%, -15 for -15%"
                 className="w-full text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2" />
             </div>
             {/* WEB-FH-012: reason captured for audit trail (margin changes
                 must be defensible to tax/compliance). Server requires it. */}
             <div className="mb-4">
-              <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
+              <label htmlFor="bulk-price-adjustment-reason" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
                 Reason <span className="text-red-500">*</span>
               </label>
               <input
+                id="bulk-price-adjustment-reason"
                 type="text"
                 value={priceAdjustReason}
                 onChange={e => setPriceAdjustReason(e.target.value)}
