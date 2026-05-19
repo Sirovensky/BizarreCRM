@@ -432,20 +432,20 @@ export function GiftCardDetailPage() {
         <dl className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
           {card.recipient_name && (
             <div>
-              <dt className="text-xs text-surface-400 uppercase tracking-wide">Recipient</dt>
+              <dt className="text-xs text-surface-500 dark:text-surface-400 uppercase tracking-wide">Recipient</dt>
               <dd className="mt-0.5 text-surface-700 dark:text-surface-300">{card.recipient_name}</dd>
             </div>
           )}
           {card.recipient_email && (
             <div>
-              <dt className="text-xs text-surface-400 uppercase tracking-wide">Email</dt>
+              <dt className="text-xs text-surface-500 dark:text-surface-400 uppercase tracking-wide">Email</dt>
               <dd className="mt-0.5 text-surface-700 dark:text-surface-300 truncate" title={card.recipient_email}>{card.recipient_email}</dd>
             </div>
           )}
           {/* WEB-UIUX-1452: link to the customer when card.customer_id is set. */}
           {card.customer_id && (
             <div>
-              <dt className="text-xs text-surface-400 uppercase tracking-wide">Customer</dt>
+              <dt className="text-xs text-surface-500 dark:text-surface-400 uppercase tracking-wide">Customer</dt>
               <dd className="mt-0.5">
                 <Link to={`/customers/${card.customer_id}`} className="text-primary-600 dark:text-primary-400 hover:underline">
                   {[card.customer_first_name, card.customer_last_name].filter(Boolean).join(' ') || `Customer #${card.customer_id}`}
@@ -454,12 +454,12 @@ export function GiftCardDetailPage() {
             </div>
           )}
           <div>
-            <dt className="text-xs text-surface-400 uppercase tracking-wide">Issued</dt>
+            <dt className="text-xs text-surface-500 dark:text-surface-400 uppercase tracking-wide">Issued</dt>
             <dd className="mt-0.5 text-surface-700 dark:text-surface-300">{formatDate(card.created_at)}</dd>
           </div>
           {card.expires_at && (
             <div>
-              <dt className="text-xs text-surface-400 uppercase tracking-wide">Expires</dt>
+              <dt className="text-xs text-surface-500 dark:text-surface-400 uppercase tracking-wide">Expires</dt>
               <dd className="mt-0.5 text-surface-700 dark:text-surface-300">{formatDate(card.expires_at)}</dd>
             </div>
           )}
@@ -468,7 +468,7 @@ export function GiftCardDetailPage() {
               "lost-card replacement") instead of having to query the DB. */}
           {card.notes && (
             <div className="col-span-2 sm:col-span-3">
-              <dt className="text-xs text-surface-400 uppercase tracking-wide">Notes</dt>
+              <dt className="text-xs text-surface-500 dark:text-surface-400 uppercase tracking-wide">Notes</dt>
               <dd className="mt-0.5 whitespace-pre-wrap text-surface-700 dark:text-surface-300">{card.notes}</dd>
             </div>
           )}
