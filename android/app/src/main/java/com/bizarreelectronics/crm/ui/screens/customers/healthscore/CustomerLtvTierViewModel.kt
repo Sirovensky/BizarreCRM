@@ -8,6 +8,7 @@ import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -39,26 +40,32 @@ class CustomerLtvTierViewModel @Inject constructor(
 
     fun load(customerId: Long) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val response = customerApi.getLtvTier(customerId)
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    ltvTier = response.data,
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        ltvTier = response.data,
+                    )
+                }
             } catch (e: HttpException) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    // 404 = server endpoint not yet live; display graceful empty state.
-                    error = if (e.code() == 404) null else "Failed to load LTV tier (${e.code()})",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        // 404 = server endpoint not yet live; display graceful empty state.
+                        error = if (e.code() == 404) null else "Failed to load LTV tier (${e.code()})",
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = "Failed to load LTV tier: ${e.message}",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = "Failed to load LTV tier: ${e.message}",
+                    )
+                }
             }
         }
     }

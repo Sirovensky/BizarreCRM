@@ -40,6 +40,7 @@ import com.bizarreelectronics.crm.util.DateFormatter
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.CancellationException
@@ -181,10 +182,12 @@ class NotificationListViewModel @Inject constructor(
                 notificationDao.getUnreadCount(),
             ) { entities, count -> entities to count }
                 .collect { (entities, count) ->
-                    _state.value = _state.value.copy(
-                        notifications = entities,
-                        unreadCount = count,
-                    )
+                    _state.update {
+                        it.copy(
+                            notifications = entities,
+                            unreadCount = count,
+                        )
+                    }
                 }
         }
         // Fetch from API to sync Room
@@ -193,10 +196,10 @@ class NotificationListViewModel @Inject constructor(
 
     fun load() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             if (!serverMonitor.isEffectivelyOnline.value) {
                 // Offline: Room flows already populating state
-                _state.value = _state.value.copy(isLoading = false, isRefreshing = false)
+                _state.update { it.copy(isLoading = false, isRefreshing = false) }
                 return@launch
             }
             try {
@@ -216,16 +219,18 @@ class NotificationListViewModel @Inject constructor(
                         createdAt = item.createdAt ?: "",
                     )
                 })
-                _state.value = _state.value.copy(isLoading = false, isRefreshing = false)
+                _state.update { it.copy(isLoading = false, isRefreshing = false) }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
                 Log.d(TAG, "API fetch failed: ${e.message}")
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    error = e.message ?: "Failed to load",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        error = e.message ?: "Failed to load",
+                    )
+                }
             }
         }
     }
@@ -236,7 +241,7 @@ class NotificationListViewModel @Inject constructor(
     // icon; this just gives the user a swipe-down gesture when the Room cache
     // has drifted from the server.
     fun refresh() {
-        _state.value = _state.value.copy(isRefreshing = true)
+        _state.update { it.copy(isRefreshing = true) }
         load()
     }
 
@@ -301,21 +306,23 @@ class NotificationListViewModel @Inject constructor(
     // filtering happens inside [NotificationUiState.filteredNotifications] so
     // we avoid a Room round-trip per keystroke.
     fun onSearchChange(query: String) {
-        _state.value = _state.value.copy(searchQuery = query)
+        _state.update { it.copy(searchQuery = query) }
     }
 
     fun onFilterChange(filter: NotificationFilter) {
-        _state.value = _state.value.copy(selectedFilter = filter)
+        _state.update { it.copy(selectedFilter = filter) }
     }
 
     // §13.1 — tab change handler. Switching tabs resets the type-chip filter to
     // ALL so the new tab always shows its full scope on first open. This matches
     // the pattern used by Tickets (status tabs reset search on tab switch).
     fun onTabChange(tab: NotificationTab) {
-        _state.value = _state.value.copy(
-            selectedTab = tab,
-            selectedFilter = NotificationFilter.ALL,
-        )
+        _state.update {
+            it.copy(
+                selectedTab = tab,
+                selectedFilter = NotificationFilter.ALL,
+            )
+        }
     }
 
     companion object {

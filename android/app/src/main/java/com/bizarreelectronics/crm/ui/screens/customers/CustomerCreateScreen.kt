@@ -49,6 +49,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -214,7 +215,7 @@ class CustomerCreateViewModel @Inject constructor(
                         hashTagToColor(hex)
                     }
                 }
-                _state.value = _state.value.copy(tagPalette = palette)
+                _state.update { it.copy(tagPalette = palette) }
             } catch (_: HttpException) {
                 // 404 expected — default palette cycle will be used
             } catch (_: Exception) {
@@ -235,19 +236,19 @@ class CustomerCreateViewModel @Inject constructor(
     // ── Field updaters ────────────────────────────────────────────────
 
     fun updateFirstName(value: String) {
-        _state.value = _state.value.copy(firstName = value)
+        _state.update { it.copy(firstName = value) }
         savedStateHandle[KEY_FIRST_NAME] = value
         onFieldChanged()
     }
 
     fun updateLastName(value: String) {
-        _state.value = _state.value.copy(lastName = value)
+        _state.update { it.copy(lastName = value) }
         savedStateHandle[KEY_LAST_NAME] = value
         onFieldChanged()
     }
 
     fun updateType(value: String) {
-        _state.value = _state.value.copy(type = value)
+        _state.update { it.copy(type = value) }
         savedStateHandle[KEY_TYPE] = value
         onFieldChanged()
     }
@@ -256,111 +257,111 @@ class CustomerCreateViewModel @Inject constructor(
     fun updatePhoneNumber(index: Int, number: String) {
         val formatted = formatPhoneInput(number)
         val updated = _state.value.phones.toMutableList().also { it[index] = it[index].copy(number = formatted) }
-        _state.value = _state.value.copy(phones = updated)
+        _state.update { it.copy(phones = updated) }
         onFieldChanged()
     }
 
     fun updatePhoneLabel(index: Int, label: String) {
         val updated = _state.value.phones.toMutableList().also { it[index] = it[index].copy(label = label) }
-        _state.value = _state.value.copy(phones = updated)
+        _state.update { it.copy(phones = updated) }
         onFieldChanged()
     }
 
     fun addPhone() {
         if (_state.value.phones.size >= 5) return
-        _state.value = _state.value.copy(phones = _state.value.phones + PhoneEntry())
+        _state.update { it.copy(phones = _state.value.phones + PhoneEntry()) }
         onFieldChanged()
     }
 
     fun removePhone(index: Int) {
         if (_state.value.phones.size <= 1) return
-        _state.value = _state.value.copy(phones = _state.value.phones.filterIndexed { i, _ -> i != index })
+        _state.update { it.copy(phones = _state.value.phones.filterIndexed { i, _ -> i != index }) }
         onFieldChanged()
     }
 
     // Multi-email
     fun updateEmailAddress(index: Int, email: String) {
         val updated = _state.value.emails.toMutableList().also { it[index] = it[index].copy(email = email) }
-        _state.value = _state.value.copy(emails = updated)
+        _state.update { it.copy(emails = updated) }
         onFieldChanged()
     }
 
     fun updateEmailLabel(index: Int, label: String) {
         val updated = _state.value.emails.toMutableList().also { it[index] = it[index].copy(label = label) }
-        _state.value = _state.value.copy(emails = updated)
+        _state.update { it.copy(emails = updated) }
         onFieldChanged()
     }
 
     fun addEmail() {
         if (_state.value.emails.size >= 5) return
-        _state.value = _state.value.copy(emails = _state.value.emails + EmailEntry())
+        _state.update { it.copy(emails = _state.value.emails + EmailEntry()) }
         onFieldChanged()
     }
 
     fun removeEmail(index: Int) {
         if (_state.value.emails.size <= 1) return
-        _state.value = _state.value.copy(emails = _state.value.emails.filterIndexed { i, _ -> i != index })
+        _state.update { it.copy(emails = _state.value.emails.filterIndexed { i, _ -> i != index }) }
         onFieldChanged()
     }
 
     fun updateOrganization(value: String) {
-        _state.value = _state.value.copy(organization = value)
+        _state.update { it.copy(organization = value) }
         savedStateHandle[KEY_ORG] = value
         onFieldChanged()
     }
 
     fun updateAddress(value: String) {
-        _state.value = _state.value.copy(address = value)
+        _state.update { it.copy(address = value) }
         savedStateHandle[KEY_ADDRESS] = value
         onFieldChanged()
     }
 
     fun updateCity(value: String) {
-        _state.value = _state.value.copy(city = value)
+        _state.update { it.copy(city = value) }
         savedStateHandle[KEY_CITY] = value
         onFieldChanged()
     }
 
     fun updateState(value: String) {
-        _state.value = _state.value.copy(state = value)
+        _state.update { it.copy(state = value) }
         savedStateHandle[KEY_STATE] = value
         onFieldChanged()
     }
 
     fun updateZip(value: String) {
-        _state.value = _state.value.copy(zip = value)
+        _state.update { it.copy(zip = value) }
         savedStateHandle[KEY_ZIP] = value
         onFieldChanged()
     }
 
     fun updateSameAsMailing(value: Boolean) {
-        _state.value = _state.value.copy(sameAsMailing = value)
+        _state.update { it.copy(sameAsMailing = value) }
         onFieldChanged()
     }
 
     fun updateBillingAddress(value: String) {
-        _state.value = _state.value.copy(billingAddress = value)
+        _state.update { it.copy(billingAddress = value) }
         onFieldChanged()
     }
 
     fun updateBillingCity(value: String) {
-        _state.value = _state.value.copy(billingCity = value)
+        _state.update { it.copy(billingCity = value) }
         onFieldChanged()
     }
 
     fun updateBillingState(value: String) {
-        _state.value = _state.value.copy(billingState = value)
+        _state.update { it.copy(billingState = value) }
         onFieldChanged()
     }
 
     fun updateBillingZip(value: String) {
-        _state.value = _state.value.copy(billingZip = value)
+        _state.update { it.copy(billingZip = value) }
         onFieldChanged()
     }
 
     // Tags
     fun updateTagInput(value: String) {
-        _state.value = _state.value.copy(tagInput = value)
+        _state.update { it.copy(tagInput = value) }
     }
 
     fun addTag() {
@@ -368,47 +369,47 @@ class CustomerCreateViewModel @Inject constructor(
         if (raw.isBlank()) return
         val existing = _state.value.tags
         if (!existing.contains(raw)) {
-            _state.value = _state.value.copy(tags = existing + raw, tagInput = "")
+            _state.update { it.copy(tags = existing + raw, tagInput = "") }
         } else {
-            _state.value = _state.value.copy(tagInput = "")
+            _state.update { it.copy(tagInput = "") }
         }
         onFieldChanged()
     }
 
     fun removeTag(tag: String) {
-        _state.value = _state.value.copy(tags = _state.value.tags.filter { it != tag })
+        _state.update { it.copy(tags = _state.value.tags.filter { it != tag }) }
         onFieldChanged()
     }
 
     // Communication prefs
     fun updateSmsOptIn(value: Boolean) {
-        _state.value = _state.value.copy(smsOptIn = value)
+        _state.update { it.copy(smsOptIn = value) }
         onFieldChanged()
     }
 
     fun updateEmailOptIn(value: Boolean) {
-        _state.value = _state.value.copy(emailOptIn = value)
+        _state.update { it.copy(emailOptIn = value) }
         onFieldChanged()
     }
 
     fun updatePhoneCallsOptIn(value: Boolean) {
-        _state.value = _state.value.copy(phoneCallsOptIn = value)
+        _state.update { it.copy(phoneCallsOptIn = value) }
         onFieldChanged()
     }
 
     fun updateReferralSource(value: String) {
-        _state.value = _state.value.copy(referralSource = value)
+        _state.update { it.copy(referralSource = value) }
         savedStateHandle[KEY_REFERRAL] = value
         onFieldChanged()
     }
 
     fun updateBirthday(value: String) {
-        _state.value = _state.value.copy(birthday = value)
+        _state.update { it.copy(birthday = value) }
         onFieldChanged()
     }
 
     fun updateNotes(value: String) {
-        _state.value = _state.value.copy(notes = value)
+        _state.update { it.copy(notes = value) }
         savedStateHandle[KEY_NOTES] = value
         onFieldChanged()
     }
@@ -423,19 +424,21 @@ class CustomerCreateViewModel @Inject constructor(
         val last  = parts.getOrNull(1) ?: ""
 
         val formattedPhone = phone?.let { formatPhoneInput(it) } ?: ""
-        _state.value = _state.value.copy(
-            firstName = first,
-            lastName  = last,
-            phones    = if (formattedPhone.isNotBlank()) listOf(PhoneEntry(number = formattedPhone)) else _state.value.phones,
-            emails    = if (!email.isNullOrBlank()) listOf(EmailEntry(email = email)) else _state.value.emails,
-        )
+        _state.update {
+            it.copy(
+                firstName = first,
+                lastName  = last,
+                phones    = if (formattedPhone.isNotBlank()) listOf(PhoneEntry(number = formattedPhone)) else _state.value.phones,
+                emails    = if (!email.isNullOrBlank()) listOf(EmailEntry(email = email)) else _state.value.emails,
+            )
+        }
         savedStateHandle[KEY_FIRST_NAME] = first
         savedStateHandle[KEY_LAST_NAME]  = last
         onFieldChanged()
     }
 
     fun clearError() {
-        _state.value = _state.value.copy(error = null)
+        _state.update { it.copy(error = null) }
     }
 
     // ── Draft autosave ────────────────────────────────────────────────
@@ -482,17 +485,19 @@ class CustomerCreateViewModel @Inject constructor(
         val city         = obj.get("city")?.takeIf      { !it.isJsonNull }?.asString ?: ""
         val stateField   = obj.get("state")?.takeIf     { !it.isJsonNull }?.asString ?: ""
         val notes        = obj.get("notes")?.takeIf     { !it.isJsonNull }?.asString ?: ""
-        _state.value = _state.value.copy(
-            firstName    = firstName,
-            lastName     = lastName,
-            phones       = if (phone.isNotBlank()) listOf(PhoneEntry(number = phone)) else listOf(PhoneEntry()),
-            emails       = if (email.isNotBlank()) listOf(EmailEntry(email = email)) else listOf(EmailEntry()),
-            organization = organization,
-            address      = address,
-            city         = city,
-            state        = stateField,
-            notes        = notes,
-        )
+        _state.update {
+            it.copy(
+                firstName    = firstName,
+                lastName     = lastName,
+                phones       = if (phone.isNotBlank()) listOf(PhoneEntry(number = phone)) else listOf(PhoneEntry()),
+                emails       = if (email.isNotBlank()) listOf(EmailEntry(email = email)) else listOf(EmailEntry()),
+                organization = organization,
+                address      = address,
+                city         = city,
+                state        = stateField,
+                notes        = notes,
+            )
+        }
         savedStateHandle[KEY_FIRST_NAME] = firstName
         savedStateHandle[KEY_LAST_NAME]  = lastName
         savedStateHandle[KEY_PHONE]      = phone
@@ -537,15 +542,17 @@ class CustomerCreateViewModel @Inject constructor(
     }
 
     fun dismissDuplicateDialog() {
-        _state.value = _state.value.copy(showDuplicateDialog = false, duplicateCandidates = emptyList())
+        _state.update { it.copy(showDuplicateDialog = false, duplicateCandidates = emptyList()) }
     }
 
     fun useExistingCustomer(id: Long) {
-        _state.value = _state.value.copy(
-            showDuplicateDialog = false,
-            duplicateCandidates = emptyList(),
-            createdId = id,
-        )
+        _state.update {
+            it.copy(
+                showDuplicateDialog = false,
+                duplicateCandidates = emptyList(),
+                createdId = id,
+            )
+        }
     }
 
     // ── §5.3 Barcode/QR card scan ─────────────────────────────────────
@@ -565,7 +572,7 @@ class CustomerCreateViewModel @Inject constructor(
     fun handleScannedCard(rawValue: String) {
         val trimmed = rawValue.trim()
         if (trimmed.isBlank()) return
-        _state.value = _state.value.copy(isScanLookingUp = true)
+        _state.update { it.copy(isScanLookingUp = true) }
         viewModelScope.launch {
             try {
                 val results = customerApi.searchCustomers(trimmed).data ?: emptyList()
@@ -576,25 +583,27 @@ class CustomerCreateViewModel @Inject constructor(
                     results.firstOrNull { it.id == id }
                 } else null
                 val target = idMatch ?: singleMatch
-                _state.value = _state.value.copy(
-                    isScanLookingUp = false,
-                    scannedExistingCustomerId = target?.id,
-                )
+                _state.update {
+                    it.copy(
+                        isScanLookingUp = false,
+                        scannedExistingCustomerId = target?.id,
+                    )
+                }
             } catch (_: Exception) {
-                _state.value = _state.value.copy(isScanLookingUp = false)
+                _state.update { it.copy(isScanLookingUp = false) }
             }
         }
     }
 
     fun clearScannedExistingCustomer() {
-        _state.value = _state.value.copy(scannedExistingCustomerId = null)
+        _state.update { it.copy(scannedExistingCustomerId = null) }
     }
 
     // ── Save ──────────────────────────────────────────────────────────
 
     /** Called by "Create anyway" button in the duplicate dialog. */
     fun saveForce() {
-        _state.value = _state.value.copy(showDuplicateDialog = false, duplicateCandidates = emptyList())
+        _state.update { it.copy(showDuplicateDialog = false, duplicateCandidates = emptyList()) }
         doSave()
     }
 
@@ -635,14 +644,16 @@ class CustomerCreateViewModel @Inject constructor(
 
         // Duplicate check before POST
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSubmitting = true, error = null)
+            _state.update { it.copy(isSubmitting = true, error = null) }
             val dupes = checkForDuplicates()
             if (dupes.isNotEmpty()) {
-                _state.value = _state.value.copy(
-                    isSubmitting = false,
-                    duplicateCandidates = dupes,
-                    showDuplicateDialog = true,
-                )
+                _state.update {
+                    it.copy(
+                        isSubmitting = false,
+                        duplicateCandidates = dupes,
+                        showDuplicateDialog = true,
+                    )
+                }
                 return@launch
             }
             doSave()
@@ -652,7 +663,7 @@ class CustomerCreateViewModel @Inject constructor(
     private fun doSave() {
         val current = _state.value
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSubmitting = true, error = null)
+            _state.update { it.copy(isSubmitting = true, error = null) }
             try {
                 val primaryPhone = current.phones.firstOrNull { it.number.isNotBlank() }
                 val primaryEmail = current.emails.firstOrNull { it.email.isNotBlank() }
@@ -693,7 +704,7 @@ class CustomerCreateViewModel @Inject constructor(
                 )
                 val createdId = customerRepository.createCustomer(request)
                 discardDraft()
-                _state.value = _state.value.copy(isSubmitting = false, createdId = createdId)
+                _state.update { it.copy(isSubmitting = false, createdId = createdId) }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: re-throw cancellation. The request
                 // carries a UUID idempotency key (clientRequestId), so a
@@ -704,10 +715,12 @@ class CustomerCreateViewModel @Inject constructor(
                 // toast so the user can resume cleanly.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSubmitting = false,
-                    error = e.message ?: "Failed to create customer",
-                )
+                _state.update {
+                    it.copy(
+                        isSubmitting = false,
+                        error = e.message ?: "Failed to create customer",
+                    )
+                }
             }
         }
     }

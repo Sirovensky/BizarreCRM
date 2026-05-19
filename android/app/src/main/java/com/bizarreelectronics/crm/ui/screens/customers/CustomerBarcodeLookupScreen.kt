@@ -42,6 +42,7 @@ import com.bizarreelectronics.crm.util.BarcodeAnalyzer
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
@@ -78,7 +79,7 @@ class CustomerBarcodeLookupViewModel @Inject constructor(
         if (raw.isBlank()) return
         if (raw == _state.value.lastScanned) return   // debounce repeat scans
 
-        _state.value = _state.value.copy(lastScanned = raw, isLoading = true, error = null, results = emptyList())
+        _state.update { it.copy(lastScanned = raw, isLoading = true, error = null, results = emptyList()) }
 
         viewModelScope.launch {
             try {
@@ -90,7 +91,7 @@ class CustomerBarcodeLookupViewModel @Inject constructor(
                     try {
                         val resp = customerApi.getCustomer(asId)
                         if (resp.data != null) {
-                            _state.value = _state.value.copy(isLoading = false, navigateToId = asId)
+                            _state.update { it.copy(isLoading = false, navigateToId = asId) }
                             return@launch
                         }
                     } catch (e: CancellationException) {
@@ -104,36 +105,40 @@ class CustomerBarcodeLookupViewModel @Inject constructor(
                 val resp = customerApi.searchCustomers(raw)
                 val hits = resp.data ?: emptyList()
                 when {
-                    hits.size == 1 -> _state.value = _state.value.copy(isLoading = false, navigateToId = hits[0].id)
-                    else           -> _state.value = _state.value.copy(isLoading = false, results = hits)
+                    hits.size == 1 -> _state.update { it.copy(isLoading = false, navigateToId = hits[0].id) }
+                    else           -> _state.update { it.copy(isLoading = false, results = hits) }
                 }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Scan lookup failed",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = e.message ?: "Scan lookup failed",
+                    )
+                }
             }
         }
     }
 
     fun clearNavigate() {
-        _state.value = _state.value.copy(navigateToId = null)
+        _state.update { it.copy(navigateToId = null) }
     }
 
     fun clearError() {
-        _state.value = _state.value.copy(error = null)
+        _state.update { it.copy(error = null) }
     }
 
     fun resetScan() {
-        _state.value = _state.value.copy(
-            lastScanned = null,
-            results = emptyList(),
-            error = null,
-            navigateToId = null,
-            isLoading = false,
-        )
+        _state.update {
+            it.copy(
+                lastScanned = null,
+                results = emptyList(),
+                error = null,
+                navigateToId = null,
+                isLoading = false,
+            )
+        }
     }
 }
 

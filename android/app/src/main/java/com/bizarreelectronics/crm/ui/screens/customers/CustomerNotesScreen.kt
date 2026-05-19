@@ -30,6 +30,7 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
@@ -80,82 +81,90 @@ class CustomerNotesViewModel @Inject constructor(
 
     fun loadNotes() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val resp = customerApi.getNotes(customerId)
-                _state.value = _state.value.copy(isLoading = false, notes = resp.data ?: emptyList())
+                _state.update { it.copy(isLoading = false, notes = resp.data ?: emptyList()) }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: re-throw cancellation so back-nav
                 // doesn't paint a fake "Failed to load notes".
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Failed to load notes",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = e.message ?: "Failed to load notes",
+                    )
+                }
             }
         }
     }
 
     fun updateNewNoteText(text: String) {
         if (text.length > NOTE_MAX_CHARS) return
-        _state.value = _state.value.copy(newNoteText = text)
+        _state.update { it.copy(newNoteText = text) }
     }
 
     fun postNote() {
         val body = _state.value.newNoteText.trim()
         if (body.isBlank()) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSending = true, error = null)
+            _state.update { it.copy(isSending = true, error = null) }
             try {
                 val resp = customerApi.postNote(customerId, CreateCustomerNoteRequest(body))
                 val created = resp.data ?: return@launch
-                _state.value = _state.value.copy(
-                    isSending = false,
-                    newNoteText = "",
-                    notes = listOf(created) + _state.value.notes,
-                )
+                _state.update {
+                    it.copy(
+                        isSending = false,
+                        newNoteText = "",
+                        notes = listOf(created) + _state.value.notes,
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: re-throw cancellation. Painting
                 // "Failed to save note" when the user backs out preserves
                 // the draft text in the field, but adds confusing UX.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSending = false,
-                    error = e.message ?: "Failed to save note",
-                )
+                _state.update {
+                    it.copy(
+                        isSending = false,
+                        error = e.message ?: "Failed to save note",
+                    )
+                }
             }
         }
     }
 
     fun requestDelete(noteId: Long) {
-        _state.value = _state.value.copy(deleteTargetNoteId = noteId)
+        _state.update { it.copy(deleteTargetNoteId = noteId) }
     }
 
     fun cancelDelete() {
-        _state.value = _state.value.copy(deleteTargetNoteId = null)
+        _state.update { it.copy(deleteTargetNoteId = null) }
     }
 
     fun confirmDelete() {
         val noteId = _state.value.deleteTargetNoteId ?: return
-        _state.value = _state.value.copy(deleteTargetNoteId = null)
+        _state.update { it.copy(deleteTargetNoteId = null) }
         viewModelScope.launch {
             try {
                 customerApi.deleteNote(customerId, noteId)
-                _state.value = _state.value.copy(
-                    notes = _state.value.notes.filter { it.id != noteId },
-                )
+                _state.update {
+                    it.copy(
+                        notes = _state.value.notes.filter { it.id != noteId },
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(error = e.message ?: "Failed to delete note")
+                _state.update { it.copy(error = e.message ?: "Failed to delete note") }
             }
         }
     }
 
     fun clearError() {
-        _state.value = _state.value.copy(error = null)
+        _state.update { it.copy(error = null) }
     }
 }
 
