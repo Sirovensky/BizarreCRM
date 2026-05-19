@@ -92,7 +92,14 @@ public struct ExpiryDateWarningRow: View {
     private var nearExpiryMessage: String {
         guard let date = lot.expiryDate else { return "Lot \(lot.lotId) — expires soon." }
         let days = Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0
-        if days <= 1 {
+        // BUGHUNT-2026-05-19: `days <= 1` collapsed days=0 (today) and days=1
+        // (tomorrow) into the same "expires today" banner. A stocktake clerk
+        // looking at the row at 9 a.m. for a lot expiring tomorrow evening
+        // (~36h out → days=1) saw "expires today" and pulled it from the
+        // shelf prematurely. The else branch already pluralises correctly
+        // ("1 day" vs "2 days") via `days == 1 ? "" : "s"`, so only days=0
+        // belongs in the today branch.
+        if days < 1 {
             return "Lot \(lot.lotId) expires today."
         }
         return "Lot \(lot.lotId) expires in \(days) day\(days == 1 ? "" : "s")."
