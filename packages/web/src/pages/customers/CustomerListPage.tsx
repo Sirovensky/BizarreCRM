@@ -862,7 +862,12 @@ export function CustomerListPage() {
                       value={pageSize}
                       onChange={(e) => {
                         const v = e.target.value;
-                        localStorage.setItem('customers_pagesize', v);
+                        // BUGHUNT-2026-05-19: Safari private mode throws
+                        // QuotaExceededError on localStorage.setItem and
+                        // would abort the URL update below — the cashier
+                        // sees a noop on the dropdown change. Guard so a
+                        // failed write doesn't block the navigation.
+                        try { localStorage.setItem('customers_pagesize', v); } catch { /* private mode / quota */ }
                         const p = new URLSearchParams(searchParams);
                         p.set('pagesize', v);
                         p.set('page', '1');
