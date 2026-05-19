@@ -171,7 +171,7 @@ private struct PhotoThumbCell: View {
     let onRemove: () -> Void
 
     var body: some View {
-        Button(action: onRemove) {
+        Button(role: .destructive, action: onRemove) {
             ZStack(alignment: .topTrailing) {
                 Image(uiImage: image)
                     .resizable()

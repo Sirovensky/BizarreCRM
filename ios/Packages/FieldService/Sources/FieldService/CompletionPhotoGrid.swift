@@ -151,7 +151,7 @@ private struct PhotoThumbnail: View {
                     }
             }
 
-            Button(action: onRemove) {
+            Button(role: .destructive, action: onRemove) {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 20))
                     .foregroundStyle(.white)

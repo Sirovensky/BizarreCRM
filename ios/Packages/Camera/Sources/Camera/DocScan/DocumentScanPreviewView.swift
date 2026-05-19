@@ -207,7 +207,7 @@ public struct DocumentScanPreviewView: View {
 
             Spacer()
 
-            Button {
+            Button(role: .destructive) {
                 withAnimation(reduceMotion ? nil : .default) {
                     viewModel.deletePage(at: index)
                 }
