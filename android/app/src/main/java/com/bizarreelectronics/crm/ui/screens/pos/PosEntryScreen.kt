@@ -647,10 +647,16 @@ private fun CreateCustomerDialog(
     onSubmit: (firstName: String, lastName: String, phone: String, email: String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var firstName by remember { mutableStateOf("") }
-    var lastName by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
+    // BUGHUNT-2026-05-19: rememberSaveable so a config change (rotation,
+    // dark-mode toggle, locale switch) mid-form doesn't wipe the cashier's
+    // typed-in customer name + contact details. The whole dialog is dismissed
+    // on a normal config change because AlertDialog ties to the activity
+    // recreated by Compose-state save/restore — but rememberSaveable lets us
+    // re-render with the prior text intact if the dialog is still open.
+    var firstName by rememberSaveable { mutableStateOf("") }
+    var lastName by rememberSaveable { mutableStateOf("") }
+    var phone by rememberSaveable { mutableStateOf("") }
+    var email by rememberSaveable { mutableStateOf("") }
     val canSubmit = firstName.isNotBlank()
 
     AlertDialog(

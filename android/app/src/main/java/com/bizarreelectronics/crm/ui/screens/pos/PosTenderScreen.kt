@@ -12,6 +12,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -603,7 +604,11 @@ private fun GiftCardDialog(
     onApply: (code: String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var code by remember { mutableStateOf("") }
+    // BUGHUNT-2026-05-19: rememberSaveable so the cashier doesn't lose a
+    // half-typed gift-card code on rotation / dark-mode toggle / language
+    // switch mid-checkout. The dialog is held open by the parent flag,
+    // which itself survives a config change, so the field must too.
+    var code by rememberSaveable { mutableStateOf("") }
     val canApply = code.isNotBlank()
 
     AlertDialog(
@@ -634,7 +639,9 @@ private fun ManualDrawerDialog(
     onOpen: (reason: String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var reason by remember { mutableStateOf("") }
+    // BUGHUNT-2026-05-19: rememberSaveable — manager has to retype the audit
+    // reason text if the device rotates while the dialog is open.
+    var reason by rememberSaveable { mutableStateOf("") }
     val canOpen = reason.isNotBlank()
 
     AlertDialog(
@@ -743,8 +750,10 @@ private fun LoyaltyPointsDialog(
     onApply: (membershipId: Long, pointsToRedeem: Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var membershipIdText by remember { mutableStateOf("") }
-    var pointsText by remember { mutableStateOf("") }
+    // BUGHUNT-2026-05-19: rememberSaveable so a rotation mid-redemption
+    // doesn't lose the membership ID + points the cashier already typed.
+    var membershipIdText by rememberSaveable { mutableStateOf("") }
+    var pointsText by rememberSaveable { mutableStateOf("") }
     val membershipId = membershipIdText.toLongOrNull()
     val points = pointsText.toIntOrNull()?.takeIf { it > 0 }
     val dollarValue = points?.let { it * 1L }
