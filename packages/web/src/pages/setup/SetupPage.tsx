@@ -311,8 +311,14 @@ export function SetupPage() {
   // ── Guards ──────────────────────────────────────────────────────
   if (checkingStatus) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-surface-50 dark:bg-surface-900">
-        <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
+      <main
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+        aria-label="Checking setup status"
+        className="flex min-h-screen items-center justify-center bg-surface-50 dark:bg-surface-900"
+      >
+        <Loader2 className="h-8 w-8 animate-spin text-primary-600" aria-hidden="true" />
       </main>
     );
   }
