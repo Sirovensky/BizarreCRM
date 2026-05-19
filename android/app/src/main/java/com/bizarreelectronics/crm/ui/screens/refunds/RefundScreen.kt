@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -118,15 +119,22 @@ private fun NewRefundTab(
     viewModel: RefundViewModel,
     uiState: RefundUiState,
 ) {
-    var invoiceIdText by remember { mutableStateOf("") }
-    var customerIdText by remember { mutableStateOf("") }
-    var amountText by remember { mutableStateOf("") }
-    var reasonText by remember { mutableStateOf("") }
-    var selectedType by remember { mutableStateOf("refund") }
-    var selectedMethod by remember { mutableStateOf("") }
-    var showPinDialog by remember { mutableStateOf(false) }
-    var pinError by remember { mutableStateOf(false) }
-    var pinVerifying by remember { mutableStateOf(false) }
+    // BUGHUNT-2026-05-19: rememberSaveable on every refund input so a
+    // rotation mid-fill doesn't blank the form mid-money-write. PIN dialog
+    // visibility + error are saveable too — without them, an accidental
+    // rotation while the PIN sheet was up dismissed it and reset the
+    // "wrong PIN" feedback. pinText itself stays on plain remember (see
+    // ManagerPinDialog below) so the manager's PIN is not persisted to
+    // the Bundle save-state.
+    var invoiceIdText by rememberSaveable { mutableStateOf("") }
+    var customerIdText by rememberSaveable { mutableStateOf("") }
+    var amountText by rememberSaveable { mutableStateOf("") }
+    var reasonText by rememberSaveable { mutableStateOf("") }
+    var selectedType by rememberSaveable { mutableStateOf("refund") }
+    var selectedMethod by rememberSaveable { mutableStateOf("") }
+    var showPinDialog by rememberSaveable { mutableStateOf(false) }
+    var pinError by rememberSaveable { mutableStateOf(false) }
+    var pinVerifying by rememberSaveable { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
     val types = listOf("refund" to "Original Tender", "store_credit" to "Store Credit", "credit_note" to "Credit Note")

@@ -35,6 +35,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,6 +56,15 @@ enum class AdjustReason(val label: String, val apiType: String) {
     Adjusted("Adjusted", "adjusted"),
 }
 
+// BUGHUNT-2026-05-19: Saver so rememberSaveable can survive process death
+// for the selected AdjustReason. Enums aren't Bundle-serializable by name
+// out of the box — round-trip through ordinal.
+private val AdjustReasonSaver: androidx.compose.runtime.saveable.Saver<AdjustReason, Int> =
+    androidx.compose.runtime.saveable.Saver(
+        save = { it.ordinal },
+        restore = { idx -> AdjustReason.entries.getOrNull(idx) ?: AdjustReason.Adjusted },
+    )
+
 /**
  * Inline +/- stepper that sits at the end of an inventory row.
  * On tablet-wide layouts it is visible; on phone it is hidden (caller controls).
@@ -71,7 +81,11 @@ fun QuickStockAdjust(
     onAdjust: (delta: Int, type: String, reason: String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var showDetailSheet by remember { mutableStateOf(false) }
+    // BUGHUNT-2026-05-19: rememberSaveable so a rotation mid-adjust doesn't
+    // dismiss the detail sheet. The inside form state (amount/reason)
+    // mirrors this below — keeping both saveable means a rotated cashier
+    // resumes exactly where they left off.
+    var showDetailSheet by rememberSaveable { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     Row(
@@ -135,11 +149,12 @@ private fun StockAdjustSheet(
     onConfirm: (delta: Int, type: String, reason: String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var amount by remember { mutableIntStateOf(1) }
-    var amountText by remember { mutableStateOf("1") }
-    var selectedReason by remember { mutableStateOf(AdjustReason.Adjusted) }
+    var amount by rememberSaveable { mutableIntStateOf(1) }
+    var amountText by rememberSaveable { mutableStateOf("1") }
+    // AdjustReason is an enum — saveable via name persistence below.
+    var selectedReason by rememberSaveable(stateSaver = AdjustReasonSaver) { mutableStateOf(AdjustReason.Adjusted) }
     var reasonMenuExpanded by remember { mutableStateOf(false) }
-    var isDelta by remember { mutableStateOf(true) } // true = +/- delta, false = set absolute
+    var isDelta by rememberSaveable { mutableStateOf(true) } // true = +/- delta, false = set absolute
     val amountFocus = remember { FocusRequester() }
 
     // Auto-focus the amount field when the sheet opens so users don't have to tap.

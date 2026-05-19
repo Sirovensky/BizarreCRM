@@ -9,6 +9,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -100,10 +101,13 @@ private fun IssueTab(
     viewModel: GiftCardViewModel,
     uiState: GiftCardUiState,
 ) {
-    var amountText by remember { mutableStateOf("") }
-    var codeText by remember { mutableStateOf("") }
-    var customerIdText by remember { mutableStateOf("") }
-    var sendDigital by remember { mutableStateOf(false) }
+    // BUGHUNT-2026-05-19: rememberSaveable so a rotation between "amount
+    // typed" and "Issue" tap doesn't blank the gift-card form (cashier
+    // would re-type and might transcribe the wrong amount).
+    var amountText by rememberSaveable { mutableStateOf("") }
+    var codeText by rememberSaveable { mutableStateOf("") }
+    var customerIdText by rememberSaveable { mutableStateOf("") }
+    var sendDigital by rememberSaveable { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -193,8 +197,8 @@ private fun ScanRedeemTab(
     viewModel: GiftCardViewModel,
     uiState: GiftCardUiState,
 ) {
-    var codeText by remember { mutableStateOf("") }
-    var redeemAmountText by remember { mutableStateOf("") }
+    var codeText by rememberSaveable { mutableStateOf("") }
+    var redeemAmountText by rememberSaveable { mutableStateOf("") }
 
     Column(
         modifier = Modifier
@@ -272,9 +276,9 @@ private fun ScanRedeemTab(
 @Composable
 private fun StoreCreditTab(viewModel: GiftCardViewModel) {
     val creditState by viewModel.storeCreditState.collectAsState()
-    var customerIdText by remember { mutableStateOf("") }
-    var issueAmountText by remember { mutableStateOf("") }
-    var issueReason by remember { mutableStateOf("") }
+    var customerIdText by rememberSaveable { mutableStateOf("") }
+    var issueAmountText by rememberSaveable { mutableStateOf("") }
+    var issueReason by rememberSaveable { mutableStateOf("") }
 
     Column(
         modifier = Modifier
