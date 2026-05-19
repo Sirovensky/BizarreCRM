@@ -439,8 +439,13 @@ router.get('/stats', requirePermission('invoices.view'), asyncHandler(async (req
   }
   if (keyword) {
     const esc = escapeLike(keyword);
+    // BUGHUNT-2026-05-19: ESCAPE '\\' is required here — escapeLike adds
+    // backslash escapes for %, _, and \ but without the SQL ESCAPE clause
+    // those backslashes are noise and the wildcards still match. A user
+    // searching for "100%" would surface every invoice; the variant at
+    // line 325 of this same file already had the ESCAPE clause.
     conditions.push(
-      "(inv.order_id LIKE ? OR c.first_name LIKE ? OR c.last_name LIKE ? OR (c.first_name || ' ' || c.last_name) LIKE ?)"
+      "(inv.order_id LIKE ? ESCAPE '\\' OR c.first_name LIKE ? ESCAPE '\\' OR c.last_name LIKE ? ESCAPE '\\' OR (c.first_name || ' ' || c.last_name) LIKE ? ESCAPE '\\')"
     );
     const pat = `%${esc}%`;
     params.push(pat, pat, pat, pat);

@@ -308,7 +308,10 @@ bundlesRouter.get('/', asyncHandler(async (req: Request, res: Response) => {
   params.push(activeFilter);
 
   if (keyword) {
-    where += ' AND (b.name LIKE ? OR b.sku LIKE ?)';
+    // BUGHUNT-2026-05-19: ESCAPE '\\' clause needed — the keyword is
+    // backslash-escaped above but without ESCAPE the backslashes are
+    // literal pattern chars and %/_ in user input still wildcard-match.
+    where += " AND (b.name LIKE ? ESCAPE '\\' OR b.sku LIKE ? ESCAPE '\\')";
     const k = `%${keyword.replace(/[%_\\]/g, '\\$&')}%`;
     params.push(k, k);
   }
