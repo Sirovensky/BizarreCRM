@@ -170,7 +170,14 @@ export function PortalTicketDetail({ ticketId, initialData, onBack, scope, hasAc
               {ticket.status.name}
             </span>
           </div>
-          <div className="h-2 rounded-full bg-surface-100 dark:bg-surface-800 overflow-hidden">
+          <div
+            className="h-2 rounded-full bg-surface-100 dark:bg-surface-800 overflow-hidden"
+            role="progressbar"
+            aria-valuenow={progress}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={`Repair progress: ${ticket.status.name}`}
+          >
             <div
               className="h-full rounded-full transition-all duration-500"
               style={{
