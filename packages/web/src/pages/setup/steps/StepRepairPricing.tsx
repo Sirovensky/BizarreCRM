@@ -538,6 +538,7 @@ export function StepRepairPricing({
                   value={matrixSearch}
                   onChange={(e) => setMatrixSearch(e.target.value)}
                   placeholder="Search device or maker"
+                  aria-label="Search device or maker in repair pricing matrix"
                   className="w-56 rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-900 dark:text-surface-100"
                 />
                 <button

@@ -58,19 +58,19 @@ export function TemplateAnalyticsCard({ className }: TemplateAnalyticsCardProps)
         Template Analytics
       </div>
       {isLoading ? (
-        <div className="text-[11px] text-surface-400">Loading…</div>
+        <div className="text-[11px] text-surface-400" role="status" aria-live="polite">Loading…</div>
       ) : rows.length === 0 ? (
         <div className="text-[11px] text-surface-400">
           No template sends recorded yet.
         </div>
       ) : (
         <div className="overflow-x-auto">
-        <table className="w-full text-[11px]">
+        <table className="w-full text-[11px]" aria-label="Template analytics">
           <thead>
             <tr className="text-left text-[10px] text-surface-400">
-              <th className="pb-1 font-normal">Name</th>
-              <th className="pb-1 text-right font-normal">Sent</th>
-              <th className="pb-1 text-right font-normal">Reply</th>
+              <th scope="col" className="pb-1 font-normal">Name</th>
+              <th scope="col" className="pb-1 text-right font-normal">Sent</th>
+              <th scope="col" className="pb-1 text-right font-normal">Reply</th>
             </tr>
           </thead>
           <tbody>

@@ -282,9 +282,9 @@ export function TvDisplayPage() {
             </button>
           </div>
         ) : isLoading ? (
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3" role="status" aria-busy="true" aria-live="polite" aria-label="Loading active tickets">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={`tv-skel-${i}`} className="animate-pulse rounded-xl bg-surface-800/50 p-6">
+              <div key={`tv-skel-${i}`} className="animate-pulse rounded-xl bg-surface-800/50 p-6" aria-hidden="true">
                 <div className="mb-3 h-8 w-24 rounded bg-surface-700" />
                 <div className="mb-2 h-5 w-32 rounded bg-surface-700" />
                 <div className="h-5 w-48 rounded bg-surface-700" />

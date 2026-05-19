@@ -112,7 +112,7 @@ export function FailedSendRetryList({ className }: FailedSendRetryListProps) {
         )}
       </div>
       {isLoading ? (
-        <div className="text-[11px] text-surface-400">Loading…</div>
+        <div className="text-[11px] text-surface-400" role="status" aria-live="polite">Loading…</div>
       ) : failed.length === 0 ? (
         <div className="text-[11px] text-surface-400">
           All sends delivered cleanly.
