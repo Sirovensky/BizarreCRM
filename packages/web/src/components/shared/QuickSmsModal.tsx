@@ -221,7 +221,7 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
           {/* Template picker */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-sm font-medium text-surface-700 dark:text-surface-300">Message</label>
+              <label htmlFor="quick-sms-message" className="block text-sm font-medium text-surface-700 dark:text-surface-300">Message</label>
               <Button
                 type="button"
                 onClick={() => setShowTemplates(!showTemplates)}
@@ -256,6 +256,7 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
             )}
 
             <textarea
+              id="quick-sms-message"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               rows={4}

@@ -590,13 +590,15 @@ export function QcSignOffModal({
                 <p className="mt-1 text-xs text-red-600 dark:text-red-400">
                   Failed: {failedItems.map((i) => i.name).join(', ')}.
                 </p>
-                <label className="mt-3 block text-xs font-semibold uppercase text-red-700 dark:text-red-400">
+                <label htmlFor="qc-reroute-status" className="mt-3 block text-xs font-semibold uppercase text-red-700 dark:text-red-400">
                   Reroute ticket to
                 </label>
                 <select
+                  id="qc-reroute-status"
                   value={rerouteStatusId}
                   onChange={(e) => setRerouteStatusId(Number(e.target.value))}
                   disabled={statusesLoading || activeStatuses.length === 0}
+                  title={statusesLoading ? 'Loading ticket statuses…' : activeStatuses.length === 0 ? 'No active statuses available — configure a reroute target in Settings' : undefined}
                   className="mt-1 w-full rounded-lg border border-red-300 bg-white p-2 text-sm text-surface-900 focus:outline-none focus:ring-2 focus:ring-red-400 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-700 dark:bg-surface-900 dark:text-surface-100"
                 >
                   {activeStatuses.map((status) => (

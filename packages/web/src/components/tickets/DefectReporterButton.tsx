@@ -194,10 +194,11 @@ export function DefectReporterButton({
             </p>
 
             <div className="mb-3">
-              <label className="mb-1 block text-xs font-semibold uppercase text-surface-500">
+              <label htmlFor="defect-type" className="mb-1 block text-xs font-semibold uppercase text-surface-500">
                 Defect type
               </label>
               <select
+                id="defect-type"
                 value={defectType}
                 onChange={(e) => setDefectType(e.target.value)}
                 className="w-full rounded-lg border border-surface-200 bg-surface-50 p-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
@@ -211,10 +212,11 @@ export function DefectReporterButton({
             </div>
 
             <div className="mb-3">
-              <label className="mb-1 block text-xs font-semibold uppercase text-surface-500">
+              <label htmlFor="defect-description" className="mb-1 block text-xs font-semibold uppercase text-surface-500">
                 Description (optional)
               </label>
               <textarea
+                id="defect-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={2}
