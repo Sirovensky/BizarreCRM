@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
@@ -2834,11 +2835,20 @@ private fun AddAssetSheet(
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    // BUGHUNT-2026-05-19: the ViewModel keeps `showAddAssetSheet` so the
+    // sheet survives rotation, but the four text inputs (serial, IMEI,
+    // notes) plus the picked template were on plain `remember` and reset
+    // every spin. A walk-in customer-onboarding flow that needed both
+    // hands to read an IMEI off a device had to retype after rotation.
+    // `selectedTemplate` is a `Pair<String, Long>?` — not natively
+    // Bundle-saveable, so it stays on `remember` (user picks again
+    // quickly from the chip menu); the typed identifiers are the
+    // expensive-to-re-enter values worth preserving.
     var selectedTemplate by remember { mutableStateOf<Pair<String, Long>?>(null) }
-    var serial by remember { mutableStateOf("") }
-    var imei by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("") }
-    var showTemplateMenu by remember { mutableStateOf(false) }
+    var serial by rememberSaveable { mutableStateOf("") }
+    var imei by rememberSaveable { mutableStateOf("") }
+    var notes by rememberSaveable { mutableStateOf("") }
+    var showTemplateMenu by rememberSaveable { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
