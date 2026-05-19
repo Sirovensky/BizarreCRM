@@ -24,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -56,8 +57,12 @@ fun ScheduleSendSheet(
     onSchedule: (sendAtIso: String) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var showDatePicker by remember { mutableStateOf(true) }
-    var selectedDateMs by remember { mutableStateOf<Long?>(null) }
+    // BUGHUNT-2026-05-19: rememberSaveable so a rotation between the date
+    // pick and time confirm doesn't reset the user's choice. The
+    // DatePickerState / TimePickerState below are already saveable
+    // internally via rememberDatePickerState/rememberTimePickerState.
+    var showDatePicker by rememberSaveable { mutableStateOf(true) }
+    var selectedDateMs by rememberSaveable { mutableStateOf<Long?>(null) }
 
     val datePickerState = rememberDatePickerState(
         initialSelectedDateMillis = System.currentTimeMillis(),

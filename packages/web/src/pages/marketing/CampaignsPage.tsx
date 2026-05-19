@@ -646,8 +646,9 @@ function CreateCampaignModal({ segments, onClose, onCreated, initialCampaign }: 
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">Type</label>
+            <label htmlFor="campaign-type" className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">Type</label>
             <select
+              id="campaign-type"
               value={form.type}
               onChange={(e) => handleTypeChange(e.target.value)}
               disabled={isEdit}
@@ -663,8 +664,9 @@ function CreateCampaignModal({ segments, onClose, onCreated, initialCampaign }: 
             )}
           </div>
           <div>
-            <label className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">Channel</label>
+            <label htmlFor="campaign-channel" className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">Channel</label>
             <select
+              id="campaign-channel"
               value={form.channel}
               onChange={(e) => setForm({ ...form, channel: e.target.value as 'sms' | 'email' | 'both' })}
               className="w-full px-3 py-2 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-sm"
@@ -677,8 +679,9 @@ function CreateCampaignModal({ segments, onClose, onCreated, initialCampaign }: 
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">Segment (optional)</label>
+          <label htmlFor="campaign-segment" className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">Segment (optional)</label>
           <select
+            id="campaign-segment"
             value={form.segment_id}
             onChange={(e) => setForm({ ...form, segment_id: e.target.value })}
             className="w-full px-3 py-2 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-sm"

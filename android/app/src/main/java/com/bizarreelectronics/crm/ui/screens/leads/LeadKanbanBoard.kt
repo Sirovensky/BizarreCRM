@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -91,8 +92,11 @@ fun LeadKanbanBoard(
     val effectiveOrder = stageOrder + extraStages
 
     // Filter state: salesperson + source chips
-    var filterSource by remember { mutableStateOf<String?>(null) }
-    var filterAssignee by remember { mutableStateOf<String?>(null) }
+    // BUGHUNT-2026-05-19: rememberSaveable so a sales-manager who has
+    // filtered the board to "Source: Google Ads, Assignee: Jane" doesn't
+    // lose their filter on rotation while reviewing the funnel.
+    var filterSource by rememberSaveable { mutableStateOf<String?>(null) }
+    var filterAssignee by rememberSaveable { mutableStateOf<String?>(null) }
 
     val allSources = remember(leadsByStage) {
         leadsByStage.values.flatten().mapNotNull { it.source }.distinct().sorted()
@@ -112,8 +116,8 @@ fun LeadKanbanBoard(
     }
 
     // Bulk archive overflow
-    var showArchiveConfirm by remember { mutableStateOf(false) }
-    var archiveTargetStage by remember { mutableStateOf<String?>(null) }
+    var showArchiveConfirm by rememberSaveable { mutableStateOf(false) }
+    var archiveTargetStage by rememberSaveable { mutableStateOf<String?>(null) }
 
     if (showArchiveConfirm && archiveTargetStage != null) {
         AlertDialog(

@@ -66,6 +66,15 @@ private val LEAD_STATUSES = listOf(
 
 enum class ViewMode { LIST, KANBAN }
 
+// BUGHUNT-2026-05-19: enum saver so rememberSaveable can round-trip
+// ViewMode through configuration changes. Round-trip via ordinal —
+// resilient to enum reordering only if both ends agree on the order.
+private val ViewModeSaver: androidx.compose.runtime.saveable.Saver<ViewMode, Int> =
+    androidx.compose.runtime.saveable.Saver(
+        save = { it.ordinal },
+        restore = { idx -> ViewMode.entries.getOrNull(idx) ?: ViewMode.LIST },
+    )
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun LeadListScreen(
@@ -86,7 +95,10 @@ fun LeadListScreen(
     val context = LocalContext.current
     val view = LocalView.current
 
-    var viewMode by remember { mutableStateOf(ViewMode.LIST) }
+    // BUGHUNT-2026-05-19: persist list-vs-kanban selection across rotation.
+    // Without this, a Kanban view reverts to LIST on every orientation
+    // change — annoying when the user is dragging cards.
+    var viewMode by rememberSaveable(stateSaver = ViewModeSaver) { mutableStateOf(ViewMode.LIST) }
     var showDeleteConfirm by rememberSaveable { mutableStateOf(false) }
     var pendingDeleteIds by rememberSaveable { mutableStateOf<Set<Long>>(emptySet()) }
 
