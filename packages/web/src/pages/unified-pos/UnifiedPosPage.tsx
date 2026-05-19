@@ -6582,10 +6582,10 @@ function WaiverCanvasModal({ onCancel, onConfirm }: { onCancel: () => void; onCo
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-2xl overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-surface-900">
+      <div role="dialog" aria-modal="true" aria-labelledby="waiver-canvas-title" className="w-full max-w-2xl overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-surface-900">
         <div className="flex items-center justify-between border-b border-surface-200 px-5 py-3 dark:border-surface-800">
           <div>
-            <div className="font-display text-xl">Diagnostic waiver</div>
+            <div id="waiver-canvas-title" className="font-display text-xl">Diagnostic waiver</div>
             <div className="text-xs text-surface-500">Hand the screen to the customer to sign.</div>
           </div>
           <button type="button" onClick={onCancel} aria-label="Close" className="rounded p-1 text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-800"><X className="h-4 w-4" /></button>
