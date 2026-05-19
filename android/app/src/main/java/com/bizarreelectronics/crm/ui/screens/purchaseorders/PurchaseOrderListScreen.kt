@@ -25,9 +25,9 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.theme.SuccessGreen
+import com.bizarreelectronics.crm.util.CurrencyFormatter
 import com.bizarreelectronics.crm.viewmodels.purchaseorders.PO_STATUS_OPTIONS
 import com.bizarreelectronics.crm.viewmodels.purchaseorders.PurchaseOrderListViewModel
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -168,7 +168,9 @@ private fun PoListRow(order: PurchaseOrderRow, onClick: () -> Unit) {
         },
         trailing = {
             Text(
-                "$${String.format(Locale.US, "%.2f", order.total)}",
+                // BUGHUNT-2026-05-18: was "$" + String.format(Locale.US, "%.2f", …)
+                // which double-hard-coded both symbol and en-US grouping.
+                CurrencyFormatter.format(order.total),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
             )
