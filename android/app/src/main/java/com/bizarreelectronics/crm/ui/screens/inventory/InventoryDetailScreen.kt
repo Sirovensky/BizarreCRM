@@ -230,8 +230,8 @@ class InventoryDetailViewModel @Inject constructor(
                         movementsOfflineMessage = null,
                     )
                 }
-            } catch (_: CancellationException) {
-                throw CancellationException()
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 _state.update {
                     it.copy(
@@ -273,9 +273,9 @@ class InventoryDetailViewModel @Inject constructor(
                         isLoadingMoreMovements = false,
                     )
                 }
-            } catch (_: CancellationException) {
+            } catch (e: CancellationException) {
                 _state.update { it.copy(isLoadingMoreMovements = false) }
-                throw CancellationException()
+                throw e
             } catch (_: Exception) {
                 _state.update { it.copy(isLoadingMoreMovements = false) }
             }
@@ -300,9 +300,9 @@ class InventoryDetailViewModel @Inject constructor(
                         isLoadingMoreMovements = false,
                     )
                 }
-            } catch (_: CancellationException) {
+            } catch (e: CancellationException) {
                 _state.update { it.copy(isLoadingMoreMovements = false) }
-                throw CancellationException()
+                throw e
             } catch (_: Exception) {
                 _state.update { it.copy(isLoadingMoreMovements = false) }
             }
@@ -327,8 +327,8 @@ class InventoryDetailViewModel @Inject constructor(
                     )
                 } ?: emptyList()
                 _state.update { it.copy(priceHistory = points) }
-            } catch (_: CancellationException) {
-                throw CancellationException()
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 _state.update { it.copy(priceHistory = emptyList()) }
             }
@@ -342,8 +342,8 @@ class InventoryDetailViewModel @Inject constructor(
                 val resp = inventoryApi.getSalesHistory(itemId, days = 30)
                 val data = resp.data
                 _state.update { it.copy(soldLast30d = data?.sold) }
-            } catch (_: CancellationException) {
-                throw CancellationException()
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // 404 tolerated — show stub
             }
@@ -356,8 +356,8 @@ class InventoryDetailViewModel @Inject constructor(
             try {
                 val resp = inventoryApi.getBins()
                 _state.update { it.copy(availableBins = resp.data?.bins ?: emptyList()) }
-            } catch (_: CancellationException) {
-                throw CancellationException()
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // Non-critical — autocomplete just shows no suggestions
             }
@@ -370,8 +370,8 @@ class InventoryDetailViewModel @Inject constructor(
             try {
                 val resp = inventoryApi.getUsageInTickets(itemId, limit = 10)
                 _state.update { it.copy(ticketUsage = resp.data?.tickets ?: emptyList()) }
-            } catch (_: CancellationException) {
-                throw CancellationException()
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // 404 tolerated
             }
@@ -385,8 +385,8 @@ class InventoryDetailViewModel @Inject constructor(
                 val resp = inventoryApi.getPhotos(itemId)
                 val urls = resp.data?.photos?.map { it.url } ?: emptyList()
                 _state.update { it.copy(photoUrls = urls) }
-            } catch (_: CancellationException) {
-                throw CancellationException()
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // 404 tolerated
             }

@@ -278,8 +278,13 @@ class CustomerDetailViewModel @Inject constructor(
                 _state.update { it.copy(tagPalette = palette) }
             } catch (_: HttpException) {
                 // 404 → use hash-cycle defaults
-            } catch (_: CancellationException) {
-                throw CancellationException()
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-19: re-throw the ORIGINAL exception. Throwing
+                // a fresh CancellationException loses the parent's cancellation
+                // reason (message + cause), which makes structured-concurrency
+                // diagnostics in logs much harder to follow when something
+                // legitimately goes wrong.
+                throw e
             } catch (_: Exception) {
                 // silent degrade
             }
@@ -360,8 +365,13 @@ class CustomerDetailViewModel @Inject constructor(
                 val response = customerApi.getAnalytics(customerId)
                 val analytics = response.data ?: return@launch
                 _state.update { it.copy(analytics = analytics) }
-            } catch (_: CancellationException) {
-                throw CancellationException()
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-19: re-throw the ORIGINAL exception. Throwing
+                // a fresh CancellationException loses the parent's cancellation
+                // reason (message + cause), which makes structured-concurrency
+                // diagnostics in logs much harder to follow when something
+                // legitimately goes wrong.
+                throw e
             } catch (_: Exception) {
                 // Silent degrade — quick-stats row simply doesn't render.
             }
@@ -381,8 +391,13 @@ class CustomerDetailViewModel @Inject constructor(
                 val response = customerApi.getTickets(customerId)
                 val tickets = response.data?.tickets ?: return@launch
                 _state.update { it.copy(recentTickets = tickets) }
-            } catch (_: CancellationException) {
-                throw CancellationException()
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-19: re-throw the ORIGINAL exception. Throwing
+                // a fresh CancellationException loses the parent's cancellation
+                // reason (message + cause), which makes structured-concurrency
+                // diagnostics in logs much harder to follow when something
+                // legitimately goes wrong.
+                throw e
             } catch (_: Exception) {
                 // Silent degrade — Ticket History card simply doesn't render.
             }
@@ -401,8 +416,13 @@ class CustomerDetailViewModel @Inject constructor(
                 val response = customerApi.getNotes(customerId)
                 val notes = response.data ?: return@launch
                 _state.update { it.copy(notes = notes) }
-            } catch (_: CancellationException) {
-                throw CancellationException()
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-19: re-throw the ORIGINAL exception. Throwing
+                // a fresh CancellationException loses the parent's cancellation
+                // reason (message + cause), which makes structured-concurrency
+                // diagnostics in logs much harder to follow when something
+                // legitimately goes wrong.
+                throw e
             } catch (_: Exception) {
                 // Silent degrade — Notes card simply doesn't render.
             }
@@ -419,8 +439,13 @@ class CustomerDetailViewModel @Inject constructor(
             try {
                 val response = customerApi.getAddresses(customerId)
                 _state.update { it.copy(addresses = response.data ?: emptyList()) }
-            } catch (_: CancellationException) {
-                throw CancellationException()
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-19: re-throw the ORIGINAL exception. Throwing
+                // a fresh CancellationException loses the parent's cancellation
+                // reason (message + cause), which makes structured-concurrency
+                // diagnostics in logs much harder to follow when something
+                // legitimately goes wrong.
+                throw e
             } catch (_: Exception) {
                 _state.update { it.copy(addresses = emptyList()) }
             }
@@ -435,7 +460,7 @@ class CustomerDetailViewModel @Inject constructor(
             try {
                 val response = customerApi.getHealthScore(customerId)
                 _state.update { it.copy(healthScore = response.data) }
-            } catch (_: CancellationException) { throw CancellationException() } catch (_: Exception) { /* silent — 404 tolerated */ }
+            } catch (e: CancellationException) { throw e } catch (_: Exception) { /* silent — 404 tolerated */ }
         }
     }
 
@@ -444,7 +469,7 @@ class CustomerDetailViewModel @Inject constructor(
             try {
                 val response = customerApi.recalculateHealthScore(customerId)
                 _state.update { it.copy(healthScore = response.data) }
-            } catch (_: CancellationException) { throw CancellationException() } catch (_: Exception) { /* silent */ }
+            } catch (e: CancellationException) { throw e } catch (_: Exception) { /* silent */ }
         }
     }
 
@@ -456,7 +481,7 @@ class CustomerDetailViewModel @Inject constructor(
             try {
                 val response = customerApi.getLtvTier(customerId)
                 _state.update { it.copy(ltvTier = response.data) }
-            } catch (_: CancellationException) { throw CancellationException() } catch (_: Exception) { /* silent — 404 tolerated */ }
+            } catch (e: CancellationException) { throw e } catch (_: Exception) { /* silent — 404 tolerated */ }
         }
     }
 
@@ -468,7 +493,7 @@ class CustomerDetailViewModel @Inject constructor(
             try {
                 val response = customerApi.getInvoices(customerId)
                 _state.update { it.copy(invoices = response.data?.invoices ?: emptyList()) }
-            } catch (_: CancellationException) { throw CancellationException() } catch (_: Exception) { /* silent */ }
+            } catch (e: CancellationException) { throw e } catch (_: Exception) { /* silent */ }
         }
     }
 
@@ -478,14 +503,19 @@ class CustomerDetailViewModel @Inject constructor(
             try {
                 val response = customerApi.getAssets(customerId)
                 _state.update { it.copy(assets = response.data ?: emptyList()) }
-            } catch (_: CancellationException) {
-                throw CancellationException()
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-19: re-throw the ORIGINAL exception. Throwing
+                // a fresh CancellationException loses the parent's cancellation
+                // reason (message + cause), which makes structured-concurrency
+                // diagnostics in logs much harder to follow when something
+                // legitimately goes wrong.
+                throw e
             } catch (_: Exception) {
                 // Fall back to assets embedded in the customer detail payload
                 try {
                     val detailResponse = customerApi.getCustomer(customerId)
                     _state.update { it.copy(assets = detailResponse.data?.assets ?: emptyList()) }
-                } catch (_: CancellationException) { throw CancellationException() } catch (_: Exception) { /* silent */ }
+                } catch (e: CancellationException) { throw e } catch (_: Exception) { /* silent */ }
             }
         }
     }
@@ -643,8 +673,13 @@ class CustomerDetailViewModel @Inject constructor(
                     serial = asset.serial?.takeIf { it.isNotBlank() },
                 )
                 _state.update { it.copy(assetHistory = response.data ?: emptyList()) }
-            } catch (_: CancellationException) {
-                throw CancellationException()
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-19: re-throw the ORIGINAL exception. Throwing
+                // a fresh CancellationException loses the parent's cancellation
+                // reason (message + cause), which makes structured-concurrency
+                // diagnostics in logs much harder to follow when something
+                // legitimately goes wrong.
+                throw e
             } catch (_: Exception) {
                 _state.update { it.copy(assetHistory = emptyList()) }
             }
@@ -2659,8 +2694,8 @@ private fun MergeSearchSheet(
                             try {
                                 val resp = viewModel.searchCustomersForMerge(q)
                                 results = resp
-                            } catch (_: CancellationException) {
-                                throw CancellationException()
+                            } catch (e: CancellationException) {
+                                throw e
                             } catch (_: Exception) {
                                 results = emptyList()
                             }

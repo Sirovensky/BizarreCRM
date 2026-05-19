@@ -363,8 +363,8 @@ class TicketDetailViewModel @Inject constructor(
                 val response = settingsApi.getStatusList()
                 val statuses = response.data ?: emptyList()
                 _state.update { it.copy(statuses = statuses) }
-            } catch (_: CancellationException) {
-                throw CancellationException()
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // Non-critical; status dropdown will be empty
             }
@@ -525,8 +525,8 @@ class TicketDetailViewModel @Inject constructor(
                         )
                     )
                     return@launch
-                } catch (_: CancellationException) {
-                    throw CancellationException()
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (_: Exception) {
                     // Fall through to offline queue
                 }
@@ -581,10 +581,10 @@ class TicketDetailViewModel @Inject constructor(
             // Best-effort sequential calls — either may 404 on legacy DBs.
             val parts: List<com.bizarreelectronics.crm.data.remote.dto.InventoryListItem> = try {
                 inventoryApi.getItems(mapOf("q" to q, "limit" to "5")).data?.items.orEmpty()
-            } catch (_: CancellationException) { throw CancellationException() } catch (_: Exception) { emptyList() }
+            } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyList() }
             val services: List<com.bizarreelectronics.crm.data.remote.dto.RepairServiceItem> = try {
                 repairPricingApi.getServices(query = q).data.orEmpty()
-            } catch (_: CancellationException) { throw CancellationException() } catch (_: Exception) { emptyList() }
+            } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyList() }
 
             parts.take(5).forEach { p ->
                 merged += com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.data.QuoteSuggestion(
@@ -845,8 +845,8 @@ class TicketDetailViewModel @Inject constructor(
                 val response = settingsApi.getEmployees()
                 val list = response.data ?: emptyList()
                 _state.update { it.copy(employees = list) }
-            } catch (_: CancellationException) {
-                throw CancellationException()
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // Non-critical — mentions will have no suggestions
             }
