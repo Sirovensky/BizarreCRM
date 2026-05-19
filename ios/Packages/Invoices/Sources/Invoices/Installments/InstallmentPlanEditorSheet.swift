@@ -94,8 +94,19 @@ final class InstallmentPlanEditorViewModel {
 }
 
 /// Mutable wrapper for a computed item so the user can adjust amounts.
-final class MutableInstallmentItem: Identifiable, ObservableObject {
-    let id = UUID()
+///
+/// BUGHUNT-2026-05-19: this was a `final class … ObservableObject` whose
+/// stored properties weren't marked `@Published`. The row used
+/// `@ObservedObject var item` plus `$item.amountCents`, so writes
+/// silently bypassed `objectWillChange` — neither the row, nor the
+/// surrounding @Observable ViewModel's computed `sumCents` /
+/// `isBalanced` / `isValid` re-rendered after the user edited an
+/// amount. The "Off by $X.XX" warning + Create Plan disabled state
+/// stayed stale, letting a cashier confirm an unbalanced plan.
+/// Switching to a value-type struct + `@Binding` propagation tracks
+/// changes correctly under both observation systems.
+struct MutableInstallmentItem: Identifiable, Equatable {
+    let id: UUID = UUID()
     var dueDate: Date
     var amountCents: Int
 
@@ -160,8 +171,8 @@ public struct InstallmentPlanEditorSheet: View {
                 }
 
                 Section("Schedule") {
-                    ForEach(Array(vm.items.enumerated()), id: \.element.id) { index, item in
-                        InstallmentItemRow(index: index + 1, item: item)
+                    ForEach(vm.items.indices, id: \.self) { index in
+                        InstallmentItemRow(index: index + 1, item: $vm.items[index])
                     }
 
                     HStack {
@@ -220,7 +231,7 @@ public struct InstallmentPlanEditorSheet: View {
 
 private struct InstallmentItemRow: View {
     let index: Int
-    @ObservedObject var item: MutableInstallmentItem
+    @Binding var item: MutableInstallmentItem
 
     var body: some View {
         HStack {
