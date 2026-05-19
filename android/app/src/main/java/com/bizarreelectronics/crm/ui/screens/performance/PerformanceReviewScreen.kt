@@ -42,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -339,14 +340,21 @@ private fun CreateReviewDialog(
     onDismiss: () -> Unit,
     onConfirm: (employeeId: Long, cycle: String, ratings: ReviewRatings, comments: String, date: String) -> Unit,
 ) {
-    var employeeIdText by remember { mutableStateOf("") }
-    var cycle by remember { mutableStateOf(CYCLE_OPTIONS.first()) }
-    var quality by remember { mutableIntStateOf(0) }
-    var speed by remember { mutableIntStateOf(0) }
-    var attitude by remember { mutableIntStateOf(0) }
-    var teamwork by remember { mutableIntStateOf(0) }
-    var overall by remember { mutableIntStateOf(0) }
-    var comments by remember { mutableStateOf("") }
+    // BUGHUNT-2026-05-19: a performance review can take a manager 10+ minutes
+    // to compose (employee selection + five star ratings + freeform comments).
+    // With `remember`, any configuration change (rotation, dark-mode toggle,
+    // language switch, returning from a system permission prompt) wipes every
+    // field — the manager has to redo the whole review from scratch. Star
+    // ratings and the comments field are the most painful losses. Switch to
+    // `rememberSaveable` so saved-state-handle persistence kicks in.
+    var employeeIdText by rememberSaveable { mutableStateOf("") }
+    var cycle by rememberSaveable { mutableStateOf(CYCLE_OPTIONS.first()) }
+    var quality by rememberSaveable { mutableIntStateOf(0) }
+    var speed by rememberSaveable { mutableIntStateOf(0) }
+    var attitude by rememberSaveable { mutableIntStateOf(0) }
+    var teamwork by rememberSaveable { mutableIntStateOf(0) }
+    var overall by rememberSaveable { mutableIntStateOf(0) }
+    var comments by rememberSaveable { mutableStateOf("") }
     val today = remember { LocalDate.now().toString() }
 
     AlertDialog(
