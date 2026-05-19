@@ -125,8 +125,9 @@ export function CustomerGroupsTab() {
           <div className="p-4 border-b border-surface-100 dark:border-surface-800 bg-surface-50 dark:bg-surface-800/30">
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs font-medium text-surface-500 mb-1">Group Name</label>
+                <label htmlFor="cg-add-name" className="block text-xs font-medium text-surface-500 mb-1">Group Name</label>
                 <input
+                  id="cg-add-name"
                   type="text"
                   value={addForm.name}
                   onChange={(e) => setAddForm({ ...addForm, name: e.target.value })}
@@ -135,7 +136,7 @@ export function CustomerGroupsTab() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-surface-500 mb-1">
+                <label htmlFor="cg-add-discount" className="block text-xs font-medium text-surface-500 mb-1">
                   Discount {addForm.discount_type === 'fixed' ? '($)' : '(%)'}
                 </label>
                 <div className="flex gap-2">
@@ -144,6 +145,7 @@ export function CustomerGroupsTab() {
                       <span className="absolute left-3 text-sm text-surface-500 pointer-events-none select-none">$</span>
                     )}
                     <input
+                      id="cg-add-discount"
                       type="number"
                       min="0"
                       step="0.01"
@@ -170,8 +172,9 @@ export function CustomerGroupsTab() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-surface-500 mb-1">Description</label>
+                <label htmlFor="cg-add-description" className="block text-xs font-medium text-surface-500 mb-1">Description</label>
                 <input
+                  id="cg-add-description"
                   type="text"
                   value={addForm.description}
                   onChange={(e) => setAddForm({ ...addForm, description: e.target.value })}
