@@ -2,9 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Brand fonts: DM Serif Display (display headings), DM Sans (body),
- * JetBrains Mono (code). Self-hosted for CSP + offline support.
- * Saved By Zero (logo) is donation-ware; falls back to DM Serif Display. */
+/* App fonts: DM Serif Display (headings), DM Sans (body), JetBrains Mono (code).
+ * Corporate fonts: Bebas Neue (landing headings), Futura (landing body — licensed,
+ * system-only), Saved By Zero (logo — pending self-host). */
+@font-face {
+  font-family: 'Bebas Neue';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/bebas-neue.ttf') format('truetype');
+}
 @font-face {
   font-family: 'DM Serif Display';
   font-style: normal;

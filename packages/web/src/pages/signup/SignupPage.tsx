@@ -415,7 +415,7 @@ export function SignupPage() {
           <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-cyan-50 text-cyan-700 dark:bg-cyan-400/10 dark:text-cyan-300">
             <SuccessIcon className="h-7 w-7" aria-hidden="true" />
           </div>
-          <h2 className="font-display text-4xl font-semibold text-cyan-800 dark:text-cyan-200">
+          <h2 className="font-brand-display text-4xl font-semibold text-cyan-800 dark:text-cyan-200">
             {success.provisioned ? 'Shop ready!' : 'Check Your Email'}
           </h2>
           <p className="mt-3 text-base leading-7 text-surface-600 dark:text-surface-300">
@@ -457,10 +457,10 @@ export function SignupPage() {
       <div className="mx-auto flex min-h-screen w-full max-w-6xl items-center px-4 py-10 sm:px-6 lg:px-8">
         <div className="grid w-full gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(400px,460px)] lg:items-center">
           <section className="hidden lg:block">
-            <Link to="/" className="inline-flex font-logo text-3xl text-pink-700 transition-colors hover:text-pink-800 dark:text-pink-300 dark:hover:text-pink-200">
+            <Link to="/" className="inline-flex font-brand-logo text-3xl text-pink-700 transition-colors hover:text-pink-800 dark:text-pink-300 dark:hover:text-pink-200">
               BIZARRECRM
             </Link>
-            <h1 className="mt-6 max-w-xl font-display text-5xl font-semibold leading-tight text-cyan-800 dark:text-cyan-200">
+            <h1 className="mt-6 max-w-xl font-brand-display text-5xl font-semibold leading-tight text-cyan-800 dark:text-cyan-200">
               Create your repair shop workspace.
             </h1>
             <p className="mt-4 max-w-lg text-base leading-7 text-surface-600 dark:text-surface-300">
@@ -495,10 +495,10 @@ export function SignupPage() {
 
           <div className="w-full">
             <div className="mb-6 text-center lg:hidden">
-              <Link to="/" className="inline-flex font-logo text-3xl text-pink-700 transition-colors hover:text-pink-800 dark:text-pink-300 dark:hover:text-pink-200">
+              <Link to="/" className="inline-flex font-brand-logo text-3xl text-pink-700 transition-colors hover:text-pink-800 dark:text-pink-300 dark:hover:text-pink-200">
                 BIZARRECRM
               </Link>
-              <h1 className="mt-4 font-display text-4xl font-semibold text-cyan-800 dark:text-cyan-200">
+              <h1 className="mt-4 font-brand-display text-4xl font-semibold text-cyan-800 dark:text-cyan-200">
                 Create Your Shop
               </h1>
               <p className="mt-1 text-sm text-surface-600 dark:text-surface-400">Free to start. No credit card required.</p>
@@ -511,7 +511,7 @@ export function SignupPage() {
               className="rounded-lg border border-surface-200 bg-white p-6 shadow-xl shadow-surface-900/10 dark:border-surface-700 dark:bg-surface-900 dark:shadow-black/30 sm:p-8"
             >
               <div className="mb-6 hidden text-center lg:block">
-                <h2 className="font-display text-4xl font-semibold text-cyan-800 dark:text-cyan-200">
+                <h2 className="font-brand-display text-4xl font-semibold text-cyan-800 dark:text-cyan-200">
                   Create Your Shop
                 </h2>
                 <p className="mt-1 text-sm text-surface-600 dark:text-surface-400">

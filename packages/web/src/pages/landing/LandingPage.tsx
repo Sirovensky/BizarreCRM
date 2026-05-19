@@ -132,18 +132,18 @@ const TRUSTED_BASE_DOMAINS = ['bizarrecrm.com', 'localhost'] as const;
 
 const revealDelays = ['', 'delay-75', 'delay-150', 'delay-200', 'delay-300', 'delay-500'] as const;
 
-const displayText = 'font-display tracking-normal';
-const headingText = 'font-sans font-semibold';
-const brandText = 'font-logo tracking-normal';
+const displayText = 'font-brand-display tracking-normal';
+const headingText = 'font-brand-sans font-semibold';
+const brandText = 'font-brand-logo tracking-normal';
 
 const primaryButton =
-  'inline-flex shrink-0 items-center justify-center rounded-lg border border-cyan-700 bg-cyan-700 px-9 py-3.5 font-sans text-base font-semibold text-white no-underline shadow-sm transition hover:-translate-y-0.5 hover:bg-cyan-800 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 motion-reduce:transform-none dark:border-cyan-400 dark:bg-cyan-400 dark:text-surface-950 dark:hover:bg-cyan-300 dark:focus-visible:ring-offset-surface-950';
+  'inline-flex shrink-0 items-center justify-center rounded-lg border border-cyan-700 bg-cyan-700 px-9 py-3.5 font-brand-sans text-base font-semibold text-white no-underline shadow-sm transition hover:-translate-y-0.5 hover:bg-cyan-800 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 motion-reduce:transform-none dark:border-cyan-400 dark:bg-cyan-400 dark:text-surface-950 dark:hover:bg-cyan-300 dark:focus-visible:ring-offset-surface-950';
 const magentaButton =
-  'inline-flex shrink-0 items-center justify-center rounded-lg border border-fuchsia-700 bg-fuchsia-700 px-9 py-3.5 font-sans text-base font-semibold text-white no-underline shadow-sm transition hover:-translate-y-0.5 hover:bg-fuchsia-800 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-500 focus-visible:ring-offset-2 motion-reduce:transform-none dark:border-fuchsia-400 dark:bg-fuchsia-500 dark:text-surface-950 dark:hover:bg-fuchsia-400 dark:focus-visible:ring-offset-surface-950';
+  'inline-flex shrink-0 items-center justify-center rounded-lg border border-fuchsia-700 bg-fuchsia-700 px-9 py-3.5 font-brand-sans text-base font-semibold text-white no-underline shadow-sm transition hover:-translate-y-0.5 hover:bg-fuchsia-800 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-500 focus-visible:ring-offset-2 motion-reduce:transform-none dark:border-fuchsia-400 dark:bg-fuchsia-500 dark:text-surface-950 dark:hover:bg-fuchsia-400 dark:focus-visible:ring-offset-surface-950';
 const outlineButton =
-  'inline-flex shrink-0 items-center justify-center rounded-lg border-2 border-cyan-700 bg-transparent px-8 py-3 font-sans text-base font-semibold text-cyan-800 no-underline transition hover:bg-cyan-700 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 dark:border-cyan-400 dark:text-cyan-200 dark:hover:bg-cyan-400 dark:hover:text-surface-950 dark:focus-visible:ring-offset-surface-950';
+  'inline-flex shrink-0 items-center justify-center rounded-lg border-2 border-cyan-700 bg-transparent px-8 py-3 font-brand-sans text-base font-semibold text-cyan-800 no-underline transition hover:bg-cyan-700 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 dark:border-cyan-400 dark:text-cyan-200 dark:hover:bg-cyan-400 dark:hover:text-surface-950 dark:focus-visible:ring-offset-surface-950';
 const footerAction =
-  'font-sans text-sm font-medium text-surface-600 transition hover:text-fuchsia-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-500 dark:text-surface-300 dark:hover:text-fuchsia-300';
+  'font-brand-sans text-sm font-medium text-surface-600 transition hover:text-fuchsia-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-500 dark:text-surface-300 dark:hover:text-fuchsia-300';
 
 function resolveBaseDomain(hostname: string): string | null {
   if (hostname === 'localhost' || hostname.endsWith('.localhost')) return 'localhost';
@@ -220,7 +220,7 @@ function LoginModal({ onClose }: { onClose: () => void }) {
             placeholder="yourshop"
             aria-label="Shop name"
             autoFocus
-            className="min-w-0 flex-1 rounded-l-lg border-2 border-r-0 border-surface-300 bg-white px-3.5 py-3 font-sans text-base text-surface-900 outline-none focus:border-cyan-700 dark:border-surface-700 dark:bg-surface-950 dark:text-surface-100 dark:focus:border-cyan-400"
+            className="min-w-0 flex-1 rounded-l-lg border-2 border-r-0 border-surface-300 bg-white px-3.5 py-3 font-brand-sans text-base text-surface-900 outline-none focus:border-cyan-700 dark:border-surface-700 dark:bg-surface-950 dark:text-surface-100 dark:focus:border-cyan-400"
           />
           <span className="flex items-center whitespace-nowrap rounded-r-lg border-2 border-l-0 border-surface-300 bg-surface-100 px-3.5 text-sm text-surface-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-400">
             {resolveBaseDomain(window.location.hostname) === 'localhost'
@@ -262,7 +262,7 @@ export default function LandingPage() {
   const cta = useInView();
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#FBF3DB] font-sans text-surface-800 antialiased dark:bg-surface-950 dark:text-surface-100">
+    <div className="min-h-screen overflow-x-hidden bg-[#FBF3DB] font-brand-sans text-surface-800 antialiased dark:bg-surface-950 dark:text-surface-100">
       <nav className={`fixed inset-x-0 top-0 z-[100] px-6 transition-all duration-300 ${scrolled ? 'border-b border-fuchsia-700/15 bg-[#FBF3DB]/95 shadow-sm backdrop-blur-md dark:border-cyan-400/20 dark:bg-surface-950/90' : 'bg-transparent'}`}>
         <div className="mx-auto flex h-16 max-w-[1120px] items-center justify-between">
           <span
@@ -427,7 +427,7 @@ export default function LandingPage() {
                 )}
               >
                 {t.badge && (
-                  <div className="absolute -top-[13px] left-1/2 -translate-x-1/2 rounded-full bg-fuchsia-700 px-5 py-[5px] font-sans text-xs font-bold text-white dark:bg-fuchsia-400 dark:text-surface-950">{t.badge}</div>
+                  <div className="absolute -top-[13px] left-1/2 -translate-x-1/2 rounded-full bg-fuchsia-700 px-5 py-[5px] font-brand-sans text-xs font-bold text-white dark:bg-fuchsia-400 dark:text-surface-950">{t.badge}</div>
                 )}
                 <h3 className={`${headingText} mb-1 text-[22px] text-surface-900 dark:text-surface-50`}>{t.name}</h3>
                 <p className="mb-4 text-sm text-surface-600 dark:text-surface-300">{t.desc}</p>

@@ -153,14 +153,17 @@ export default {
           950: '#172554',
         },
       },
-      // Brand fonts: DM Serif Display (display/headings), DM Sans (body),
-       // JetBrains Mono (code). Saved By Zero (logo) pending self-host,
-       // falls back to DM Serif Display.
+      // App UI fonts: DM Serif Display (headings), DM Sans (body).
+       // Corporate/landing fonts: Futura, Bebas Neue, Saved By Zero.
       fontFamily: {
         display: ['DM Serif Display', 'Georgia', 'serif'],
         sans: ['DM Sans', 'system-ui', '-apple-system', 'sans-serif'],
         mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
         logo: ['Saved By Zero', 'DM Serif Display', 'Georgia', 'serif'],
+        // Corporate brand fonts — landing page + marketing only
+        'brand-display': ['Bebas Neue', 'Futura', 'system-ui', 'sans-serif'],
+        'brand-sans': ['Futura', 'Futura Medium', 'system-ui', '-apple-system', 'sans-serif'],
+        'brand-logo': ['Saved By Zero', 'Bebas Neue', 'Futura', 'sans-serif'],
       },
       animation: {
         'slide-in': 'slideIn 0.2s ease-out',
