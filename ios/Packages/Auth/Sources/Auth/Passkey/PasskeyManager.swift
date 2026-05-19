@@ -39,7 +39,24 @@ public final class LiveAuthorizationController: NSObject, AuthorizationControlle
             if let prior = self.continuation {
                 prior.resume(throwing: AppError.cancelled)
             }
+            // BUGHUNT-2026-05-19: detach the prior controller from this
+            // delegate BEFORE cancel(). `ASAuthorizationController.cancel()`
+            // schedules `authorizationController(_:didCompleteWithError:)`
+            // asynchronously on the main runloop with `.canceled`. By the time
+            // the Task in that delegate runs, `self.continuation` has been
+            // overwritten to the NEW `cont` two lines down — so the late
+            // cancel-completion would resume the brand-new passkey request
+            // with `.canceled`, making every reentrant call (e.g. user taps
+            // "Sign in with Passkey" twice in rapid succession, or the view
+            // restarts the request mid-flight) instantly fail with a stale
+            // cancellation. Nilling the delegate first means the old
+            // controller's cancel callback fires into a dropped weak ref and
+            // is harmlessly dropped; the new controller installs its own
+            // delegate path below.
+            self.controller?.delegate = nil
+            self.controller?.presentationContextProvider = nil
             self.controller?.cancel()
+            self.controller = nil
             self.continuation = cont
             let ctrl = ASAuthorizationController(authorizationRequests: requests)
             ctrl.delegate = self
