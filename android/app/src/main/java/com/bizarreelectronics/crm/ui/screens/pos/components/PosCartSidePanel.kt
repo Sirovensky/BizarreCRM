@@ -32,8 +32,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.ui.screens.pos.PosCoordinator
-import java.text.NumberFormat
-import java.util.Locale
 
 /**
  * Tablet-only persistent cart panel pinned to the right of every POS
@@ -289,5 +287,11 @@ private fun TotalsRow(label: String, value: String, emphasis: Boolean = false) {
     }
 }
 
-private val currencyFmt: NumberFormat = NumberFormat.getCurrencyInstance(Locale.US)
-private fun money(cents: Long): String = currencyFmt.format(cents / 100.0)
+// BUGHUNT-2026-05-18: was a file-level NumberFormat(Locale.US) val — route
+// through CurrencyFormatter so the POS side panel renders the tenant's
+// currencyOverride on cart line totals, subtotal/tax/total and the bottom
+// "Charge … · $TOTAL" button. Bonus: drops a shared mutable NumberFormat
+// instance (NumberFormat is not thread-safe and Compose recomposition can
+// run on multiple threads).
+private fun money(cents: Long): String =
+    com.bizarreelectronics.crm.util.CurrencyFormatter.format(cents / 100.0)
