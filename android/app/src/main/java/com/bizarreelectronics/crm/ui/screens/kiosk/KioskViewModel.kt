@@ -10,6 +10,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -73,11 +74,11 @@ class KioskViewModel @Inject constructor(
 
     /** Reset the 60-second inactivity timer. Call on every user interaction. */
     fun onActivity() {
-        _uiState.value = _uiState.value.copy(inactivityExpired = false)
+        _uiState.update { it.copy(inactivityExpired = false) }
         inactivityJob?.cancel()
         inactivityJob = viewModelScope.launch {
             delay(INACTIVITY_TIMEOUT_MS)
-            _uiState.value = _uiState.value.copy(inactivityExpired = true)
+            _uiState.update { it.copy(inactivityExpired = true) }
         }
     }
 
@@ -97,10 +98,7 @@ class KioskViewModel @Inject constructor(
     // -------------------------------------------------------------------------
 
     fun onPhoneQueryChange(value: String) {
-        _uiState.value = _uiState.value.copy(
-            phoneQuery = value,
-            errorMessage = null,
-        )
+        _uiState.update { it.copy(phoneQuery = value, errorMessage = null) }
         onActivity()
     }
 
@@ -114,21 +112,21 @@ class KioskViewModel @Inject constructor(
     fun lookupCustomer() {
         val phone = _uiState.value.phoneQuery.filter { it.isDigit() }
         if (phone.length < 7) {
-            _uiState.value = _uiState.value.copy(
-                errorMessage = "Enter at least 7 digits",
-            )
+            _uiState.update { it.copy(errorMessage = "Enter at least 7 digits") }
             return
         }
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             // TODO(§57.2): replace stub with CustomerRepository.findByPhone(phone)
             delay(400L) // simulate network
             // Stub: no matching customer → create walk-in record.
-            _uiState.value = _uiState.value.copy(
-                isLoading = false,
-                resolvedCustomerId = 0L, // 0 = walk-in sentinel
-                resolvedCustomerName = "Walk-in customer",
-            )
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    resolvedCustomerId = 0L, // 0 = walk-in sentinel
+                    resolvedCustomerName = "Walk-in customer",
+                )
+            }
             onActivity()
         }
     }
@@ -138,10 +136,12 @@ class KioskViewModel @Inject constructor(
     // -------------------------------------------------------------------------
 
     fun onSignatureCaptured(base64: String) {
-        _uiState.value = _uiState.value.copy(
-            signatureBase64 = base64,
-            signatureCaptured = base64.isNotEmpty(),
-        )
+        _uiState.update {
+            it.copy(
+                signatureBase64 = base64,
+                signatureCaptured = base64.isNotEmpty(),
+            )
+        }
         pauseInactivity() // customer is actively signing — don't time out
     }
 
@@ -152,35 +152,39 @@ class KioskViewModel @Inject constructor(
     private val PIN_LENGTH = 4
 
     fun onExitPinDigit(c: Char) {
-        val s = _uiState.value
-        if (s.exitPinEntered.length >= PIN_LENGTH) return
-        val next = s.exitPinEntered + c
-        _uiState.value = s.copy(exitPinEntered = next, exitPinError = null)
-        if (next.length == PIN_LENGTH) {
-            verifyExitPin(next)
+        var nextValue: String? = null
+        _uiState.update {
+            if (it.exitPinEntered.length >= PIN_LENGTH) return@update it
+            val next = it.exitPinEntered + c
+            nextValue = next
+            it.copy(exitPinEntered = next, exitPinError = null)
         }
+        nextValue?.let { if (it.length == PIN_LENGTH) verifyExitPin(it) }
     }
 
     fun onExitPinBackspace() {
-        val s = _uiState.value
-        if (s.exitPinEntered.isEmpty()) return
-        _uiState.value = s.copy(
-            exitPinEntered = s.exitPinEntered.dropLast(1),
-            exitPinError = null,
-        )
+        _uiState.update {
+            if (it.exitPinEntered.isEmpty()) return@update it
+            it.copy(
+                exitPinEntered = it.exitPinEntered.dropLast(1),
+                exitPinError = null,
+            )
+        }
     }
 
     private fun verifyExitPin(pin: String) {
         viewModelScope.launch {
             val ok = pinPrefs.verifyPinLocally(pin)
             if (ok) {
-                _uiState.value = _uiState.value.copy(exitAuthorised = true)
+                _uiState.update { it.copy(exitAuthorised = true) }
             } else {
-                _uiState.value = _uiState.value.copy(
-                    exitPinEntered = "",
-                    exitPinWrongShakes = _uiState.value.exitPinWrongShakes + 1,
-                    exitPinError = "Wrong PIN",
-                )
+                _uiState.update {
+                    it.copy(
+                        exitPinEntered = "",
+                        exitPinWrongShakes = it.exitPinWrongShakes + 1,
+                        exitPinError = "Wrong PIN",
+                    )
+                }
             }
         }
     }

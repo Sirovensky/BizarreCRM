@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -114,7 +115,7 @@ class CustomerListViewModel @Inject constructor(
     fun loadCustomers() {
         collectJob?.cancel()
         collectJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val query = _state.value.searchQuery.trim()
                 val flow = if (query.isNotEmpty()) {
@@ -123,11 +124,13 @@ class CustomerListViewModel @Inject constructor(
                     customerRepository.getCustomers()
                 }
                 flow.collect { customers ->
-                    _state.value = _state.value.copy(
-                        customers = customers,
-                        isLoading = false,
-                        isRefreshing = false,
-                    )
+                    _state.update {
+                        it.copy(
+                            customers = customers,
+                            isLoading = false,
+                            isRefreshing = false,
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: re-throw cancellation. Typeahead search
@@ -137,22 +140,24 @@ class CustomerListViewModel @Inject constructor(
                 // every time the user typed faster than the 300ms debounce.
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    error = "Failed to load customers. Check your connection and try again.",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        error = "Failed to load customers. Check your connection and try again.",
+                    )
+                }
             }
         }
     }
 
     fun refresh() {
-        _state.value = _state.value.copy(isRefreshing = true)
+        _state.update { it.copy(isRefreshing = true) }
         loadCustomers()
     }
 
     fun onSearchChanged(query: String) {
-        _state.value = _state.value.copy(searchQuery = query)
+        _state.update { it.copy(searchQuery = query) }
         // §1.8 process-death: persist so the query survives a process kill + restore
         savedStateHandle[SSH_KEY_QUERY] = query
         searchJob?.cancel()
@@ -168,7 +173,7 @@ class CustomerListViewModel @Inject constructor(
     // -----------------------------------------------------------------------
 
     fun onSortSelected(sort: CustomerSort) {
-        _state.value = _state.value.copy(currentSort = sort)
+        _state.update { it.copy(currentSort = sort) }
         _pageKey.value = buildPageKey()
     }
 
@@ -177,16 +182,16 @@ class CustomerListViewModel @Inject constructor(
     // -----------------------------------------------------------------------
 
     fun showFilterSheet() {
-        _state.value = _state.value.copy(showFilterSheet = true)
+        _state.update { it.copy(showFilterSheet = true) }
     }
 
     fun onFilterChanged(filter: CustomerFilter) {
-        _state.value = _state.value.copy(currentFilter = filter, showFilterSheet = false)
+        _state.update { it.copy(currentFilter = filter, showFilterSheet = false) }
         _pageKey.value = buildPageKey()
     }
 
     fun dismissFilterSheet() {
-        _state.value = _state.value.copy(showFilterSheet = false)
+        _state.update { it.copy(showFilterSheet = false) }
     }
 
     // -----------------------------------------------------------------------
@@ -197,7 +202,7 @@ class CustomerListViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val response = customerApi.getStats()
-                _state.value = _state.value.copy(stats = response.data)
+                _state.update { it.copy(stats = response.data) }
             } catch (_: Exception) {
                 // 404 or network failure → stats stays null → header hidden
             }
@@ -239,28 +244,30 @@ class CustomerListViewModel @Inject constructor(
     // -----------------------------------------------------------------------
 
     fun onLongPress(customerId: Long) {
-        val current = _state.value
-        _state.value = current.copy(
-            isBulkMode = true,
-            selectedIds = current.selectedIds + customerId,
-        )
+        _state.update {
+            it.copy(
+                isBulkMode = true,
+                selectedIds = it.selectedIds + customerId,
+            )
+        }
     }
 
     fun onToggleSelect(customerId: Long) {
-        val current = _state.value
-        val newIds = if (customerId in current.selectedIds) {
-            current.selectedIds - customerId
-        } else {
-            current.selectedIds + customerId
+        _state.update {
+            val newIds = if (customerId in it.selectedIds) {
+                it.selectedIds - customerId
+            } else {
+                it.selectedIds + customerId
+            }
+            it.copy(
+                selectedIds = newIds,
+                isBulkMode = newIds.isNotEmpty(),
+            )
         }
-        _state.value = current.copy(
-            selectedIds = newIds,
-            isBulkMode = newIds.isNotEmpty(),
-        )
     }
 
     fun clearBulkSelection() {
-        _state.value = _state.value.copy(isBulkMode = false, selectedIds = emptySet())
+        _state.update { it.copy(isBulkMode = false, selectedIds = emptySet()) }
     }
 
     fun onBulkDelete() {
@@ -288,7 +295,7 @@ class CustomerListViewModel @Inject constructor(
                 }
             }
             // Signal undo window to the screen via pendingUndoDeleteIds
-            _state.value = _state.value.copy(pendingUndoDeleteIds = ids)
+            _state.update { it.copy(pendingUndoDeleteIds = ids) }
             loadCustomers()
         }
     }
@@ -310,7 +317,7 @@ class CustomerListViewModel @Inject constructor(
     }
 
     fun clearPendingUndoDelete() {
-        _state.value = _state.value.copy(pendingUndoDeleteIds = emptyList())
+        _state.update { it.copy(pendingUndoDeleteIds = emptyList()) }
     }
 
     fun onBulkTag(tag: String) {
@@ -334,7 +341,7 @@ class CustomerListViewModel @Inject constructor(
                     catch (_: Exception) {}
                 }
             }
-            _state.value = _state.value.copy(snackbarMessage = "Tagged ${ids.size} customer(s) as $tag")
+            _state.update { it.copy(snackbarMessage = "Tagged ${ids.size} customer(s) as $tag") }
             loadCustomers()
         }
     }
@@ -361,7 +368,7 @@ class CustomerListViewModel @Inject constructor(
     }
 
     fun clearSnackbar() {
-        _state.value = _state.value.copy(snackbarMessage = null)
+        _state.update { it.copy(snackbarMessage = null) }
     }
 
     // -----------------------------------------------------------------------
@@ -369,7 +376,7 @@ class CustomerListViewModel @Inject constructor(
     // -----------------------------------------------------------------------
 
     fun onTagFilterApplied(tag: String) {
-        _state.value = _state.value.copy(activeTagFilter = tag)
+        _state.update { it.copy(activeTagFilter = tag) }
         _pageKey.value = buildPageKey()
     }
 
@@ -397,11 +404,11 @@ class CustomerListViewModel @Inject constructor(
     }
 
     fun onExportReady(content: String) {
-        _state.value = _state.value.copy(exportCsvContent = content)
+        _state.update { it.copy(exportCsvContent = content) }
     }
 
     fun clearExportCsv() {
-        _state.value = _state.value.copy(exportCsvContent = null)
+        _state.update { it.copy(exportCsvContent = null) }
     }
 
     // -----------------------------------------------------------------------
