@@ -385,7 +385,14 @@ private struct StockCard: View {
                     .font(.brandDisplayMedium())
                     .foregroundStyle(item.isLowStock ? .bizarreError : .bizarreOnSurface)
                     .monospacedDigit()
-                Text(stock == 1 ? "in stock" : "in stock")
+                // BUGHUNT-2026-05-19: both branches of the ternary were
+                // the literal string "in stock" — clearly a half-finished
+                // pluralisation from a refactor. Every other inventory
+                // count site in this package uses "unit"/"units" (see
+                // MoveToLocationSheet, BatchEditSheet). Match that style
+                // so the stock card reads "1 unit in stock" / "12 units
+                // in stock" instead of the awkward bare-number variant.
+                Text(stock == 1 ? "unit in stock" : "units in stock")
                     .font(.brandBodyMedium())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
                 Spacer()
