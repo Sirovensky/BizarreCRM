@@ -87,11 +87,19 @@ data class CategoryBreakdownSlice(
 
 // ─── Private helpers ──────────────────────────────────────────────────────────
 
+// BUGHUNT-2026-05-18: was NumberFormat.getCurrencyInstance(Locale.US). The
+// revenue-trend, category-breakdown and expense-by-category charts on the
+// Reports surface all flow through this helper; they need to honour the
+// tenant's currencyOverride so axis labels + chart tooltips match.
 private fun usdCurrencyFormatter(): NumberFormat =
-    NumberFormat.getCurrencyInstance(Locale.US)
+    NumberFormat.getCurrencyInstance(Locale.getDefault()).also { fmt ->
+        com.bizarreelectronics.crm.util.CurrencyFormatter.defaultCurrencyCode?.let { code ->
+            runCatching { fmt.currency = java.util.Currency.getInstance(code) }
+        }
+    }
 
 private fun formatCents(cents: Long): String =
-    usdCurrencyFormatter().format(cents / 100.0)
+    com.bizarreelectronics.crm.util.CurrencyFormatter.format(cents / 100.0)
 
 /** Converts an ISO-8601 date string to a short label like "Apr 18". */
 private fun shortDate(iso: String): String {
