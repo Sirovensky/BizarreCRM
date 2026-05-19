@@ -16,13 +16,16 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FilterAltOff
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DockedSearchBar
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -52,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.bizarreelectronics.crm.R
 import com.bizarreelectronics.crm.data.remote.api.AuditEntry
+import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.screens.audit.components.AuditEntryRow
 import com.bizarreelectronics.crm.ui.screens.audit.components.AuditFilter
 import com.bizarreelectronics.crm.ui.screens.audit.components.AuditFilterSheet
@@ -258,16 +262,36 @@ fun AuditLogsScreen(
                 }
 
                 displayItems.isEmpty() -> {
+                    // CROSS55 follow-up: was a bare Text — upgraded to shared EmptyState
+                    // and added a "Clear filters" CTA when the empty result is caused
+                    // by active filters/search (otherwise the user has no obvious way
+                    // to recover without re-opening the filter sheet).
+                    val isFiltered = filter != AuditFilter() || search.isNotBlank()
                     Box(
                         modifier = Modifier.fillMaxSize().padding(24.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            text = if (filter == AuditFilter() && search.isBlank())
-                                "No audit log entries found"
-                            else "No entries match current filters",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        EmptyState(
+                            icon = Icons.Default.History,
+                            title = if (isFiltered) "No matches" else "No audit log entries",
+                            subtitle = if (isFiltered)
+                                "No entries match current filters."
+                            else
+                                "Audit entries appear here as users make changes.",
+                            action = if (isFiltered) {
+                                {
+                                    FilledTonalButton(onClick = {
+                                        viewModel.updateFilter(AuditFilter())
+                                        viewModel.updateSearch("")
+                                    }) {
+                                        Icon(
+                                            Icons.Default.FilterAltOff,
+                                            contentDescription = null,
+                                        )
+                                        Text("  Clear filters")
+                                    }
+                                }
+                            } else null,
                         )
                     }
                 }

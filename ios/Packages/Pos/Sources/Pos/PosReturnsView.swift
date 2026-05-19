@@ -60,6 +60,8 @@ struct PosReturnsView: View {
             ))
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
+            .submitLabel(.search)
+            .accessibilityLabel("Search returns by order id or phone")
             .accessibilityIdentifier("pos.returns.search")
             if !vm.query.isEmpty {
                 Button { vm.onQueryChange("") } label: {

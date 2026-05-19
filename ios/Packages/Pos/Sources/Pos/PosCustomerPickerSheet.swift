@@ -77,7 +77,9 @@ struct PosCustomerPickerSheet: View {
                 // the standard iOS search-bar convention.
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .submitLabel(.search)
                 .onChange(of: query) { _, _ in onQueryChange() }
+                .accessibilityLabel("Search customer by name, email, or phone")
                 .accessibilityIdentifier("pos.customerPicker.search")
             if !query.isEmpty {
                 Button { query = ""; onQueryChange() } label: {

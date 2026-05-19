@@ -80,6 +80,8 @@ public struct EstimateListFiltersView: View {
                         TextField("Customer name or phone", text: $draft.customerKeyword)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
+                            .submitLabel(.search)
+                            .accessibilityLabel("Filter by customer name or phone")
                     }
                 }
 

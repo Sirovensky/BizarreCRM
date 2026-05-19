@@ -507,6 +507,12 @@ fun NotificationListScreen(
                         state.searchQuery.isNotEmpty() -> "No matches" to "Try a different search"
                         else -> "No notifications" to "No ${state.selectedFilter.label.lowercase()} notifications"
                     }
+                    // Follow-up to CROSS55: when an active search/filter is the reason
+                    // the list is empty, surface a one-tap "Clear" CTA. Without it,
+                    // a user who searched "asdf" sees a dead-end empty state and has
+                    // to remember to manually clear the search field.
+                    val isFiltered = state.notifications.isNotEmpty() &&
+                        (state.searchQuery.isNotEmpty() || state.selectedFilter != NotificationFilter.ALL)
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center,
@@ -515,6 +521,16 @@ fun NotificationListScreen(
                             icon = Icons.Default.NotificationsNone,
                             title = title,
                             subtitle = subtitle,
+                            action = if (isFiltered) {
+                                {
+                                    FilledTonalButton(onClick = {
+                                        viewModel.onSearchChange("")
+                                        viewModel.onFilterChange(NotificationFilter.ALL)
+                                    }) {
+                                        Text("Clear filter")
+                                    }
+                                }
+                            } else null,
                         )
                     }
                 }
