@@ -33,6 +33,7 @@ import com.bizarreelectronics.crm.ui.components.DraftRecoveryPrompt
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.screens.expenses.components.ReceiptOcrScanner
 import com.bizarreelectronics.crm.ui.screens.expenses.components.ReceiptPhotoPicker
+import com.bizarreelectronics.crm.util.CurrencyFormatter
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -717,7 +718,9 @@ fun ExpenseCreateScreen(
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text("Amount *") },
                         leadingIcon = {
-                            Text("$", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            // BUGHUNT-2026-05-18: was hard-coded "$" — honour
+                            // tenant currencyOverride via CurrencyFormatter.
+                            Text(CurrencyFormatter.currencySymbol(), color = MaterialTheme.colorScheme.onSurfaceVariant)
                         },
                         placeholder = { Text("0.00") },
                         singleLine = true,
@@ -789,7 +792,7 @@ fun ExpenseCreateScreen(
                             label = { Text("Rate $/mi *") },
                             placeholder = { Text("0.67") },
                             leadingIcon = {
-                                Text("$", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(CurrencyFormatter.currencySymbol(), color = MaterialTheme.colorScheme.onSurfaceVariant)
                             },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(
@@ -852,7 +855,7 @@ fun ExpenseCreateScreen(
                             label = { Text("Rate $/day *") },
                             placeholder = { Text("75.00") },
                             leadingIcon = {
-                                Text("$", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(CurrencyFormatter.currencySymbol(), color = MaterialTheme.colorScheme.onSurfaceVariant)
                             },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(
