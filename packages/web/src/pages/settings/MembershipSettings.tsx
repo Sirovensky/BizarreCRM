@@ -220,8 +220,9 @@ function TierForm({ initial, onSave, onCancel, saving }: {
         {/* Name & Price */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Name</label>
+            <label htmlFor="membership-tier-name" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Name</label>
             <input
+              id="membership-tier-name"
               value={form.name}
               onChange={(e) => handleChange('name', e.target.value)}
               className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
@@ -229,8 +230,9 @@ function TierForm({ initial, onSave, onCancel, saving }: {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Monthly Price ($)</label>
+            <label htmlFor="membership-tier-monthly-price" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Monthly Price ($)</label>
             <input
+              id="membership-tier-monthly-price"
               type="number"
               step="0.01"
               min="0"
@@ -245,8 +247,9 @@ function TierForm({ initial, onSave, onCancel, saving }: {
         {/* Discount & Applies To */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Discount %</label>
+            <label htmlFor="membership-tier-discount-pct" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Discount %</label>
             <input
+              id="membership-tier-discount-pct"
               type="number"
               step="1"
               min="0"
@@ -258,8 +261,9 @@ function TierForm({ initial, onSave, onCancel, saving }: {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Applies To</label>
+            <label htmlFor="membership-tier-applies-to" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Applies To</label>
             <select
+              id="membership-tier-applies-to"
               value={form.discount_applies_to}
               onChange={(e) => handleChange('discount_applies_to', e.target.value as 'labor' | 'all' | 'parts')}
               className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"

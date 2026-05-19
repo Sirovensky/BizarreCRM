@@ -234,17 +234,17 @@ function ChecklistItemModal({ onClose, onSubmit, pending, initial }: ChecklistIt
           </button>
         </div>
         <div>
-          <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Name</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} className="input w-full" placeholder="e.g. Buttons (power / volume / home) work" autoFocus />
+          <label htmlFor="qc-checklist-name" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Name</label>
+          <input id="qc-checklist-name" value={name} onChange={(e) => setName(e.target.value)} className="input w-full" placeholder="e.g. Buttons (power / volume / home) work" autoFocus />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Sort order</label>
-            <input type="number" min="0" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="input w-full" />
+            <label htmlFor="qc-checklist-sort-order" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Sort order</label>
+            <input id="qc-checklist-sort-order" type="number" min="0" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="input w-full" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Device category</label>
-            <input value={category} onChange={(e) => setCategory(e.target.value)} className="input w-full" placeholder="(blank = all)" />
+            <label htmlFor="qc-checklist-category" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Device category</label>
+            <input id="qc-checklist-category" value={category} onChange={(e) => setCategory(e.target.value)} className="input w-full" placeholder="(blank = all)" />
           </div>
         </div>
         <div className="flex gap-3">
