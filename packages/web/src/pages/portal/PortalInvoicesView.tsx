@@ -63,7 +63,7 @@ export function PortalInvoicesView({ onBack }: PortalInvoicesViewProps) {
   if (loading) {
     // WEB-S4-024: skeleton instead of spinner
     return (
-      <div className="min-h-screen bg-surface-50 dark:bg-surface-950">
+      <div className="min-h-screen bg-surface-50 dark:bg-surface-950" role="status" aria-busy="true" aria-live="polite" aria-label="Loading invoices">
         <div className="bg-white dark:bg-surface-900 border-b border-surface-200 dark:border-surface-800 px-4 py-4">
           <div className="max-w-2xl mx-auto flex items-center gap-3">
             <div className="animate-pulse bg-surface-200 dark:bg-surface-700 h-5 w-5 rounded" />

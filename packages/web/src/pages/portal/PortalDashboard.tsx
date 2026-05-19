@@ -32,7 +32,7 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
   if (loading) {
     // WEB-S4-024: skeleton instead of spinner
     return (
-      <div className="min-h-screen bg-surface-50 dark:bg-surface-900">
+      <div className="min-h-screen bg-surface-50 dark:bg-surface-900" role="status" aria-busy="true" aria-live="polite" aria-label="Loading portal dashboard">
         <div className="bg-white dark:bg-surface-800 border-b border-surface-200 dark:border-surface-700 px-4 py-4">
           <div className="max-w-2xl mx-auto flex items-center justify-between">
             <div className="space-y-2">

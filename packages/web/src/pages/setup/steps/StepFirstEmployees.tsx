@@ -378,6 +378,7 @@ export function StepFirstEmployees({
                     value={row.name}
                     onChange={(e) => updateRow(row.id, { name: e.target.value })}
                     placeholder="Sarah Kim"
+                    autoComplete="name"
                     aria-invalid={Boolean(rowError?.name)}
                     className={
                       'w-full rounded-lg border bg-surface-50 px-3 py-2 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:bg-surface-700 dark:text-surface-100 ' +
@@ -407,6 +408,8 @@ export function StepFirstEmployees({
                     value={row.email}
                     onChange={(e) => updateRow(row.id, { email: e.target.value })}
                     placeholder="sarah@shop.com"
+                    autoComplete="email"
+                    inputMode="email"
                     aria-invalid={Boolean(rowError?.email)}
                     className={
                       'w-full rounded-lg border bg-surface-50 px-3 py-2 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:bg-surface-700 dark:text-surface-100 ' +

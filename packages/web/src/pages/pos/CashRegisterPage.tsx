@@ -27,7 +27,7 @@ const historySkeletonRows = Array.from({ length: 4 }, (_, index) => index);
 
 function CashHistorySkeleton() {
   return (
-    <div className="divide-y divide-surface-100 dark:divide-surface-800" aria-label="Loading cash register history">
+    <div className="divide-y divide-surface-100 dark:divide-surface-800" role="status" aria-busy="true" aria-live="polite" aria-label="Loading cash register history">
       {historySkeletonRows.map((row) => (
         <div key={row} className="flex items-center gap-3 px-4 py-3">
           <div className="h-8 w-8 shrink-0 rounded-full bg-surface-100 dark:bg-surface-800 animate-pulse" />
