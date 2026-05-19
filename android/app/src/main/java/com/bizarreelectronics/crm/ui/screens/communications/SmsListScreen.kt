@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -20,6 +21,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -30,6 +33,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -237,6 +241,20 @@ fun SmsListScreen(
     var newMsgPhone by rememberSaveable { mutableStateOf("") }
 
     if (showNewMsgDialog) {
+        val newMsgFocus = remember { FocusRequester() }
+        LaunchedEffect(Unit) {
+            runCatching { newMsgFocus.requestFocus() }
+        }
+        val startChat: () -> Unit = {
+            val normalized = newMsgPhone.trim().replace(Regex("[^0-9]"), "").let {
+                if (it.length == 11 && it.startsWith("1")) it.substring(1) else it
+            }
+            if (normalized.isNotBlank()) {
+                showNewMsgDialog = false
+                newMsgPhone = ""
+                onConversationClick(normalized)
+            }
+        }
         AlertDialog(
             onDismissRequest = {
                 showNewMsgDialog = false
@@ -247,25 +265,22 @@ fun SmsListScreen(
                 OutlinedTextField(
                     value = newMsgPhone,
                     onValueChange = { newMsgPhone = it },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(newMsgFocus),
                     label = { Text("Phone number") },
                     placeholder = { Text("e.g. 5551234567") },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Phone,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { startChat() }),
                 )
             },
             confirmButton = {
                 TextButton(
-                    onClick = {
-                        val normalized = newMsgPhone.trim().replace(Regex("[^0-9]"), "").let {
-                            if (it.length == 11 && it.startsWith("1")) it.substring(1) else it
-                        }
-                        if (normalized.isNotBlank()) {
-                            showNewMsgDialog = false
-                            newMsgPhone = ""
-                            onConversationClick(normalized)
-                        }
-                    },
+                    onClick = startChat,
                     enabled = newMsgPhone.trim().replace(Regex("[^0-9]"), "").isNotBlank(),
                 ) {
                     Text("Start chat")
