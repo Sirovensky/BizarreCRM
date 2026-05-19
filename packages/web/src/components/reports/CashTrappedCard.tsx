@@ -31,7 +31,7 @@ export function CashTrappedCard() {
   });
 
   if (isLoading) {
-    return <div className="h-48 rounded-xl border border-gray-200 dark:border-surface-700 bg-gray-50 dark:bg-surface-800 animate-pulse" />;
+    return <div role="status" aria-busy="true" aria-live="polite" aria-label="Loading cash-trapped stock report" className="h-48 rounded-xl border border-gray-200 dark:border-surface-700 bg-gray-50 dark:bg-surface-800 animate-pulse" />;
   }
   if (error || !data) {
     return <div className="rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/20 p-4 text-red-700 dark:text-red-300 text-sm">Unavailable.</div>;

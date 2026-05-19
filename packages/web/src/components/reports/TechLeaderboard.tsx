@@ -60,7 +60,7 @@ export function TechLeaderboard() {
         </div>
       </div>
 
-      {isLoading && <div className="h-40 bg-gray-50 dark:bg-surface-800 rounded animate-pulse" />}
+      {isLoading && <div role="status" aria-busy="true" aria-live="polite" aria-label="Loading technician leaderboard" className="h-40 bg-gray-50 dark:bg-surface-800 rounded animate-pulse" />}
       {error && <div className="text-sm text-red-600 dark:text-red-400">Failed to load leaderboard</div>}
 
       {data && (
