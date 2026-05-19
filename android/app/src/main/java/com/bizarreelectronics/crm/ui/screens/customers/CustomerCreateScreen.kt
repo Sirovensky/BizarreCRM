@@ -59,6 +59,9 @@ import javax.inject.Inject
 
 private const val DRAFT_AUTOSAVE_DEBOUNCE_MS = 2_000L
 
+/** Compiled once at file scope; Regex matchers are stateless after construction. */
+private val EMAIL_REGEX = Regex("^[^\\s@.]+(?:\\.[^\\s@.]+)*@[^\\s@.]+(?:\\.[^\\s@.]+)*\\.[^\\s@.]{2,}$")
+
 /** A single row in the multi-phone list. */
 data class PhoneEntry(val label: String = "Mobile", val number: String = "")
 
@@ -612,23 +615,22 @@ class CustomerCreateViewModel @Inject constructor(
 
         val trimmedFirstName = current.firstName.trim()
         if (trimmedFirstName.isEmpty()) {
-            _state.value = current.copy(error = "First name is required")
+            _state.update { it.copy(error = "First name is required") }
             return
         }
         if (trimmedFirstName.length > 255) {
-            _state.value = current.copy(error = "First name is too long (max 255 characters)")
+            _state.update { it.copy(error = "First name is too long (max 255 characters)") }
             return
         }
 
         val primaryEmail = current.emails.firstOrNull()?.email?.trim() ?: ""
         if (primaryEmail.isNotEmpty()) {
             if (primaryEmail.length > 254) {
-                _state.value = current.copy(error = "Email is too long")
+                _state.update { it.copy(error = "Email is too long") }
                 return
             }
-            val emailRegex = Regex("^[^\\s@.]+(?:\\.[^\\s@.]+)*@[^\\s@.]+(?:\\.[^\\s@.]+)*\\.[^\\s@.]{2,}$")
-            if (!emailRegex.matches(primaryEmail.lowercase())) {
-                _state.value = current.copy(error = "Enter a valid email address")
+            if (!EMAIL_REGEX.matches(primaryEmail.lowercase())) {
+                _state.update { it.copy(error = "Enter a valid email address") }
                 return
             }
         }
@@ -637,7 +639,7 @@ class CustomerCreateViewModel @Inject constructor(
         if (primaryPhone.isNotEmpty()) {
             val digits = primaryPhone.filter { it.isDigit() }
             if (digits.length !in 10..15) {
-                _state.value = current.copy(error = "Phone number must be 10-15 digits")
+                _state.update { it.copy(error = "Phone number must be 10-15 digits") }
                 return
             }
         }
