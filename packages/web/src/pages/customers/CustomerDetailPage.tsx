@@ -2434,10 +2434,11 @@ function AssetsTab({ customerId }: { customerId: number }) {
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">
+              <label htmlFor="customer-asset-name" className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">
                 Name <span className="text-red-500">*</span>
               </label>
               <input
+                id="customer-asset-name"
                 type="text"
                 value={assetForm.name}
                 onChange={(e) =>
@@ -2448,10 +2449,11 @@ function AssetsTab({ customerId }: { customerId: number }) {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">
+              <label htmlFor="customer-asset-type" className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">
                 Type
               </label>
               <input
+                id="customer-asset-type"
                 type="text"
                 value={assetForm.device_type}
                 onChange={(e) =>
@@ -2462,10 +2464,11 @@ function AssetsTab({ customerId }: { customerId: number }) {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">
+              <label htmlFor="customer-asset-serial" className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">
                 Serial
               </label>
               <input
+                id="customer-asset-serial"
                 type="text"
                 value={assetForm.serial}
                 onChange={(e) =>
@@ -2476,10 +2479,11 @@ function AssetsTab({ customerId }: { customerId: number }) {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">
+              <label htmlFor="customer-asset-imei" className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">
                 IMEI
               </label>
               <input
+                id="customer-asset-imei"
                 type="text"
                 value={assetForm.imei}
                 onChange={(e) =>
@@ -2490,10 +2494,11 @@ function AssetsTab({ customerId }: { customerId: number }) {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">
+              <label htmlFor="customer-asset-color" className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">
                 Color
               </label>
               <input
+                id="customer-asset-color"
                 type="text"
                 value={assetForm.color}
                 onChange={(e) =>
@@ -2504,10 +2509,11 @@ function AssetsTab({ customerId }: { customerId: number }) {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">
+              <label htmlFor="customer-asset-notes" className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">
                 Notes
               </label>
               <input
+                id="customer-asset-notes"
                 type="text"
                 value={assetForm.notes}
                 onChange={(e) =>
