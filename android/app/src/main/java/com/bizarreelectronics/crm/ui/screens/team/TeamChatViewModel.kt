@@ -16,6 +16,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -67,62 +68,74 @@ class TeamChatListViewModel @Inject constructor(
 
     fun loadRooms() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(
-                isLoading = _state.value.rooms.isEmpty(),
-                error = null,
-                notConfigured = false,
-            )
+            _state.update {
+                it.copy(
+                    isLoading = it.rooms.isEmpty(),
+                    error = null,
+                    notConfigured = false,
+                )
+            }
             if (!serverMonitor.isEffectivelyOnline.value) {
-                _state.value = _state.value.copy(isLoading = false)
+                _state.update { it.copy(isLoading = false) }
                 return@launch
             }
             try {
                 val response = teamChatApi.getRooms()
                 rawRooms = response.data?.rooms ?: emptyList()
-                _state.value = _state.value.copy(
-                    rooms = applySearch(rawRooms, _state.value.searchQuery),
-                    isLoading = false,
-                    isRefreshing = false,
-                )
-            } catch (e: retrofit2.HttpException) {
-                if (e.code() == 404) {
-                    _state.value = _state.value.copy(
+                _state.update {
+                    it.copy(
+                        rooms = applySearch(rawRooms, it.searchQuery),
                         isLoading = false,
                         isRefreshing = false,
-                        notConfigured = true,
                     )
+                }
+            } catch (e: retrofit2.HttpException) {
+                if (e.code() == 404) {
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            isRefreshing = false,
+                            notConfigured = true,
+                        )
+                    }
                 } else {
-                    _state.value = _state.value.copy(
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            isRefreshing = false,
+                            error = "Could not load team chat",
+                        )
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (_: Exception) {
+                _state.update {
+                    it.copy(
                         isLoading = false,
                         isRefreshing = false,
                         error = "Could not load team chat",
                     )
                 }
-            } catch (e: CancellationException) {
-                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
-            } catch (_: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    error = "Could not load team chat",
-                )
             }
         }
     }
 
     fun refresh() {
-        _state.value = _state.value.copy(isRefreshing = true)
+        _state.update { it.copy(isRefreshing = true) }
         loadRooms()
     }
 
     fun onSearchChanged(query: String) {
-        _state.value = _state.value.copy(searchQuery = query)
+        _state.update { it.copy(searchQuery = query) }
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             delay(300L)
-            _state.value = _state.value.copy(
-                rooms = applySearch(rawRooms, query),
-            )
+            _state.update {
+                it.copy(
+                    rooms = applySearch(rawRooms, query),
+                )
+            }
         }
     }
 
@@ -159,13 +172,15 @@ class TeamChatThreadViewModel @Inject constructor(
 
     fun loadMessages(cursor: String? = null) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(
-                isLoading = _state.value.messages.isEmpty(),
-                error = null,
-                notConfigured = false,
-            )
+            _state.update {
+                it.copy(
+                    isLoading = it.messages.isEmpty(),
+                    error = null,
+                    notConfigured = false,
+                )
+            }
             if (!serverMonitor.isEffectivelyOnline.value) {
-                _state.value = _state.value.copy(isLoading = false)
+                _state.update { it.copy(isLoading = false) }
                 return@launch
             }
             try {
@@ -173,46 +188,54 @@ class TeamChatThreadViewModel @Inject constructor(
                 val incoming = response.data?.messages ?: emptyList()
                 val merged = if (cursor == null) incoming
                 else _state.value.messages + incoming
-                _state.value = _state.value.copy(
-                    messages = merged,
-                    isLoading = false,
-                    isRefreshing = false,
-                )
-            } catch (e: retrofit2.HttpException) {
-                if (e.code() == 404) {
-                    _state.value = _state.value.copy(
+                _state.update {
+                    it.copy(
+                        messages = merged,
                         isLoading = false,
                         isRefreshing = false,
-                        notConfigured = true,
                     )
+                }
+            } catch (e: retrofit2.HttpException) {
+                if (e.code() == 404) {
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            isRefreshing = false,
+                            notConfigured = true,
+                        )
+                    }
                 } else {
-                    _state.value = _state.value.copy(
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            isRefreshing = false,
+                            error = "Could not load messages",
+                        )
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
+            } catch (_: Exception) {
+                _state.update {
+                    it.copy(
                         isLoading = false,
                         isRefreshing = false,
                         error = "Could not load messages",
                     )
                 }
-            } catch (e: CancellationException) {
-                throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
-            } catch (_: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    error = "Could not load messages",
-                )
             }
         }
     }
 
     fun refresh() {
-        _state.value = _state.value.copy(isRefreshing = true)
+        _state.update { it.copy(isRefreshing = true) }
         loadMessages()
     }
 
     fun sendMessage(body: String, mentionIds: List<Long> = emptyList()) {
         if (body.isBlank()) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSending = true)
+            _state.update { it.copy(isSending = true) }
             try {
                 val response = teamChatApi.sendMessage(
                     roomId,
@@ -220,29 +243,35 @@ class TeamChatThreadViewModel @Inject constructor(
                 )
                 val sent = response.data
                 if (sent != null) {
-                    _state.value = _state.value.copy(
-                        messages = listOf(sent) + _state.value.messages,
-                        isSending = false,
-                        actionMessage = null,
-                    )
+                    _state.update {
+                        it.copy(
+                            messages = listOf(sent) + it.messages,
+                            isSending = false,
+                            actionMessage = null,
+                        )
+                    }
                 } else {
-                    _state.value = _state.value.copy(
-                        isSending = false,
-                        actionMessage = "Message sent",
-                    )
+                    _state.update {
+                        it.copy(
+                            isSending = false,
+                            actionMessage = "Message sent",
+                        )
+                    }
                     loadMessages()
                 }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: optimistic — server may have committed
                 // TCPA double-send: cancellation here does NOT guarantee the send was not delivered;
                 // the message may have been queued server-side. Do NOT retry automatically.
-                _state.value = _state.value.copy(isSending = false)
+                _state.update { it.copy(isSending = false) }
                 throw e
             } catch (_: Exception) {
-                _state.value = _state.value.copy(
-                    isSending = false,
-                    actionMessage = "Failed to send message",
-                )
+                _state.update {
+                    it.copy(
+                        isSending = false,
+                        actionMessage = "Failed to send message",
+                    )
+                }
             }
         }
     }
@@ -273,20 +302,22 @@ class TeamChatThreadViewModel @Inject constructor(
         } else {
             emptyList()
         }
-        _state.value = _state.value.copy(mentionSuggestions = suggestions)
+        _state.update { it.copy(mentionSuggestions = suggestions) }
     }
 
     /** Called when a WebSocket `team-chat:message:<roomId>` event arrives. */
     fun onWebSocketMessage(message: TeamChatMessage) {
         val existing = _state.value.messages.any { it.id == message.id }
         if (!existing) {
-            _state.value = _state.value.copy(
-                messages = listOf(message) + _state.value.messages,
-            )
+            _state.update {
+                it.copy(
+                    messages = listOf(message) + it.messages,
+                )
+            }
         }
     }
 
     fun clearActionMessage() {
-        _state.value = _state.value.copy(actionMessage = null)
+        _state.update { it.copy(actionMessage = null) }
     }
 }
