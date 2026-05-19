@@ -166,12 +166,20 @@ export function MyQueuePage() {
                     server has no index on the customer name fields and
                     status sort would need to map status_id to display
                     order. */}
-                <th className="px-4 py-3 cursor-pointer select-none" onClick={() => toggleSort('order_id')}>Order{sortIcon('order_id')}</th>
-                <th className="px-4 py-3">Customer</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 cursor-pointer select-none" onClick={() => toggleSort('created_at')}>Age{sortIcon('created_at')}</th>
-                <th className="px-4 py-3 cursor-pointer select-none" onClick={() => toggleSort('due_on')}>Due{sortIcon('due_on')}</th>
-                <th className="px-4 py-3 text-right cursor-pointer select-none" onClick={() => toggleSort('total')}>Total{sortIcon('total')}</th>
+                <th scope="col" className="px-4 py-3" aria-sort={sortBy === 'order_id' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                  <button type="button" onClick={() => toggleSort('order_id')} className="inline-flex items-center select-none uppercase font-inherit cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 rounded">Order{sortIcon('order_id')}</button>
+                </th>
+                <th scope="col" className="px-4 py-3">Customer</th>
+                <th scope="col" className="px-4 py-3">Status</th>
+                <th scope="col" className="px-4 py-3" aria-sort={sortBy === 'created_at' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                  <button type="button" onClick={() => toggleSort('created_at')} className="inline-flex items-center select-none uppercase font-inherit cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 rounded">Age{sortIcon('created_at')}</button>
+                </th>
+                <th scope="col" className="px-4 py-3" aria-sort={sortBy === 'due_on' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                  <button type="button" onClick={() => toggleSort('due_on')} className="inline-flex items-center select-none uppercase font-inherit cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 rounded">Due{sortIcon('due_on')}</button>
+                </th>
+                <th scope="col" className="px-4 py-3 text-right" aria-sort={sortBy === 'total' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                  <button type="button" onClick={() => toggleSort('total')} className="inline-flex items-center select-none uppercase font-inherit cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 rounded">Total{sortIcon('total')}</button>
+                </th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>

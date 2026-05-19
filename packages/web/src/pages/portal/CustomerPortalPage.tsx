@@ -408,6 +408,8 @@ function WidgetTracker({ storeName, portalUrl }: { storeName: string; portalUrl:
             <input
               id="w-phone"
               type="tel"
+              inputMode="numeric"
+              pattern="[0-9]{4}"
               placeholder="1234"
               maxLength={4}
               value={phoneLast4}

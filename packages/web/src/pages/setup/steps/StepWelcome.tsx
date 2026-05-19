@@ -55,6 +55,7 @@ export function StepWelcome({ pending, onUpdate, onNext, onSkip }: StepProps) {
             onChange={(e) => onUpdate({ store_name: e.target.value })}
             placeholder="Joe's Phone Repair"
             autoFocus
+            autoComplete="organization"
             maxLength={100}
             className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
           />
