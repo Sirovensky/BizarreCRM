@@ -283,9 +283,9 @@ export function InventoryDetailPage() {
                 </div>
               ))}
               <div className="col-span-2">
-                <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Description</label>
+                <label htmlFor={editMode ? 'inv-detail-description' : undefined} className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Description</label>
                 {editMode ? (
-                  <textarea value={f.description || ''} onChange={(e) => setForm({ ...f, description: e.target.value })} rows={2} className="input w-full text-sm" />
+                  <textarea id="inv-detail-description" value={f.description || ''} onChange={(e) => setForm({ ...f, description: e.target.value })} rows={2} className="input w-full text-sm" />
                 ) : (
                   <p className="text-sm text-surface-900 dark:text-surface-100">{item.description || '—'}</p>
                 )}
@@ -314,9 +314,9 @@ export function InventoryDetailPage() {
                 </div>
               ))}
               <div>
-                <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Tax Class</label>
+                <label htmlFor={editMode ? 'inv-detail-tax-class' : undefined} className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Tax Class</label>
                 {editMode ? (
-                  <select value={f.tax_class_id || ''} onChange={(e) => setForm({ ...f, tax_class_id: e.target.value || null })} className="input w-full text-sm">
+                  <select id="inv-detail-tax-class" value={f.tax_class_id || ''} onChange={(e) => setForm({ ...f, tax_class_id: e.target.value || null })} className="input w-full text-sm">
                     <option value="">No Tax</option>
                     {taxClasses.map((tc: any) => <option key={tc.id} value={tc.id}>{tc.name} ({tc.rate}%)</option>)}
                   </select>
@@ -392,8 +392,8 @@ export function InventoryDetailPage() {
             <h3 id="adjust-stock-title" className="font-semibold text-surface-900 dark:text-surface-100 mb-4">Adjust Stock</h3>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-surface-500 mb-1">Type</label>
-                <select value={adjustType} onChange={(e) => setAdjustType(e.target.value)} className="input w-full text-sm">
+                <label htmlFor="inv-adjust-type" className="block text-xs font-medium text-surface-500 mb-1">Type</label>
+                <select id="inv-adjust-type" value={adjustType} onChange={(e) => setAdjustType(e.target.value)} className="input w-full text-sm">
                   <option value="adjustment">Manual Adjustment</option>
                   <option value="purchase">Purchase / Received</option>
                   <option value="return">Customer Return</option>
@@ -401,8 +401,9 @@ export function InventoryDetailPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-surface-500 mb-1">Quantity (+ to add, - to remove)</label>
+                <label htmlFor="inv-adjust-qty" className="block text-xs font-medium text-surface-500 mb-1">Quantity (+ to add, - to remove)</label>
                 <input
+                  id="inv-adjust-qty"
                   type="number"
                   value={adjustQty}
                   onChange={(e) => setAdjustQty(e.target.value)}
@@ -411,8 +412,8 @@ export function InventoryDetailPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-surface-500 mb-1">Notes</label>
-                <input value={adjustNotes} onChange={(e) => setAdjustNotes(e.target.value)} className="input w-full text-sm" placeholder="Reason for adjustment..." />
+                <label htmlFor="inv-adjust-notes" className="block text-xs font-medium text-surface-500 mb-1">Notes</label>
+                <input id="inv-adjust-notes" value={adjustNotes} onChange={(e) => setAdjustNotes(e.target.value)} className="input w-full text-sm" placeholder="Reason for adjustment..." />
               </div>
               <div className="flex gap-2 pt-1">
                 <button type="button" onClick={() => { setShowAdjust(false); setAdjustQty(''); setAdjustNotes(''); }} className="flex-1 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">Cancel</button>
