@@ -45,6 +45,7 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.CancellationException
@@ -140,20 +141,22 @@ class PaymentSettingsViewModel @Inject constructor(
                         "cash_drawer_enabled" to if (s.cashDrawerEnabled) "1" else "0",
                     )
                 )
-                _uiState.value = _uiState.value.copy(isSaving = false, savedOk = true)
+                _uiState.update { it.copy(isSaving = false, savedOk = true) }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isSaving = false,
-                    errorMessage = "Save failed: ${e.message}",
-                )
+                _uiState.update {
+                    it.copy(
+                        isSaving = false,
+                        errorMessage = "Save failed: ${e.message}",
+                    )
+                }
             }
         }
     }
 
     fun clearSavedOk() {
-        _uiState.value = _uiState.value.copy(savedOk = false)
+        _uiState.update { it.copy(savedOk = false) }
     }
 }
 

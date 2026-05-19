@@ -10,6 +10,7 @@ import com.bizarreelectronics.crm.util.PasskeyManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -54,7 +55,7 @@ class PasskeyViewModel @Inject constructor(
 
     init {
         if (!PasskeyManager.isSupported()) {
-            _uiState.value = _uiState.value.copy(isUnsupported = true)
+            _uiState.update { it.copy(isUnsupported = true) }
         } else {
             loadPasskeys()
         }
@@ -64,28 +65,32 @@ class PasskeyViewModel @Inject constructor(
 
     fun loadPasskeys() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
+            _uiState.update { it.copy(isLoading = true) }
             try {
                 val response = authApi.listPasskeys()
                 val items = response.data ?: emptyList()
-                _uiState.value = _uiState.value.copy(passkeys = items, isLoading = false)
+                _uiState.update { it.copy(passkeys = items, isLoading = false) }
             } catch (e: retrofit2.HttpException) {
                 if (e.code() == 404) {
                     // Server predates passkey support — treat as empty list.
-                    _uiState.value = _uiState.value.copy(passkeys = emptyList(), isLoading = false)
+                    _uiState.update { it.copy(passkeys = emptyList(), isLoading = false) }
                 } else {
                     Timber.e(e, "listPasskeys HTTP %d", e.code())
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        snackbarMessage = "Could not load passkeys (${e.code()})",
-                    )
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            snackbarMessage = "Could not load passkeys (${e.code()})",
+                        )
+                    }
                 }
             } catch (e: Exception) {
                 Timber.e(e, "listPasskeys failed")
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    snackbarMessage = "Could not load passkeys: ${e.message}",
-                )
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        snackbarMessage = "Could not load passkeys: ${e.message}",
+                    )
+                }
             }
         }
     }
@@ -103,7 +108,7 @@ class PasskeyViewModel @Inject constructor(
     fun startEnrollment(activity: Activity) {
         if (_uiState.value.isEnrolling) return
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isEnrolling = true)
+            _uiState.update { it.copy(isEnrolling = true) }
             try {
                 // Step 1: get challenge from server.
                 val beginResponse = authApi.beginPasskeyRegistration()
@@ -122,29 +127,35 @@ class PasskeyViewModel @Inject constructor(
                         authApi.finishPasskeyRegistration(
                             PasskeyRegisterFinishRequest(responseJson = responseJson)
                         )
-                        _uiState.value = _uiState.value.copy(
-                            isEnrolling = false,
-                            snackbarMessage = "Passkey added successfully",
-                        )
+                        _uiState.update {
+                            it.copy(
+                                isEnrolling = false,
+                                snackbarMessage = "Passkey added successfully",
+                            )
+                        }
                         loadPasskeys()
                     }
                     is PasskeyManager.PasskeyOutcome.Cancelled -> {
-                        _uiState.value = _uiState.value.copy(isEnrolling = false)
+                        _uiState.update { it.copy(isEnrolling = false) }
                     }
                     is PasskeyManager.PasskeyOutcome.Unsupported -> {
-                        _uiState.value = _uiState.value.copy(
-                            isEnrolling = false,
-                            isUnsupported = true,
-                        )
+                        _uiState.update {
+                            it.copy(
+                                isEnrolling = false,
+                                isUnsupported = true,
+                            )
+                        }
                     }
                     is PasskeyManager.PasskeyOutcome.NoCredentials,
                     is PasskeyManager.PasskeyOutcome.Error -> {
                         val msg = if (outcome is PasskeyManager.PasskeyOutcome.Error) outcome.message
                                   else "No credential option available"
-                        _uiState.value = _uiState.value.copy(
-                            isEnrolling = false,
-                            snackbarMessage = msg,
-                        )
+                        _uiState.update {
+                            it.copy(
+                                isEnrolling = false,
+                                snackbarMessage = msg,
+                            )
+                        }
                     }
                 }
             } catch (e: retrofit2.HttpException) {
@@ -153,7 +164,7 @@ class PasskeyViewModel @Inject constructor(
                     else -> "Enrollment failed (${e.code()})"
                 }
                 Timber.e(e, "Passkey enrollment HTTP %d", e.code())
-                _uiState.value = _uiState.value.copy(isEnrolling = false, snackbarMessage = msg)
+                _uiState.update { it.copy(isEnrolling = false, snackbarMessage = msg) }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: re-throw cancellation. The
                 // finish-passkey-registration POST may have already
@@ -165,14 +176,16 @@ class PasskeyViewModel @Inject constructor(
                 // SECOND local credential and POSTing another
                 // attestation that registers another row in the
                 // passkey credentials table for the same user.
-                _uiState.value = _uiState.value.copy(isEnrolling = false)
+                _uiState.update { it.copy(isEnrolling = false) }
                 throw e
             } catch (e: Exception) {
                 Timber.e(e, "Passkey enrollment error")
-                _uiState.value = _uiState.value.copy(
-                    isEnrolling = false,
-                    snackbarMessage = "Enrollment failed: ${e.message}",
-                )
+                _uiState.update {
+                    it.copy(
+                        isEnrolling = false,
+                        snackbarMessage = "Enrollment failed: ${e.message}",
+                    )
+                }
             }
         }
     }
@@ -180,20 +193,20 @@ class PasskeyViewModel @Inject constructor(
     // ── Delete ─────────────────────────────────────────────────────────────
 
     fun requestDelete(id: String) {
-        _uiState.value = _uiState.value.copy(deleteConfirmId = id)
+        _uiState.update { it.copy(deleteConfirmId = id) }
     }
 
     fun dismissDeleteConfirm() {
-        _uiState.value = _uiState.value.copy(deleteConfirmId = null)
+        _uiState.update { it.copy(deleteConfirmId = null) }
     }
 
     fun confirmDelete() {
         val id = _uiState.value.deleteConfirmId ?: return
-        _uiState.value = _uiState.value.copy(deleteConfirmId = null, isLoading = true)
+        _uiState.update { it.copy(deleteConfirmId = null, isLoading = true) }
         viewModelScope.launch {
             try {
                 authApi.deletePasskey(id)
-                _uiState.value = _uiState.value.copy(snackbarMessage = "Passkey removed")
+                _uiState.update { it.copy(snackbarMessage = "Passkey removed") }
                 loadPasskeys()
             } catch (e: retrofit2.HttpException) {
                 val msg = when (e.code()) {
@@ -201,7 +214,7 @@ class PasskeyViewModel @Inject constructor(
                     else -> "Remove failed (${e.code()})"
                 }
                 Timber.e(e, "deletePasskey HTTP %d", e.code())
-                _uiState.value = _uiState.value.copy(isLoading = false, snackbarMessage = msg)
+                _uiState.update { it.copy(isLoading = false, snackbarMessage = msg) }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: re-throw cancellation. DELETE may
                 // have already removed the credential server-side; a
@@ -209,14 +222,16 @@ class PasskeyViewModel @Inject constructor(
                 // Remove, which 404s and is misleading but more
                 // importantly leaves the local UI thinking the
                 // credential still exists when it does not.
-                _uiState.value = _uiState.value.copy(isLoading = false)
+                _uiState.update { it.copy(isLoading = false) }
                 throw e
             } catch (e: Exception) {
                 Timber.e(e, "deletePasskey error")
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    snackbarMessage = "Remove failed: ${e.message}",
-                )
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        snackbarMessage = "Remove failed: ${e.message}",
+                    )
+                }
             }
         }
     }
@@ -224,6 +239,6 @@ class PasskeyViewModel @Inject constructor(
     // ── Snackbar ───────────────────────────────────────────────────────────
 
     fun clearSnackbar() {
-        _uiState.value = _uiState.value.copy(snackbarMessage = null)
+        _uiState.update { it.copy(snackbarMessage = null) }
     }
 }

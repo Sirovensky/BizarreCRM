@@ -48,6 +48,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -101,17 +102,17 @@ class FullDiagnosticsViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 syncManager.syncAll()
-                _uiState.value = _uiState.value.copy(syncMessage = "Sync triggered")
+                _uiState.update { it.copy(syncMessage = "Sync triggered") }
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: nav cancel during sync trigger
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(syncMessage = "Sync failed: ${e.message}")
+                _uiState.update { it.copy(syncMessage = "Sync failed: ${e.message}") }
             }
         }
     }
 
     fun clearSyncMessage() {
-        _uiState.value = _uiState.value.copy(syncMessage = null)
+        _uiState.update { it.copy(syncMessage = null) }
     }
 
     /** Only callable in debug builds. Forces a crash to test crash reporting. */

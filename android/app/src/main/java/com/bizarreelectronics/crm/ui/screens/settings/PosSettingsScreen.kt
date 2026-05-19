@@ -24,6 +24,7 @@ import com.bizarreelectronics.crm.data.remote.dto.TaxClassItem
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.CancellationException
@@ -80,7 +81,7 @@ class PosSettingsViewModel @Inject constructor(
 
     fun load() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            _uiState.update { it.copy(isLoading = true, error = null) }
             try {
                 val configResp = settingsApi.getConfig()
                 val cfg = configResp.data ?: emptyMap()
@@ -101,13 +102,13 @@ class PosSettingsViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e  // BUGHUNT-2026-05-17: must rethrow for structured concurrency
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: "Failed to load POS settings")
+                _uiState.update { it.copy(isLoading = false, error = e.message ?: "Failed to load POS settings") }
             }
         }
     }
 
     fun setCashDrawerEnabled(enabled: Boolean) {
-        _uiState.value = _uiState.value.copy(cashDrawerEnabled = enabled)
+        _uiState.update { it.copy(cashDrawerEnabled = enabled) }
         viewModelScope.launch {
             try {
                 settingsApi.putStoreConfig(mapOf("cash_drawer_enabled" to if (enabled) "1" else "0"))
@@ -121,7 +122,7 @@ class PosSettingsViewModel @Inject constructor(
     }
 
     fun setTipPresets(presets: String) {
-        _uiState.value = _uiState.value.copy(tipPresets = presets)
+        _uiState.update { it.copy(tipPresets = presets) }
         viewModelScope.launch {
             try {
                 settingsApi.putStoreConfig(mapOf("tip_presets" to presets))

@@ -28,6 +28,7 @@ import com.bizarreelectronics.crm.R
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
@@ -110,21 +111,25 @@ class HelpCenterViewModel @Inject constructor() : ViewModel() {
                 topic.keywords.any { kw -> kw.contains(q) }
             }
         }
-        _uiState.value = _uiState.value.copy(query = query, filteredTopics = filtered)
+        _uiState.update { it.copy(query = query, filteredTopics = filtered) }
     }
 
     fun onTopicSelected(topic: HelpTopic, rawContent: String) {
-        _uiState.value = _uiState.value.copy(
-            selectedTopic = topic,
-            topicContent = rawContent,
-        )
+        _uiState.update {
+            it.copy(
+                selectedTopic = topic,
+                topicContent = rawContent,
+            )
+        }
     }
 
     fun onBackFromTopic() {
-        _uiState.value = _uiState.value.copy(
-            selectedTopic = null,
-            topicContent = "",
-        )
+        _uiState.update {
+            it.copy(
+                selectedTopic = null,
+                topicContent = "",
+            )
+        }
     }
 
     fun clearQuery() {

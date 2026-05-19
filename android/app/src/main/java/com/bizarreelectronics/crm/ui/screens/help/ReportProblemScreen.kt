@@ -29,6 +29,7 @@ import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
@@ -77,15 +78,15 @@ class ReportProblemViewModel @Inject constructor(
     }
 
     fun onSubjectChange(v: String) {
-        _uiState.value = _uiState.value.copy(subject = v, errorMessage = null)
+        _uiState.update { it.copy(subject = v, errorMessage = null) }
     }
 
     fun onDescriptionChange(v: String) {
-        _uiState.value = _uiState.value.copy(description = v, errorMessage = null)
+        _uiState.update { it.copy(description = v, errorMessage = null) }
     }
 
     fun onAttachLogsToggle(v: Boolean) {
-        _uiState.value = _uiState.value.copy(attachLogs = v)
+        _uiState.update { it.copy(attachLogs = v) }
     }
 
     /**

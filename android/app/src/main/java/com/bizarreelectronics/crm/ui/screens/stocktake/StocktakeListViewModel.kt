@@ -9,6 +9,7 @@ import com.bizarreelectronics.crm.data.repository.StocktakeRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
@@ -57,27 +58,33 @@ class StocktakeListViewModel @Inject constructor(
 
     fun loadSessions() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val sessions = stocktakeRepository.listSessions()
-                _state.value = _state.value.copy(
-                    sessions = sessions,
-                    isLoading = false,
-                    serverUnsupported = false,
-                )
+                _state.update {
+                    it.copy(
+                        sessions = sessions,
+                        isLoading = false,
+                        serverUnsupported = false,
+                    )
+                }
             } catch (e: HttpException) {
                 if (e.code() == 404) {
                     Log.d(TAG, "GET /stocktake 404 — server route not yet deployed")
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        serverUnsupported = true,
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            serverUnsupported = true,
+                        )
+                    }
                 } else {
                     Log.w(TAG, "GET /stocktake HTTP ${e.code()}: ${e.message()}")
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        error = "Failed to load sessions (HTTP ${e.code()})",
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            error = "Failed to load sessions (HTTP ${e.code()})",
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: re-throw so back-nav doesn't paint
@@ -85,10 +92,12 @@ class StocktakeListViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "GET /stocktake failed: ${e.message}")
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = "Network error — check your connection",
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = "Network error — check your connection",
+                    )
+                }
             }
         }
     }
@@ -96,11 +105,11 @@ class StocktakeListViewModel @Inject constructor(
     // ── New session dialog ────────────────────────────────────────────────────
 
     fun showNewDialog() {
-        _state.value = _state.value.copy(showNewDialog = true)
+        _state.update { it.copy(showNewDialog = true) }
     }
 
     fun dismissNewDialog() {
-        _state.value = _state.value.copy(showNewDialog = false)
+        _state.update { it.copy(showNewDialog = false) }
     }
 
     /**
@@ -111,11 +120,11 @@ class StocktakeListViewModel @Inject constructor(
     fun createSession(name: String, location: String?, notes: String?) {
         val trimmedName = name.trim()
         if (trimmedName.isBlank()) {
-            _state.value = _state.value.copy(error = "Session name is required")
+            _state.update { it.copy(error = "Session name is required") }
             return
         }
         viewModelScope.launch {
-            _state.value = _state.value.copy(isCreating = true, error = null)
+            _state.update { it.copy(isCreating = true, error = null) }
             try {
                 val newItem = stocktakeRepository.createSession(
                     StocktakeCreateRequest(
@@ -124,12 +133,14 @@ class StocktakeListViewModel @Inject constructor(
                         notes = notes?.trim()?.takeIf { it.isNotBlank() },
                     )
                 )
-                _state.value = _state.value.copy(
-                    sessions = listOf(newItem) + _state.value.sessions,
-                    isCreating = false,
-                    showNewDialog = false,
-                    createdSessionId = newItem.id,
-                )
+                _state.update {
+                    it.copy(
+                        sessions = listOf(newItem) + _state.value.sessions,
+                        isCreating = false,
+                        showNewDialog = false,
+                        createdSessionId = newItem.id,
+                    )
+                }
             } catch (e: HttpException) {
                 val msg = when (e.code()) {
                     400 -> "Session name is required"
@@ -138,15 +149,17 @@ class StocktakeListViewModel @Inject constructor(
                     else -> "Failed to create session (HTTP ${e.code()})"
                 }
                 Log.w(TAG, "POST /stocktake HTTP ${e.code()}: ${e.message()}")
-                _state.value = _state.value.copy(isCreating = false, error = msg)
+                _state.update { it.copy(isCreating = false, error = msg) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "POST /stocktake failed: ${e.message}")
-                _state.value = _state.value.copy(
-                    isCreating = false,
-                    error = "Network error — check your connection",
-                )
+                _state.update {
+                    it.copy(
+                        isCreating = false,
+                        error = "Network error — check your connection",
+                    )
+                }
             }
         }
     }
@@ -166,10 +179,12 @@ class StocktakeListViewModel @Inject constructor(
                 // Include the underlying reason so users can distinguish a
                 // network outage from a server-side validation error.
                 val reason = e.message?.takeIf { it.isNotBlank() }
-                _state.value = _state.value.copy(
-                    error = if (reason != null) "Failed to cancel session: $reason"
-                    else "Failed to cancel session",
-                )
+                _state.update {
+                    it.copy(
+                        error = if (reason != null) "Failed to cancel session: $reason"
+                        else "Failed to cancel session",
+                    )
+                }
             }
         }
     }
@@ -177,11 +192,11 @@ class StocktakeListViewModel @Inject constructor(
     // ── One-shot navigation ───────────────────────────────────────────────────
 
     fun consumeCreatedSessionId() {
-        _state.value = _state.value.copy(createdSessionId = null)
+        _state.update { it.copy(createdSessionId = null) }
     }
 
     fun clearError() {
-        _state.value = _state.value.copy(error = null)
+        _state.update { it.copy(error = null) }
     }
 
     companion object {

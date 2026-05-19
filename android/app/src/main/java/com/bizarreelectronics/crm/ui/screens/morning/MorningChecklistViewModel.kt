@@ -13,6 +13,7 @@ import com.bizarreelectronics.crm.util.HardwarePinger
 import com.bizarreelectronics.crm.util.PingResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.CancellationException
@@ -145,7 +146,7 @@ class MorningChecklistViewModel @Inject constructor(
 
     private fun loadSteps() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
+            _uiState.update { it.copy(isLoading = true) }
             val steps = try {
                 val response = morningChecklistApi.getChecklistConfig()
                 val remote = response.data?.steps
@@ -163,13 +164,13 @@ class MorningChecklistViewModel @Inject constructor(
                 Log.w(TAG, "GET /tenants/me/morning-checklist failed: ${e.message}")
                 MorningChecklistDefaults.steps
             }
-            _uiState.value = _uiState.value.copy(isLoading = false, steps = steps)
+            _uiState.update { it.copy(isLoading = false, steps = steps) }
         }
     }
 
     private fun restoreCompletedSteps() {
         val saved = appPreferences.morningChecklistCompletedSteps(todayKey)
-        _uiState.value = _uiState.value.copy(completedStepIds = saved)
+        _uiState.update { it.copy(completedStepIds = saved) }
     }
 
     // -------------------------------------------------------------------------
@@ -183,13 +184,13 @@ class MorningChecklistViewModel @Inject constructor(
     fun toggleStep(stepId: Int) {
         val current = _uiState.value.completedStepIds
         val updated = if (stepId in current) current - stepId else current + stepId
-        _uiState.value = _uiState.value.copy(completedStepIds = updated)
+        _uiState.update { it.copy(completedStepIds = updated) }
         persistSteps(updated)
     }
 
     /** Store the cash-drawer float amount entered in step 1's dialog. */
     fun setCashAmount(amount: String) {
-        _uiState.value = _uiState.value.copy(cashAmount = amount)
+        _uiState.update { it.copy(cashAmount = amount) }
     }
 
     // -------------------------------------------------------------------------
@@ -206,26 +207,34 @@ class MorningChecklistViewModel @Inject constructor(
      */
     fun pingDevice(stepId: Int, host: String, port: Int) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(
-                pingResults = _uiState.value.pingResults + (stepId to PingResult.Pending),
-            )
+            _uiState.update {
+                it.copy(
+                    pingResults = _uiState.value.pingResults + (stepId to PingResult.Pending),
+                )
+            }
             val result = HardwarePinger.pingIpv4(host, port)
-            _uiState.value = _uiState.value.copy(
-                pingResults = _uiState.value.pingResults + (stepId to result),
-            )
+            _uiState.update {
+                it.copy(
+                    pingResults = _uiState.value.pingResults + (stepId to result),
+                )
+            }
         }
     }
 
     /** Bluetooth variant of [pingDevice]. */
     fun pingDeviceBluetooth(stepId: Int, macAddress: String) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(
-                pingResults = _uiState.value.pingResults + (stepId to PingResult.Pending),
-            )
+            _uiState.update {
+                it.copy(
+                    pingResults = _uiState.value.pingResults + (stepId to PingResult.Pending),
+                )
+            }
             val result = HardwarePinger.pingBluetooth(macAddress)
-            _uiState.value = _uiState.value.copy(
-                pingResults = _uiState.value.pingResults + (stepId to result),
-            )
+            _uiState.update {
+                it.copy(
+                    pingResults = _uiState.value.pingResults + (stepId to result),
+                )
+            }
         }
     }
 
@@ -243,11 +252,13 @@ class MorningChecklistViewModel @Inject constructor(
     fun completeChecklist() {
         val allStepIds = _uiState.value.steps.map { it.id }.toSet()
         val staffId = authPreferences.userId
-        _uiState.value = _uiState.value.copy(
-            completedStepIds = allStepIds,
-            isSubmitting = true,
-            error = null,
-        )
+        _uiState.update {
+            it.copy(
+                completedStepIds = allStepIds,
+                isSubmitting = true,
+                error = null,
+            )
+        }
         appPreferences.setMorningChecklistCompleted(todayKey, staffId, allStepIds)
 
         viewModelScope.launch {
@@ -272,7 +283,7 @@ class MorningChecklistViewModel @Inject constructor(
             } catch (e: Exception) {
                 Log.w(TAG, "POST /morning-checklist/complete failed: ${e.message}")
             } finally {
-                _uiState.value = _uiState.value.copy(isSubmitting = false)
+                _uiState.update { it.copy(isSubmitting = false) }
             }
         }
     }

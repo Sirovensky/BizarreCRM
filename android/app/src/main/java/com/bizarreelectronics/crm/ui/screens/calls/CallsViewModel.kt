@@ -12,6 +12,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -82,7 +83,7 @@ class CallsViewModel @Inject constructor(
         // §42.2 — role-gate call initiation to staff+
         val role = authPreferences.userRole ?: "viewer"
         val canInitiate = role in listOf("admin", "manager", "staff")
-        _state.value = _state.value.copy(canInitiateCalls = canInitiate)
+        _state.update { it.copy(canInitiateCalls = canInitiate) }
         loadCalls()
     }
 
@@ -90,7 +91,7 @@ class CallsViewModel @Inject constructor(
 
     fun loadCalls() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             val filters = buildMap<String, String> {
                 val dir = _state.value.directionFilter
                 if (dir != "All") put("direction", dir.lowercase())
@@ -120,39 +121,43 @@ class CallsViewModel @Inject constructor(
                     .distinctBy { it.to_number }
                     .take(5)
                     .map { it.to_number }
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    calls = items,
-                    callerIdNames = resolvedNames,
-                    recentOutboundNumbers = recentOutbound,
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        calls = items,
+                        callerIdNames = resolvedNames,
+                        recentOutboundNumbers = recentOutbound,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 val is404 = (e as? HttpException)?.code() == 404
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    notConfigured = is404,
-                    error = if (is404) null else (e.message ?: "Failed to load calls"),
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        notConfigured = is404,
+                        error = if (is404) null else (e.message ?: "Failed to load calls"),
+                    )
+                }
             }
         }
     }
 
     fun refresh() {
-        _state.value = _state.value.copy(isRefreshing = true)
+        _state.update { it.copy(isRefreshing = true) }
         loadCalls()
     }
 
     fun onDirectionFilterChanged(dir: String) {
-        _state.value = _state.value.copy(directionFilter = dir)
+        _state.update { it.copy(directionFilter = dir) }
         loadCalls()
     }
 
     fun clearActionMessage() {
-        _state.value = _state.value.copy(actionMessage = null)
+        _state.update { it.copy(actionMessage = null) }
     }
 
     // ── §42.5 Dial prompt (click-to-call from anywhere) ──────────────────────
@@ -162,25 +167,29 @@ class CallsViewModel @Inject constructor(
         customerName: String? = null,
         customerId: Long? = null,
     ) {
-        _state.value = _state.value.copy(
-            showDialPrompt = true,
-            dialPromptNumber = number,
-            dialPromptCustomerName = customerName,
-            dialPromptCustomerId = customerId,
-        )
+        _state.update {
+            it.copy(
+                showDialPrompt = true,
+                dialPromptNumber = number,
+                dialPromptCustomerName = customerName,
+                dialPromptCustomerId = customerId,
+            )
+        }
     }
 
     fun dismissDialPrompt() {
-        _state.value = _state.value.copy(
-            showDialPrompt = false,
-            dialPromptNumber = "",
-            dialPromptCustomerName = null,
-            dialPromptCustomerId = null,
-        )
+        _state.update {
+            it.copy(
+                showDialPrompt = false,
+                dialPromptNumber = "",
+                dialPromptCustomerName = null,
+                dialPromptCustomerId = null,
+            )
+        }
     }
 
     fun updateDialPromptNumber(number: String) {
-        _state.value = _state.value.copy(dialPromptNumber = number)
+        _state.update { it.copy(dialPromptNumber = number) }
     }
 
     /**
@@ -204,13 +213,13 @@ class CallsViewModel @Inject constructor(
         // /voice/call requests fire in parallel and the tenant is billed
         // for two outbound legs.
         if (_state.value.isInitiatingCall) return
-        _state.value = _state.value.copy(isInitiatingCall = true)
+        _state.update { it.copy(isInitiatingCall = true) }
         viewModelScope.launch {
             try {
                 val resp = voiceApi.initiateCall(
                     InitiateCallRequest(to_number = number, customer_id = customerId),
                 )
-                _state.value = _state.value.copy(isInitiatingCall = false, showDialPrompt = false)
+                _state.update { it.copy(isInitiatingCall = false, showDialPrompt = false) }
                 val session = resp.data
                 if (session != null) {
                     onLaunchCallActivity(
@@ -229,18 +238,20 @@ class CallsViewModel @Inject constructor(
                 // Clear the in-flight flag so the VM is consistent after
                 // scope cancellation, then propagate so structured
                 // concurrency stays intact.
-                _state.value = _state.value.copy(isInitiatingCall = false)
+                _state.update { it.copy(isInitiatingCall = false) }
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(isInitiatingCall = false, showDialPrompt = false)
+                _state.update { it.copy(isInitiatingCall = false, showDialPrompt = false) }
                 val is404 = (e as? HttpException)?.code() == 404
                 if (is404) {
                     // VoIP not configured — fall back to system dialer
                     onFallbackDial(number)
                 } else {
-                    _state.value = _state.value.copy(
-                        actionMessage = "Call failed: ${e.message ?: "Unknown error"}",
-                    )
+                    _state.update {
+                        it.copy(
+                            actionMessage = "Call failed: ${e.message ?: "Unknown error"}",
+                        )
+                    }
                 }
             }
         }
@@ -250,7 +261,7 @@ class CallsViewModel @Inject constructor(
 
     fun loadVoicemails(showAll: Boolean = false) {
         viewModelScope.launch {
-            _voicemailState.value = _voicemailState.value.copy(isLoading = true, error = null)
+            _voicemailState.update { it.copy(isLoading = true, error = null) }
             val filters = buildMap<String, String> {
                 put("status", if (showAll) "all" else "new")
                 put("limit", "25")
@@ -258,27 +269,31 @@ class CallsViewModel @Inject constructor(
             // BUGHUNT-2026-05-17: switch from runCatching to try/catch+rethrow.
             try {
                 val resp = voiceApi.listVoicemails(filters)
-                _voicemailState.value = _voicemailState.value.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    voicemails = resp.data?.items ?: emptyList(),
-                )
+                _voicemailState.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        voicemails = resp.data?.items ?: emptyList(),
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 val is404 = (e as? HttpException)?.code() == 404
-                _voicemailState.value = _voicemailState.value.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    notConfigured = is404,
-                    error = if (is404) null else (e.message ?: "Failed to load voicemails"),
-                )
+                _voicemailState.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        notConfigured = is404,
+                        error = if (is404) null else (e.message ?: "Failed to load voicemails"),
+                    )
+                }
             }
         }
     }
 
     fun refreshVoicemails() {
-        _voicemailState.value = _voicemailState.value.copy(isRefreshing = true)
+        _voicemailState.update { it.copy(isRefreshing = true) }
         loadVoicemails()
     }
 
@@ -289,11 +304,13 @@ class CallsViewModel @Inject constructor(
             // explicit re-throw so VM cancellation doesn't leak.
             try {
                 voiceApi.markVoicemailHeard(id)
-                _voicemailState.value = _voicemailState.value.copy(
-                    voicemails = _voicemailState.value.voicemails.map { vm ->
-                        if (vm.id == id) vm.copy(status = "heard") else vm
-                    },
-                )
+                _voicemailState.update {
+                    it.copy(
+                        voicemails = _voicemailState.value.voicemails.map { vm ->
+                            if (vm.id == id) vm.copy(status = "heard") else vm
+                        },
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -311,10 +328,12 @@ class CallsViewModel @Inject constructor(
             // consistent.
             try {
                 voiceApi.deleteVoicemail(id)
-                _voicemailState.value = _voicemailState.value.copy(
-                    voicemails = _voicemailState.value.voicemails.filterNot { it.id == id },
-                    actionMessage = "Voicemail deleted",
-                )
+                _voicemailState.update {
+                    it.copy(
+                        voicemails = _voicemailState.value.voicemails.filterNot { it.id == id },
+                        actionMessage = "Voicemail deleted",
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -324,7 +343,7 @@ class CallsViewModel @Inject constructor(
     }
 
     fun clearVoicemailActionMessage() {
-        _voicemailState.value = _voicemailState.value.copy(actionMessage = null)
+        _voicemailState.update { it.copy(actionMessage = null) }
     }
 
     // ── Detail ───────────────────────────────────────────────────────────────
@@ -350,22 +369,26 @@ class CallsViewModel @Inject constructor(
 
     fun loadTranscription(callId: Long) {
         viewModelScope.launch {
-            _detailState.value = _detailState.value.copy(transcriptionLoading = true)
+            _detailState.update { it.copy(transcriptionLoading = true) }
             // BUGHUNT-2026-05-17: runCatching swallows CancellationException.
             try {
                 val resp = voiceApi.getTranscription(callId)
-                _detailState.value = _detailState.value.copy(
-                    transcriptionLoading = false,
-                    transcription = resp.data?.text ?: "Transcription not available",
-                )
+                _detailState.update {
+                    it.copy(
+                        transcriptionLoading = false,
+                        transcription = resp.data?.text ?: "Transcription not available",
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 val is404 = (e as? HttpException)?.code() == 404
-                _detailState.value = _detailState.value.copy(
-                    transcriptionLoading = false,
-                    transcription = if (is404) "Transcription not available on this server" else "Failed to load transcription",
-                )
+                _detailState.update {
+                    it.copy(
+                        transcriptionLoading = false,
+                        transcription = if (is404) "Transcription not available on this server" else "Failed to load transcription",
+                    )
+                }
             }
         }
     }

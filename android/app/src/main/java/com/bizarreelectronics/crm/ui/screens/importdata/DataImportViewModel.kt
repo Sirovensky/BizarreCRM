@@ -19,6 +19,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
@@ -132,49 +133,49 @@ class DataImportViewModel @Inject constructor(
         get() = authPreferences.userRole?.lowercase() in setOf("admin", "owner")
 
     init {
-        _state.value = _state.value.copy(isAdmin = isAdmin)
+        _state.update { it.copy(isAdmin = isAdmin) }
     }
 
     // ── Step navigation ───────────────────────────────────────────────────────
 
     fun selectSource(source: ImportSource) {
-        _state.value = _state.value.copy(selectedSource = source)
+        _state.update { it.copy(selectedSource = source) }
     }
 
     fun onApiKeyChanged(value: String) {
-        _state.value = _state.value.copy(apiKey = value, error = null)
+        _state.update { it.copy(apiKey = value, error = null) }
     }
 
     fun onSubdomainChanged(value: String) {
-        _state.value = _state.value.copy(subdomain = value, error = null)
+        _state.update { it.copy(subdomain = value, error = null) }
     }
 
     fun onFileSelected(uri: Uri, displayName: String) {
-        _state.value = _state.value.copy(fileUri = uri, fileName = displayName, error = null)
+        _state.update { it.copy(fileUri = uri, fileName = displayName, error = null) }
     }
 
     fun toggleScope(scope: ImportScope) {
         val current = _state.value.selectedScopes
         val updated = if (scope in current) current - scope else current + scope
-        _state.value = _state.value.copy(selectedScopes = updated.ifEmpty { setOf(scope) })
+        _state.update { it.copy(selectedScopes = updated.ifEmpty { setOf(scope) }) }
     }
 
     fun updateMapping(index: Int, crmField: String) {
         val updated = _state.value.columnMappings.mapIndexed { i, m ->
             if (i == index) m.copy(crmField = crmField) else m
         }
-        _state.value = _state.value.copy(columnMappings = updated)
+        _state.update { it.copy(columnMappings = updated) }
     }
 
     fun goToStep(step: ImportStep) {
-        _state.value = _state.value.copy(step = step, error = null)
+        _state.update { it.copy(step = step, error = null) }
     }
 
     /** Called when the user presses "Continue" on the SOURCE step. */
     fun continueFromSource() {
         val src = _state.value.selectedSource
         val next = if (src.needsCredentials) ImportStep.CREDENTIALS else ImportStep.FILE
-        _state.value = _state.value.copy(step = next, error = null)
+        _state.update { it.copy(step = next, error = null) }
     }
 
     /** Called when the user presses "Continue" on the CREDENTIALS step. */
@@ -189,14 +190,14 @@ class DataImportViewModel @Inject constructor(
             return
         }
         // For API-key sources there is no file to pick — go straight to SCOPE
-        _state.value = _state.value.copy(step = ImportStep.SCOPE, error = null)
+        _state.update { it.copy(step = ImportStep.SCOPE, error = null) }
     }
 
     /** Called when the user presses "Detect Columns" after picking a CSV file. */
     fun loadCsvPreview() {
         val uri = _state.value.fileUri ?: return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val bytes = context.contentResolver.openInputStream(uri)?.readBytes()
                     ?: throw IllegalStateException("Cannot read file")
@@ -207,14 +208,16 @@ class DataImportViewModel @Inject constructor(
                 val previewRows = lines.drop(1).take(PREVIEW_LIMIT).map { parseCsvLine(it) }
                 val preview = PreviewData(columns = columns, rows = previewRows)
                 val mappings = columns.map { col -> ColumnMapping(sourceColumn = col, crmField = "") }
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    preview = preview,
-                    columnMappings = mappings,
-                    step = ImportStep.COLUMN_MAP,
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        preview = preview,
+                        columnMappings = mappings,
+                        step = ImportStep.COLUMN_MAP,
+                    )
+                }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoading = false, error = e.message ?: "Failed to parse CSV")
+                _state.update { it.copy(isLoading = false, error = e.message ?: "Failed to parse CSV") }
             }
         }
     }
@@ -228,11 +231,11 @@ class DataImportViewModel @Inject constructor(
             ImportStep.PREVIEW     -> ImportStep.COLUMN_MAP
             else                   -> ImportStep.SOURCE
         }
-        _state.value = _state.value.copy(step = prev, error = null)
+        _state.update { it.copy(step = prev, error = null) }
     }
 
     fun clearToast() {
-        _state.value = _state.value.copy(toastMessage = null)
+        _state.update { it.copy(toastMessage = null) }
     }
 
     // ── Import execution ──────────────────────────────────────────────────────
@@ -242,7 +245,7 @@ class DataImportViewModel @Inject constructor(
      */
     fun commitImport() {
         if (!serverMonitor.isEffectivelyOnline.value) {
-            _state.value = _state.value.copy(error = "Device is offline")
+            _state.update { it.copy(error = "Device is offline") }
             return
         }
         when (_state.value.selectedSource) {
@@ -266,13 +269,15 @@ class DataImportViewModel @Inject constructor(
         val s = _state.value
         val entities = s.selectedScopes.map { it.apiValue }
         viewModelScope.launch {
-            _state.value = _state.value.copy(
-                isLoading = true,
-                error = null,
-                isDryRun = false,
-                step = ImportStep.PROGRESS,
-                progress = ImportProgress(status = ImportJobStatus.QUEUED),
-            )
+            _state.update {
+                it.copy(
+                    isLoading = true,
+                    error = null,
+                    isDryRun = false,
+                    step = ImportStep.PROGRESS,
+                    progress = ImportProgress(status = ImportJobStatus.QUEUED),
+                )
+            }
             try {
                 when (source) {
                     ImportSource.REPAIR_DESK ->
@@ -283,28 +288,32 @@ class DataImportViewModel @Inject constructor(
                         importApi.startMraImport(MraStartRequest(s.apiKey.trim(), entities))
                     ImportSource.GENERIC_CSV -> throw IllegalStateException("Not an API-key source")
                 }
-                _state.value = _state.value.copy(isLoading = false)
+                _state.update { it.copy(isLoading = false) }
                 startPolling(source)
                 // Enqueue WorkManager background poller so notification fires even if screen is left.
                 ImportPollingWorker.enqueue(context, source.name)
             } catch (e: HttpException) {
                 val step = if (e.code() == 404) {
-                    _state.value = _state.value.copy(isLoading = false, serverUnsupported = true)
+                    _state.update { it.copy(isLoading = false, serverUnsupported = true) }
                     ImportStep.ERROR
                 } else {
                     ImportStep.ERROR
                 }
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = if (e.code() == 404) null else "Import failed to start (${e.code()})",
-                    step = step,
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = if (e.code() == 404) null else "Import failed to start (${e.code()})",
+                        step = step,
+                    )
+                }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Import failed to start",
-                    step = ImportStep.ERROR,
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = e.message ?: "Import failed to start",
+                        step = ImportStep.ERROR,
+                    )
+                }
             }
         }
     }
@@ -358,13 +367,15 @@ class DataImportViewModel @Inject constructor(
                         total = totalRecords,
                         currentStep = currentEntity,
                     )
-                    _state.value = _state.value.copy(progress = progress)
+                    _state.update { it.copy(progress = progress) }
 
                     if (jobStatus == ImportJobStatus.DONE || jobStatus == ImportJobStatus.ERROR) {
-                        _state.value = _state.value.copy(
-                            step = if (jobStatus == ImportJobStatus.DONE) ImportStep.DONE else ImportStep.ERROR,
-                            error = if (jobStatus == ImportJobStatus.ERROR) "Import completed with errors — check server import history." else null,
-                        )
+                        _state.update {
+                            it.copy(
+                                step = if (jobStatus == ImportJobStatus.DONE) ImportStep.DONE else ImportStep.ERROR,
+                                error = if (jobStatus == ImportJobStatus.ERROR) "Import completed with errors — check server import history." else null,
+                            )
+                        }
                         break
                     }
                 } catch (e: CancellationException) {
@@ -390,13 +401,15 @@ class DataImportViewModel @Inject constructor(
         val uri = _state.value.fileUri ?: return
         val scopes = _state.value.selectedScopes
         viewModelScope.launch {
-            _state.value = _state.value.copy(
-                isLoading = true,
-                error = null,
-                isDryRun = false,
-                step = ImportStep.PROGRESS,
-                progress = ImportProgress(status = ImportJobStatus.RUNNING),
-            )
+            _state.update {
+                it.copy(
+                    isLoading = true,
+                    error = null,
+                    isDryRun = false,
+                    step = ImportStep.PROGRESS,
+                    progress = ImportProgress(status = ImportJobStatus.RUNNING),
+                )
+            }
             try {
                 val bytes = context.contentResolver.openInputStream(uri)?.readBytes()
                     ?: throw IllegalStateException("Cannot read file")
@@ -453,28 +466,34 @@ class DataImportViewModel @Inject constructor(
                     errors = errors,
                     total = rows.size,
                 )
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    progress = progress,
-                    step = if (errors > 0 && imported == 0) ImportStep.ERROR else ImportStep.DONE,
-                    error = if (errors > 0 && imported == 0) "$errors rows failed — no rows imported." else null,
-                )
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        progress = progress,
+                        step = if (errors > 0 && imported == 0) ImportStep.ERROR else ImportStep.DONE,
+                        error = if (errors > 0 && imported == 0) "$errors rows failed — no rows imported." else null,
+                    )
+                }
             } catch (e: HttpException) {
                 if (e.code() == 404) {
-                    _state.value = _state.value.copy(isLoading = false, serverUnsupported = true, step = ImportStep.ERROR)
+                    _state.update { it.copy(isLoading = false, serverUnsupported = true, step = ImportStep.ERROR) }
                 } else {
-                    _state.value = _state.value.copy(
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            error = "CSV import failed (${e.code()})",
+                            step = ImportStep.ERROR,
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(
                         isLoading = false,
-                        error = "CSV import failed (${e.code()})",
+                        error = e.message ?: "CSV import failed",
                         step = ImportStep.ERROR,
                     )
                 }
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "CSV import failed",
-                    step = ImportStep.ERROR,
-                )
             }
         }
     }

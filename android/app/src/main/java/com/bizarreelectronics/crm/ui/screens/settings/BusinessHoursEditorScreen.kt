@@ -49,6 +49,7 @@ import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -172,19 +173,19 @@ class BusinessHoursEditorViewModel @Inject constructor(
     fun toggleDay(key: String, isOpen: Boolean) {
         val days = _uiState.value.days.toMutableMap()
         days[key] = (days[key] ?: DayHours()).copy(isOpen = isOpen)
-        _uiState.value = _uiState.value.copy(days = days)
+        _uiState.update { it.copy(days = days) }
     }
 
     fun setOpenTime(key: String, hour: Int, minute: Int) {
         val days = _uiState.value.days.toMutableMap()
         days[key] = (days[key] ?: DayHours()).copy(openHour = hour, openMinute = minute)
-        _uiState.value = _uiState.value.copy(days = days)
+        _uiState.update { it.copy(days = days) }
     }
 
     fun setCloseTime(key: String, hour: Int, minute: Int) {
         val days = _uiState.value.days.toMutableMap()
         days[key] = (days[key] ?: DayHours()).copy(closeHour = hour, closeMinute = minute)
-        _uiState.value = _uiState.value.copy(days = days)
+        _uiState.update { it.copy(days = days) }
     }
 
     fun save() {
@@ -194,20 +195,22 @@ class BusinessHoursEditorViewModel @Inject constructor(
             runCatching {
                 settingsApi.putStore(mapOf("business_hours" to toBusinessHoursJson(s.days)))
             }
-                .onSuccess { _uiState.value = _uiState.value.copy(isSaving = false, savedOk = true) }
+                .onSuccess { _uiState.update { it.copy(isSaving = false, savedOk = true) } }
                 .onFailure { e ->
                     // BUGHUNT-2026-05-18: rethrow cancel so we don't paint a torn-down-screen error.
                     if (e is CancellationException) throw e
-                    _uiState.value = _uiState.value.copy(
-                        isSaving = false,
-                        errorMessage = "Save failed: ${e.message}",
-                    )
+                    _uiState.update {
+                        it.copy(
+                            isSaving = false,
+                            errorMessage = "Save failed: ${e.message}",
+                        )
+                    }
                 }
         }
     }
 
-    fun clearSavedOk() { _uiState.value = _uiState.value.copy(savedOk = false) }
-    fun clearError()    { _uiState.value = _uiState.value.copy(errorMessage = null) }
+    fun clearSavedOk() { _uiState.update { it.copy(savedOk = false) } }
+    fun clearError()    { _uiState.update { it.copy(errorMessage = null) } }
 }
 
 // ── Composables ──────────────────────────────────────────────────────────────

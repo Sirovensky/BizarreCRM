@@ -12,6 +12,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
@@ -71,19 +72,23 @@ class EstimateDetailViewModel @Inject constructor(
     fun loadEstimate() {
         collectJob?.cancel()
         collectJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             estimateRepository.getEstimate(estimateId)
                 .catch { e ->
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        error = e.message ?: "Failed to load estimate",
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            error = e.message ?: "Failed to load estimate",
+                        )
+                    }
                 }
                 .collectLatest { entity ->
-                    _state.value = _state.value.copy(
-                        estimate = entity,
-                        isLoading = false,
-                    )
+                    _state.update {
+                        it.copy(
+                            estimate = entity,
+                            isLoading = false,
+                        )
+                    }
                 }
         }
     }
@@ -96,10 +101,12 @@ class EstimateDetailViewModel @Inject constructor(
             try {
                 val response = estimateApi.getEstimate(estimateId)
                 val detail = response.data ?: return@launch
-                _state.value = _state.value.copy(
-                    lineItems = detail.lineItems ?: emptyList(),
-                    versionNumber = detail.versionNumber ?: 1,
-                )
+                _state.update {
+                    it.copy(
+                        lineItems = detail.lineItems ?: emptyList(),
+                        versionNumber = detail.versionNumber ?: 1,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -115,15 +122,17 @@ class EstimateDetailViewModel @Inject constructor(
             // BUGHUNT-2026-05-17: runCatching swallows CancellationException.
             try {
                 val response = estimateApi.getVersions(estimateId)
-                _state.value = _state.value.copy(
-                    versions = response.data ?: emptyList(),
-                )
+                _state.update {
+                    it.copy(
+                        versions = response.data ?: emptyList(),
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 // 404 = server doesn't support versions yet — silently use empty list
                 if (e is HttpException && e.code() == 404) {
-                    _state.value = _state.value.copy(versions = emptyList())
+                    _state.update { it.copy(versions = emptyList()) }
                 }
                 // Other errors also silently ignored for versions (non-critical)
             }
@@ -131,34 +140,38 @@ class EstimateDetailViewModel @Inject constructor(
     }
 
     fun onVersionSelected(index: Int) {
-        _state.value = _state.value.copy(selectedVersionIndex = index)
+        _state.update { it.copy(selectedVersionIndex = index) }
     }
 
     // ── L1333 Convert to Ticket ───────────────────────────────────────────────
 
     fun convertToTicket() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
+            _state.update { it.copy(isActionInProgress = true) }
             try {
                 val ticketId = estimateRepository.convertEstimate(estimateId)
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = if (ticketId != null) "Converted to ticket #$ticketId" else "Estimate converted",
-                    convertedTicketId = ticketId,
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = if (ticketId != null) "Converted to ticket #$ticketId" else "Estimate converted",
+                        convertedTicketId = ticketId,
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: convertEstimate creates a ticket row.
                 // A "Failed to convert" toast tempted a re-tap that produced
                 // a second ticket if the original POST already landed. Clear
                 // the in-progress flag so the screen returns to idle without
                 // an actionMessage that invites a blind retry.
-                _state.value = _state.value.copy(isActionInProgress = false)
+                _state.update { it.copy(isActionInProgress = false) }
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = e.message ?: "Failed to convert estimate. You must be online.",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = e.message ?: "Failed to convert estimate. You must be online.",
+                    )
+                }
             }
         }
     }
@@ -167,7 +180,7 @@ class EstimateDetailViewModel @Inject constructor(
 
     fun convertToInvoice() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
+            _state.update { it.copy(isActionInProgress = true) }
             // BUGHUNT-2026-05-17: runCatching swallowed CancellationException
             // and painted "Failed to convert" which tempted a re-tap that
             // produced a second invoice row. Use try/catch so cancellation
@@ -175,13 +188,15 @@ class EstimateDetailViewModel @Inject constructor(
             try {
                 val response = estimateApi.convertToInvoice(estimateId)
                 val invoiceId = (response.data?.get("invoiceId") as? Number)?.toLong()
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = if (invoiceId != null) "Converted to invoice #$invoiceId" else "Converted to invoice",
-                    convertedInvoiceId = invoiceId,
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = if (invoiceId != null) "Converted to invoice #$invoiceId" else "Converted to invoice",
+                        convertedInvoiceId = invoiceId,
+                    )
+                }
             } catch (e: CancellationException) {
-                _state.value = _state.value.copy(isActionInProgress = false)
+                _state.update { it.copy(isActionInProgress = false) }
                 throw e
             } catch (e: Exception) {
                 val msg = if (e is HttpException && e.code() == 404) {
@@ -189,7 +204,7 @@ class EstimateDetailViewModel @Inject constructor(
                 } else {
                     e.message ?: "Failed to convert to invoice"
                 }
-                _state.value = _state.value.copy(isActionInProgress = false, actionMessage = msg)
+                _state.update { it.copy(isActionInProgress = false, actionMessage = msg) }
             }
         }
     }
@@ -202,26 +217,30 @@ class EstimateDetailViewModel @Inject constructor(
 
     private fun send(method: String) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
+            _state.update { it.copy(isActionInProgress = true) }
             try {
                 estimateRepository.sendEstimate(estimateId, method)
                 val label = if (method == "sms") "SMS" else "email"
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Estimate sent via $label",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Estimate sent via $label",
+                    )
+                }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: sendEstimate fires an SMS or email to
                 // the customer — no idempotency key. A "Failed to send"
                 // toast tempted a re-tap that sent a duplicate. Clear state
                 // so the user must reopen the action sheet to retry.
-                _state.value = _state.value.copy(isActionInProgress = false)
+                _state.update { it.copy(isActionInProgress = false) }
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = e.message ?: "Failed to send estimate. You must be online.",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = e.message ?: "Failed to send estimate. You must be online.",
+                    )
+                }
             }
         }
     }
@@ -229,22 +248,24 @@ class EstimateDetailViewModel @Inject constructor(
     // ── L1331 Approve ─────────────────────────────────────────────────────────
 
     fun onApproveRequested() {
-        _state.value = _state.value.copy(showApproveConfirm = true)
+        _state.update { it.copy(showApproveConfirm = true) }
     }
 
     fun onApproveDismissed() {
-        _state.value = _state.value.copy(showApproveConfirm = false)
+        _state.update { it.copy(showApproveConfirm = false) }
     }
 
     fun approveEstimate() {
-        _state.value = _state.value.copy(showApproveConfirm = false, isActionInProgress = true)
+        _state.update { it.copy(showApproveConfirm = false, isActionInProgress = true) }
         viewModelScope.launch {
             try {
                 estimateApi.approveEstimate(estimateId)
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Estimate approved",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Estimate approved",
+                    )
+                }
                 loadEstimate()
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: approveEstimate is a POST that mutates
@@ -252,7 +273,7 @@ class EstimateDetailViewModel @Inject constructor(
                 // side effects (notification, audit). runCatching swallowed
                 // cancellation and painted "Failed to approve" — tempting a
                 // re-tap that would double-POST if the first request landed.
-                _state.value = _state.value.copy(isActionInProgress = false)
+                _state.update { it.copy(isActionInProgress = false) }
                 throw e
             } catch (e: Exception) {
                 val msg = if (e is HttpException && e.code() == 404) {
@@ -260,7 +281,7 @@ class EstimateDetailViewModel @Inject constructor(
                 } else {
                     e.message ?: "Failed to approve estimate"
                 }
-                _state.value = _state.value.copy(isActionInProgress = false, actionMessage = msg)
+                _state.update { it.copy(isActionInProgress = false, actionMessage = msg) }
             }
         }
     }
@@ -268,39 +289,41 @@ class EstimateDetailViewModel @Inject constructor(
     // ── L1332 Reject ──────────────────────────────────────────────────────────
 
     fun onRejectRequested() {
-        _state.value = _state.value.copy(showRejectDialog = true, rejectReason = "")
+        _state.update { it.copy(showRejectDialog = true, rejectReason = "") }
     }
 
     fun onRejectDismissed() {
-        _state.value = _state.value.copy(showRejectDialog = false, rejectReason = "")
+        _state.update { it.copy(showRejectDialog = false, rejectReason = "") }
     }
 
     fun onRejectReasonChanged(reason: String) {
-        _state.value = _state.value.copy(rejectReason = reason)
+        _state.update { it.copy(rejectReason = reason) }
     }
 
     fun rejectEstimate() {
         val reason = _state.value.rejectReason.trim()
         if (reason.isBlank()) {
-            _state.value = _state.value.copy(actionMessage = "Rejection reason is required")
+            _state.update { it.copy(actionMessage = "Rejection reason is required") }
             return
         }
-        _state.value = _state.value.copy(showRejectDialog = false, isActionInProgress = true)
+        _state.update { it.copy(showRejectDialog = false, isActionInProgress = true) }
         viewModelScope.launch {
             try {
                 estimateApi.rejectEstimate(estimateId, mapOf("reason" to reason))
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Estimate rejected",
-                    rejectReason = "",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Estimate rejected",
+                        rejectReason = "",
+                    )
+                }
                 loadEstimate()
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: rejectEstimate is a POST that mutates
                 // status -> rejected with an auditable reason. Same re-tap
                 // risk as approve — silent cancel swallowing tempted a
                 // duplicate POST. Re-throw to preserve structured concurrency.
-                _state.value = _state.value.copy(isActionInProgress = false)
+                _state.update { it.copy(isActionInProgress = false) }
                 throw e
             } catch (e: Exception) {
                 val msg = if (e is HttpException && e.code() == 404) {
@@ -308,7 +331,7 @@ class EstimateDetailViewModel @Inject constructor(
                 } else {
                     e.message ?: "Failed to reject estimate"
                 }
-                _state.value = _state.value.copy(isActionInProgress = false, actionMessage = msg)
+                _state.update { it.copy(isActionInProgress = false, actionMessage = msg) }
             }
         }
     }
@@ -318,19 +341,23 @@ class EstimateDetailViewModel @Inject constructor(
     fun delete() {
         if (_state.value.isActionInProgress) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isActionInProgress = true)
+            _state.update { it.copy(isActionInProgress = true) }
             try {
                 estimateRepository.deleteEstimate(estimateId)
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Estimate deleted",
-                    deletedCounter = _state.value.deletedCounter + 1,
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Estimate deleted",
+                        deletedCounter = _state.value.deletedCounter + 1,
+                    )
+                }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = e.message ?: "Failed to delete estimate",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = e.message ?: "Failed to delete estimate",
+                    )
+                }
             }
         }
     }
@@ -338,15 +365,15 @@ class EstimateDetailViewModel @Inject constructor(
     // ── 8.4 Mark as expired ──────────────────────────────────────────────────
 
     fun onMarkExpiredRequested() {
-        _state.value = _state.value.copy(showExpireConfirm = true)
+        _state.update { it.copy(showExpireConfirm = true) }
     }
 
     fun onMarkExpiredDismissed() {
-        _state.value = _state.value.copy(showExpireConfirm = false)
+        _state.update { it.copy(showExpireConfirm = false) }
     }
 
     fun markAsExpired() {
-        _state.value = _state.value.copy(showExpireConfirm = false, isActionInProgress = true)
+        _state.update { it.copy(showExpireConfirm = false, isActionInProgress = true) }
         viewModelScope.launch {
             // BUGHUNT-2026-05-17: runCatching swallows CancellationException
             // on the expire PATCH. Use try/catch+rethrow so coroutine cancel
@@ -354,10 +381,12 @@ class EstimateDetailViewModel @Inject constructor(
             // /expire only on real 404, not on cancellation.
             val patchError: Throwable? = try {
                 estimateApi.patchEstimate(estimateId, mapOf("status" to "expired"))
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Estimate marked as expired",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Estimate marked as expired",
+                    )
+                }
                 loadEstimate()
                 return@launch
             } catch (e: CancellationException) {
@@ -369,24 +398,30 @@ class EstimateDetailViewModel @Inject constructor(
                 // Fallback to dedicated expire endpoint
                 try {
                     estimateApi.expireEstimate(estimateId)
-                    _state.value = _state.value.copy(
-                        isActionInProgress = false,
-                        actionMessage = "Estimate marked as expired",
-                    )
+                    _state.update {
+                        it.copy(
+                            isActionInProgress = false,
+                            actionMessage = "Estimate marked as expired",
+                        )
+                    }
                     loadEstimate()
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    _state.value = _state.value.copy(
-                        isActionInProgress = false,
-                        actionMessage = e.message ?: "Failed to expire estimate",
-                    )
+                    _state.update {
+                        it.copy(
+                            isActionInProgress = false,
+                            actionMessage = e.message ?: "Failed to expire estimate",
+                        )
+                    }
                 }
             } else {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = patchError?.message ?: "Failed to expire estimate",
-                )
+                _state.update {
+                    it.copy(
+                        isActionInProgress = false,
+                        actionMessage = patchError?.message ?: "Failed to expire estimate",
+                    )
+                }
             }
         }
     }
@@ -394,14 +429,14 @@ class EstimateDetailViewModel @Inject constructor(
     // ── State helpers ─────────────────────────────────────────────────────────
 
     fun clearActionMessage() {
-        _state.value = _state.value.copy(actionMessage = null)
+        _state.update { it.copy(actionMessage = null) }
     }
 
     fun clearConvertedTicket() {
-        _state.value = _state.value.copy(convertedTicketId = null)
+        _state.update { it.copy(convertedTicketId = null) }
     }
 
     fun clearConvertedInvoice() {
-        _state.value = _state.value.copy(convertedInvoiceId = null)
+        _state.update { it.copy(convertedInvoiceId = null) }
     }
 }

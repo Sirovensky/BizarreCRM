@@ -9,6 +9,7 @@ import com.bizarreelectronics.crm.data.remote.dto.UpdateLocationRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -94,56 +95,64 @@ class LocationListViewModel @Inject constructor(
     }
 
     private suspend fun performLoad(isRefresh: Boolean) {
-        _uiState.value = _uiState.value.copy(
-            isLoading = !isRefresh && _uiState.value.locations.isEmpty(),
-            isRefreshing = isRefresh,
-            errorMessage = null,
-        )
+        _uiState.update {
+            it.copy(
+                isLoading = !isRefresh && _uiState.value.locations.isEmpty(),
+                isRefreshing = isRefresh,
+                errorMessage = null,
+            )
+        }
         // BUGHUNT-2026-05-17: runCatching swallows CancellationException.
         try {
             val response = locationApi.getLocations(active = null)
             if (response.success) {
-                _uiState.value = _uiState.value.copy(
-                    locations = response.data ?: emptyList(),
-                    isLoading = false,
-                    isRefreshing = false,
-                )
+                _uiState.update {
+                    it.copy(
+                        locations = response.data ?: emptyList(),
+                        isLoading = false,
+                        isRefreshing = false,
+                    )
+                }
             } else {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    errorMessage = "Failed to load locations.",
-                )
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        errorMessage = "Failed to load locations.",
+                    )
+                }
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            _uiState.value = _uiState.value.copy(
-                isLoading = false,
-                isRefreshing = false,
-                errorMessage = if (e.message?.contains("404") == true)
-                    "Locations not available on this server version."
-                else
-                    "Could not load locations. Check your connection.",
-            )
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    isRefreshing = false,
+                    errorMessage = if (e.message?.contains("404") == true)
+                        "Locations not available on this server version."
+                    else
+                        "Could not load locations. Check your connection.",
+                )
+            }
         }
     }
 
     fun setFilter(filter: LocationFilter) {
-        _uiState.value = _uiState.value.copy(filter = filter)
+        _uiState.update { it.copy(filter = filter) }
     }
 
     fun requestDeactivate(location: LocationDto) {
-        _uiState.value = _uiState.value.copy(pendingDeactivate = location)
+        _uiState.update { it.copy(pendingDeactivate = location) }
     }
 
     fun cancelDeactivate() {
-        _uiState.value = _uiState.value.copy(pendingDeactivate = null)
+        _uiState.update { it.copy(pendingDeactivate = null) }
     }
 
     fun confirmDeactivate() {
         val target = _uiState.value.pendingDeactivate ?: return
-        _uiState.value = _uiState.value.copy(pendingDeactivate = null)
+        _uiState.update { it.copy(pendingDeactivate = null) }
         viewModelScope.launch {
             // BUGHUNT-2026-05-17: runCatching swallows CancellationException;
             // post-commit cancel could leave UI showing the deactivated
@@ -155,15 +164,17 @@ class LocationListViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    errorMessage = e.message ?: "Failed to deactivate location.",
-                )
+                _uiState.update {
+                    it.copy(
+                        errorMessage = e.message ?: "Failed to deactivate location.",
+                    )
+                }
             }
         }
     }
 
     fun clearError() {
-        _uiState.value = _uiState.value.copy(errorMessage = null)
+        _uiState.update { it.copy(errorMessage = null) }
     }
 }
 
@@ -184,65 +195,71 @@ class LocationDetailViewModel @Inject constructor(
 
     fun load(id: Long) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             // BUGHUNT-2026-05-17: runCatching swallows CancellationException.
             try {
                 val response = locationApi.getLocation(id)
-                _uiState.value = _uiState.value.copy(
-                    location = if (response.success) response.data else null,
-                    isLoading = false,
-                    errorMessage = if (!response.success) "Failed to load location." else null,
-                )
+                _uiState.update {
+                    it.copy(
+                        location = if (response.success) response.data else null,
+                        isLoading = false,
+                        errorMessage = if (!response.success) "Failed to load location." else null,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    errorMessage = e.message ?: "Could not load location.",
-                )
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = e.message ?: "Could not load location.",
+                    )
+                }
             }
         }
     }
 
     fun requestSetDefault(location: LocationDto) {
-        _uiState.value = _uiState.value.copy(pendingSetDefault = location)
+        _uiState.update { it.copy(pendingSetDefault = location) }
     }
 
     fun cancelSetDefault() {
-        _uiState.value = _uiState.value.copy(pendingSetDefault = null)
+        _uiState.update { it.copy(pendingSetDefault = null) }
     }
 
     fun confirmSetDefault() {
         val target = _uiState.value.pendingSetDefault ?: return
-        _uiState.value = _uiState.value.copy(pendingSetDefault = null)
+        _uiState.update { it.copy(pendingSetDefault = null) }
         viewModelScope.launch {
             // BUGHUNT-2026-05-17: runCatching swallows CancellationException.
             try {
                 val response = locationApi.setDefault(target.id)
                 if (response.success) {
-                    _uiState.value = _uiState.value.copy(location = response.data)
+                    _uiState.update { it.copy(location = response.data) }
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    errorMessage = e.message ?: "Failed to set default location.",
-                )
+                _uiState.update {
+                    it.copy(
+                        errorMessage = e.message ?: "Failed to set default location.",
+                    )
+                }
             }
         }
     }
 
     fun requestDeactivate(location: LocationDto) {
-        _uiState.value = _uiState.value.copy(pendingDeactivate = location)
+        _uiState.update { it.copy(pendingDeactivate = location) }
     }
 
     fun cancelDeactivate() {
-        _uiState.value = _uiState.value.copy(pendingDeactivate = null)
+        _uiState.update { it.copy(pendingDeactivate = null) }
     }
 
     fun confirmDeactivate(onSuccess: () -> Unit) {
         val target = _uiState.value.pendingDeactivate ?: return
-        _uiState.value = _uiState.value.copy(pendingDeactivate = null)
+        _uiState.update { it.copy(pendingDeactivate = null) }
         viewModelScope.launch {
             // BUGHUNT-2026-05-17: runCatching swallows CancellationException.
             try {
@@ -251,15 +268,17 @@ class LocationDetailViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    errorMessage = e.message ?: "Failed to deactivate location.",
-                )
+                _uiState.update {
+                    it.copy(
+                        errorMessage = e.message ?: "Failed to deactivate location.",
+                    )
+                }
             }
         }
     }
 
     fun clearError() {
-        _uiState.value = _uiState.value.copy(errorMessage = null)
+        _uiState.update { it.copy(errorMessage = null) }
     }
 }
 
@@ -278,16 +297,16 @@ class LocationCreateViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(LocationFormState())
     val uiState: StateFlow<LocationFormState> = _uiState.asStateFlow()
 
-    fun onNameChange(v: String)        { _uiState.value = _uiState.value.copy(name = v) }
-    fun onAddressChange(v: String)     { _uiState.value = _uiState.value.copy(addressLine = v) }
-    fun onCityChange(v: String)        { _uiState.value = _uiState.value.copy(city = v) }
-    fun onStateChange(v: String)       { _uiState.value = _uiState.value.copy(state = v) }
-    fun onPostcodeChange(v: String)    { _uiState.value = _uiState.value.copy(postcode = v) }
-    fun onCountryChange(v: String)     { _uiState.value = _uiState.value.copy(country = v) }
-    fun onPhoneChange(v: String)       { _uiState.value = _uiState.value.copy(phone = v) }
-    fun onEmailChange(v: String)       { _uiState.value = _uiState.value.copy(email = v) }
-    fun onTimezoneChange(v: String)    { _uiState.value = _uiState.value.copy(timezone = v) }
-    fun onNotesChange(v: String)       { _uiState.value = _uiState.value.copy(notes = v) }
+    fun onNameChange(v: String)        { _uiState.update { it.copy(name = v) } }
+    fun onAddressChange(v: String)     { _uiState.update { it.copy(addressLine = v) } }
+    fun onCityChange(v: String)        { _uiState.update { it.copy(city = v) } }
+    fun onStateChange(v: String)       { _uiState.update { it.copy(state = v) } }
+    fun onPostcodeChange(v: String)    { _uiState.update { it.copy(postcode = v) } }
+    fun onCountryChange(v: String)     { _uiState.update { it.copy(country = v) } }
+    fun onPhoneChange(v: String)       { _uiState.update { it.copy(phone = v) } }
+    fun onEmailChange(v: String)       { _uiState.update { it.copy(email = v) } }
+    fun onTimezoneChange(v: String)    { _uiState.update { it.copy(timezone = v) } }
+    fun onNotesChange(v: String)       { _uiState.update { it.copy(notes = v) } }
 
     fun save(onSuccess: (Long) -> Unit) {
         val s = _uiState.value
@@ -296,7 +315,7 @@ class LocationCreateViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isSaving = true, errorMessage = null)
+            _uiState.update { it.copy(isSaving = true, errorMessage = null) }
             // BUGHUNT-2026-05-17: runCatching swallows CancellationException;
             // form dismiss mid-POST + retap could create DUPLICATE location.
             try {
@@ -315,26 +334,30 @@ class LocationCreateViewModel @Inject constructor(
                     )
                 )
                 if (response.success && response.data != null) {
-                    _uiState.value = _uiState.value.copy(isSaving = false, savedOk = true)
+                    _uiState.update { it.copy(isSaving = false, savedOk = true) }
                     onSuccess(response.data.id)
                 } else {
-                    _uiState.value = _uiState.value.copy(
-                        isSaving = false,
-                        errorMessage = "Failed to create location.",
-                    )
+                    _uiState.update {
+                        it.copy(
+                            isSaving = false,
+                            errorMessage = "Failed to create location.",
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isSaving = false,
-                    errorMessage = e.message ?: "Could not create location.",
-                )
+                _uiState.update {
+                    it.copy(
+                        isSaving = false,
+                        errorMessage = e.message ?: "Could not create location.",
+                    )
+                }
             }
         }
     }
 
     fun clearError() {
-        _uiState.value = _uiState.value.copy(errorMessage = null)
+        _uiState.update { it.copy(errorMessage = null) }
     }
 }

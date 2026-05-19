@@ -32,6 +32,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
@@ -149,12 +150,14 @@ class TicketListViewModel @Inject constructor(
         // Restore persisted column visibility (§4.1 L660)
         val persistedColumnVisibility = decode(appPreferences.ticketColumnVisibility)
 
-        _state.value = _state.value.copy(
-            viewMode = persistedMode,
-            savedView = persistedSavedView,
-            pinnedTicketIds = appPreferences.pinnedTicketIds,
-            columnVisibility = persistedColumnVisibility,
-        )
+        _state.update {
+            it.copy(
+                viewMode = persistedMode,
+                savedView = persistedSavedView,
+                pinnedTicketIds = appPreferences.pinnedTicketIds,
+                columnVisibility = persistedColumnVisibility,
+            )
+        }
 
         collectTickets()
         loadAssignmentSetting()
@@ -165,7 +168,7 @@ class TicketListViewModel @Inject constructor(
             try {
                 val cfg = settingsApi.getConfig().data ?: return@launch
                 val enabled = cfg["ticket_all_employees_view_all"] == "0"
-                _state.value = _state.value.copy(assignmentEnabled = enabled)
+                _state.update { it.copy(assignmentEnabled = enabled) }
             } catch (_: Exception) {
                 // Offline or server error — assume feature off (default). No filter-chip hiding change needed.
             }
@@ -177,7 +180,7 @@ class TicketListViewModel @Inject constructor(
     private fun collectTickets() {
         collectJob?.cancel()
         collectJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = _state.value.tickets.isEmpty(), error = null)
+            _state.update { it.copy(isLoading = _state.value.tickets.isEmpty(), error = null) }
             val query = _state.value.searchQuery.trim()
             val filter = _state.value.selectedFilter
             val savedView = _state.value.savedView
@@ -217,22 +220,24 @@ class TicketListViewModel @Inject constructor(
                 // Sort
                 val sorted = applySortOrder(labelFiltered, _state.value.currentSort)
 
-                _state.value = _state.value.copy(
-                    tickets = sorted,
-                    isLoading = false,
-                    isRefreshing = false,
-                )
+                _state.update {
+                    it.copy(
+                        tickets = sorted,
+                        isLoading = false,
+                        isRefreshing = false,
+                    )
+                }
             }
         }
     }
 
     fun refresh() {
-        _state.value = _state.value.copy(isRefreshing = true)
+        _state.update { it.copy(isRefreshing = true) }
         collectTickets()
     }
 
     fun onSearchChanged(query: String) {
-        _state.value = _state.value.copy(searchQuery = query)
+        _state.update { it.copy(searchQuery = query) }
         // §1.8 process-death: persist so the query survives a process kill + restore
         savedStateHandle[SSH_KEY_QUERY] = query
         searchJob?.cancel()
@@ -243,7 +248,7 @@ class TicketListViewModel @Inject constructor(
     }
 
     fun onFilterChanged(filter: String) {
-        _state.value = _state.value.copy(selectedFilter = filter)
+        _state.update { it.copy(selectedFilter = filter) }
         // §1.8 process-death: persist so the filter survives a process kill + restore
         savedStateHandle[SSH_KEY_FILTER] = filter
         _filterKeyFlow.value = resolveFilterKey(filter = filter)
@@ -252,7 +257,7 @@ class TicketListViewModel @Inject constructor(
 
     // §4.21 — Filter ticket list by label (null clears the filter)
     fun onLabelFilterChanged(label: String?) {
-        _state.value = _state.value.copy(activeLabelFilter = label)
+        _state.update { it.copy(activeLabelFilter = label) }
         collectTickets()
     }
 
@@ -261,7 +266,7 @@ class TicketListViewModel @Inject constructor(
     // -----------------------------------------------------------------------
 
     fun onSortChanged(sort: TicketSort) {
-        _state.value = _state.value.copy(currentSort = sort)
+        _state.update { it.copy(currentSort = sort) }
         collectTickets()
     }
 
@@ -332,13 +337,13 @@ class TicketListViewModel @Inject constructor(
         // TODO(plan:L641): wire to ticketRepository.updateTicket with "On Hold" status.
         viewModelScope.launch {
             Log.d(TAG, "Hold: ticketId=$ticketId (TODO: wire to updateTicket)")
-            _state.value = _state.value.copy(toastMessage = "Hold queued (offline action)")
+            _state.update { it.copy(toastMessage = "Hold queued (offline action)") }
         }
     }
 
     private fun replaceTicketInList(updated: TicketEntity) {
         val newList = _state.value.tickets.map { if (it.id == updated.id) updated else it }
-        _state.value = _state.value.copy(tickets = newList)
+        _state.update { it.copy(tickets = newList) }
     }
 
     // -----------------------------------------------------------------------
@@ -352,7 +357,7 @@ class TicketListViewModel @Inject constructor(
 
     fun onAddNote(ticketId: Long) {
         // TODO(plan:L642): open AddNoteSheet — deferred, not yet wired
-        _state.value = _state.value.copy(toastMessage = "Add note — not yet available")
+        _state.update { it.copy(toastMessage = "Add note — not yet available") }
     }
 
     fun onContextAssign(ticketId: Long) {
@@ -360,7 +365,7 @@ class TicketListViewModel @Inject constructor(
     }
 
     fun clearToast() {
-        _state.value = _state.value.copy(toastMessage = null)
+        _state.update { it.copy(toastMessage = null) }
     }
 
     // -----------------------------------------------------------------------
@@ -368,29 +373,33 @@ class TicketListViewModel @Inject constructor(
     // -----------------------------------------------------------------------
 
     fun enterSelectMode(ticketId: Long) {
-        _state.value = _state.value.copy(
-            isSelecting = true,
-            selectedIds = setOf(ticketId),
-        )
+        _state.update {
+            it.copy(
+                isSelecting = true,
+                selectedIds = setOf(ticketId),
+            )
+        }
     }
 
     fun toggleSelection(ticketId: Long) {
         val current = _state.value.selectedIds
         val updated = if (ticketId in current) current - ticketId else current + ticketId
-        _state.value = _state.value.copy(selectedIds = updated)
+        _state.update { it.copy(selectedIds = updated) }
     }
 
     fun exitSelectMode() {
-        _state.value = _state.value.copy(isSelecting = false, selectedIds = emptySet())
+        _state.update { it.copy(isSelecting = false, selectedIds = emptySet()) }
     }
 
     /** Legacy shim — delegates to [bulkTransition] with a status name lookup. */
     fun onBulkStatusChange(statusName: String) {
         // Delegate to the full bulk-transition impl; status ID lookup requires the status list
         // which is not loaded at this level — surface a toast stub for callers that pass only a name.
-        _state.value = _state.value.copy(
-            toastMessage = "Use bulkTransition(ids, statusId) for wired bulk changes",
-        )
+        _state.update {
+            it.copy(
+                toastMessage = "Use bulkTransition(ids, statusId) for wired bulk changes",
+            )
+        }
         Log.d(TAG, "onBulkStatusChange stub: '$statusName'")
     }
 
@@ -453,21 +462,23 @@ class TicketListViewModel @Inject constructor(
                 movedCount += results.count { it }
             }
 
-            _state.value = _state.value.copy(
-                isSelecting = false,
-                selectedIds = emptySet(),
-                bulkTransitionSummary = BulkTransitionSummary(
-                    targetStatusName = targetStatusName,
-                    movedCount = movedCount,
-                    skipped = skipped,
-                ),
-            )
+            _state.update {
+                it.copy(
+                    isSelecting = false,
+                    selectedIds = emptySet(),
+                    bulkTransitionSummary = BulkTransitionSummary(
+                        targetStatusName = targetStatusName,
+                        movedCount = movedCount,
+                        skipped = skipped,
+                    ),
+                )
+            }
         }
     }
 
     /** Dismiss the bulk-transition summary dialog. */
     fun dismissBulkTransitionSummary() {
-        _state.value = _state.value.copy(bulkTransitionSummary = null)
+        _state.update { it.copy(bulkTransitionSummary = null) }
     }
 
     // -----------------------------------------------------------------------
@@ -487,33 +498,41 @@ class TicketListViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 ticketApi.bulkSetLabels(mapOf("ids" to ids, "label" to label))
-                _state.value = _state.value.copy(
-                    isSelecting = false,
-                    selectedIds = emptySet(),
-                    toastMessage = "Label [$label] applied to ${ids.size} ticket${if (ids.size == 1) "" else "s"}",
-                )
+                _state.update {
+                    it.copy(
+                        isSelecting = false,
+                        selectedIds = emptySet(),
+                        toastMessage = "Label [$label] applied to ${ids.size} ticket${if (ids.size == 1) "" else "s"}",
+                    )
+                }
             } catch (e: HttpException) {
                 if (e.code() == 404) {
                     // Endpoint not yet deployed on this tenant's server — exit gracefully.
-                    _state.value = _state.value.copy(
-                        isSelecting = false,
-                        selectedIds = emptySet(),
-                        toastMessage = "Label feature not available on this server",
-                    )
+                    _state.update {
+                        it.copy(
+                            isSelecting = false,
+                            selectedIds = emptySet(),
+                            toastMessage = "Label feature not available on this server",
+                        )
+                    }
                 } else {
                     Log.w(TAG, "bulkApplyLabel: HTTP ${e.code()} — ${e.message()}")
-                    _state.value = _state.value.copy(
-                        toastMessage = "Could not apply label — ${e.message()}",
-                    )
+                    _state.update {
+                        it.copy(
+                            toastMessage = "Could not apply label — ${e.message()}",
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
                 // BUGHUNT-2026-05-17: optimistic — server may have committed
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "bulkApplyLabel: ${e.message}")
-                _state.value = _state.value.copy(
-                    toastMessage = "Could not apply label",
-                )
+                _state.update {
+                    it.copy(
+                        toastMessage = "Could not apply label",
+                    )
+                }
             }
         }
     }
@@ -523,7 +542,7 @@ class TicketListViewModel @Inject constructor(
     // -----------------------------------------------------------------------
 
     fun onViewModeChanged(mode: TicketViewMode) {
-        _state.value = _state.value.copy(viewMode = mode)
+        _state.update { it.copy(viewMode = mode) }
         appPreferences.ticketListViewMode = if (mode == TicketViewMode.Kanban) "kanban" else "list"
     }
 
@@ -539,7 +558,7 @@ class TicketListViewModel @Inject constructor(
      * [AppPreferences] so it survives process death and app restarts.
      */
     fun onColumnVisibilityChanged(visibility: TicketColumnVisibility) {
-        _state.value = _state.value.copy(columnVisibility = visibility)
+        _state.update { it.copy(columnVisibility = visibility) }
         appPreferences.ticketColumnVisibility = with(visibility) { encode() }
     }
 
@@ -548,7 +567,7 @@ class TicketListViewModel @Inject constructor(
     // -----------------------------------------------------------------------
 
     fun onSavedViewSelected(savedView: TicketSavedView) {
-        _state.value = _state.value.copy(savedView = savedView)
+        _state.update { it.copy(savedView = savedView) }
         appPreferences.ticketListSavedView = savedView.name
         _filterKeyFlow.value = resolveFilterKey(savedView = savedView)
         collectTickets()
@@ -616,7 +635,7 @@ class TicketListViewModel @Inject constructor(
         val updated = if (willPin) current + ticketId else current - ticketId
 
         // Optimistic local update
-        _state.value = _state.value.copy(pinnedTicketIds = updated)
+        _state.update { it.copy(pinnedTicketIds = updated) }
         if (willPin) {
             appPreferences.addPinnedTicketId(ticketId)
         } else {
