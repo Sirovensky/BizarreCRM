@@ -555,6 +555,7 @@ struct EmployeeFilterSheet: View {
                     TextField("Name or email", text: $vm.filter.searchQuery)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
+                        .submitLabel(.search)
                         .accessibilityLabel("Search employees by name or email")
                 }
             }
