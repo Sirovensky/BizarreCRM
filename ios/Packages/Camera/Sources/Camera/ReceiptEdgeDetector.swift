@@ -26,14 +26,27 @@ public struct ReceiptEdgeDetector {
         guard let cgImage = image.cgImage else { return nil }
 
         return await withCheckedContinuation { continuation in
+            // BUGHUNT-2026-05-19: Vision's perform([request]) can BOTH fire
+            // the request's completion (with error) AND throw out of perform —
+            // per VNImageRequestHandler.perform docs: "if the framework fails
+            // to perform some of the requests, both the error parameter of
+            // the completion handler closure of each affected request, as
+            // well as this method's thrown error are populated." Without a
+            // resumed guard the catch block + completion would both resume
+            // the continuation → fatal "continuation already resumed" crash.
+            // Same fix family as BarcodeVisionScanner / ImageEditService OCR.
+            nonisolated(unsafe) var resumed = false
             let request = VNDetectRectanglesRequest { request, error in
+                if resumed { return }
                 guard error == nil,
                       let results = request.results as? [VNRectangleObservation],
                       let best = results.max(by: { $0.confidence < $1.confidence }) else {
+                    resumed = true
                     continuation.resume(returning: nil)
                     return
                 }
                 let rect = vnRectToUIKit(best.boundingBox, imageSize: image.size)
+                resumed = true
                 continuation.resume(returning: rect)
             }
             request.minimumAspectRatio = 0.5
@@ -47,6 +60,8 @@ public struct ReceiptEdgeDetector {
                 try handler.perform([request])
             } catch {
                 AppLog.ui.error("ReceiptEdgeDetector Vision failed: \(error.localizedDescription, privacy: .public)")
+                if resumed { return }
+                resumed = true
                 continuation.resume(returning: nil)
             }
         }
@@ -65,9 +80,16 @@ public struct ReceiptEdgeDetector {
         guard let cgImage = image.cgImage else { return nil }
 
         return await withCheckedContinuation { continuation in
+            // BUGHUNT-2026-05-19: same Vision double-resume guard as
+            // detectQuadrilateral above. perform([request]) docs explicitly
+            // say BOTH the completion-handler error AND the thrown error can
+            // populate on the same failure.
+            nonisolated(unsafe) var resumed = false
             let request = VNRecognizeTextRequest { request, error in
+                if resumed { return }
                 guard error == nil,
                       let observations = request.results as? [VNRecognizedTextObservation] else {
+                    resumed = true
                     continuation.resume(returning: nil)
                     return
                 }
@@ -79,10 +101,12 @@ public struct ReceiptEdgeDetector {
                 // Walk from the bottom; return the first parseable monetary value.
                 for line in lines.reversed() {
                     if let amount = parseCurrencyAmount(from: line) {
+                        resumed = true
                         continuation.resume(returning: amount)
                         return
                     }
                 }
+                resumed = true
                 continuation.resume(returning: nil)
             }
             request.recognitionLevel = .accurate
@@ -93,6 +117,8 @@ public struct ReceiptEdgeDetector {
                 try handler.perform([request])
             } catch {
                 AppLog.ui.error("ReceiptEdgeDetector OCR failed: \(error.localizedDescription, privacy: .public)")
+                if resumed { return }
+                resumed = true
                 continuation.resume(returning: nil)
             }
         }
