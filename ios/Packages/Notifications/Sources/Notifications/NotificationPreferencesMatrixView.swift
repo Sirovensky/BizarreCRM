@@ -79,11 +79,33 @@ public final class NotificationPreferencesMatrixViewModel {
 
     public func resetAllToDefault() async {
         isLoading = true
+        errorMessage = nil
         defer { isLoading = false }
         let defaults = NotificationEvent.allCases.map { NotificationPreference.defaultPreference(for: $0) }
         preferences = defaults
+        // BUGHUNT-2026-05-19: previously `_ = try? await repository.update(pref)`
+        // swallowed every per-event failure so a partial failure showed the user
+        // an all-default UI even when only 3/12 events actually landed on the
+        // server. Next session-open re-loaded the actual server state and a row
+        // the user thought they'd zeroed out was still firing. Track failures
+        // and surface the count so the user knows to retry.
+        var failedEvents: [NotificationEvent] = []
         for pref in defaults {
-            _ = try? await repository.update(pref)
+            do {
+                _ = try await repository.update(pref)
+            } catch let e where AppError.isCancellation(e) {
+                // View dismissed mid-loop — keep the optimistic state and
+                // let next fetchAll reconcile.
+                return
+            } catch {
+                failedEvents.append(pref.event)
+            }
+        }
+        if !failedEvents.isEmpty {
+            errorMessage = "Could not reset \(failedEvents.count) of \(defaults.count) events. Pull to refresh and retry."
+            // Re-fetch so the UI reflects real server state instead of a
+            // misleading all-default snapshot.
+            preferences = (try? await repository.fetchAll()) ?? preferences
         }
     }
 
