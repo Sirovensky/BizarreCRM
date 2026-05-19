@@ -157,7 +157,7 @@ fun TicketNoteCompose(
             // --- Attachment previews ---
             if (attachments.isNotEmpty()) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(attachments) { uri ->
+                    items(attachments, key = { it.toString() }) { uri ->
                         Box {
                             AsyncImage(
                                 model = uri,

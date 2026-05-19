@@ -172,7 +172,7 @@ fun RepairPricingScreen(
                             label = { Text(stringResource(R.string.filter_all)) },
                         )
                     }
-                    items(state.availableCategories) { cat ->
+                    items(state.availableCategories, key = { it }) { cat ->
                         FilterChip(
                             selected = state.selectedCategory == cat,
                             onClick = {

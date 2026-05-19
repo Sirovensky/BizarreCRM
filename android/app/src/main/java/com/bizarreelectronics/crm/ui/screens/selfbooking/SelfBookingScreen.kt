@@ -255,7 +255,7 @@ private fun SelfBookingSlotContent(
                 }
             }
         } else {
-            items(availableSlots) { slot ->
+            items(availableSlots, key = { it.slotId }) { slot ->
                 SlotItem(
                     slot = slot,
                     selected = slot.slotId == state.selectedSlot?.slotId,

@@ -119,7 +119,7 @@ fun DialPromptBottomSheet(
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                     modifier = Modifier.heightIn(max = 160.dp),
                 ) {
-                    items(recentNumbers) { recent ->
+                    items(recentNumbers, key = { it }) { recent ->
                         ListItem(
                             headlineContent = { Text(recent) },
                             leadingContent = {
