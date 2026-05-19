@@ -234,6 +234,13 @@ class ActivityFeedViewModel @Inject constructor(
                     if (current.none { it.id == newEvent.id }) {
                         _items.value = listOf(newEvent) + current
                     }
+                } catch (e: CancellationException) {
+                    // BUGHUNT-2026-05-19: this catch sits inside the WS-events
+                    // collect loop. Without re-throwing, scope cancellation
+                    // (screen exit) is logged as a "parse error" and the
+                    // collect keeps looping — leaking the WS subscription
+                    // until the next real event arrives or the WS closes.
+                    throw e
                 } catch (e: Exception) {
                     Log.w(TAG, "activity:new parse error: ${e.message}")
                 }

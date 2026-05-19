@@ -306,6 +306,13 @@ class DataImportViewModel @Inject constructor(
                         step = step,
                     )
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-19: the start-import POST has no idempotency
+                // key; if the server already accepted the kickoff and the
+                // user navigates away, this catch (e: Exception) would mark
+                // step=ERROR and prompt a retry that starts a SECOND import
+                // job, doubling created customers/inventory.
+                throw e
             } catch (e: Exception) {
                 _state.update {
                     it.copy(
@@ -486,6 +493,13 @@ class DataImportViewModel @Inject constructor(
                         )
                     }
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-19: CSV row-import POST creates customer /
+                // inventory rows server-side. If the user backs out mid-call,
+                // swallowing cancellation paints "CSV import failed", but the
+                // server may have already committed the rows — a retry then
+                // double-creates everything (no de-dup by batch id).
+                throw e
             } catch (e: Exception) {
                 _state.update {
                     it.copy(

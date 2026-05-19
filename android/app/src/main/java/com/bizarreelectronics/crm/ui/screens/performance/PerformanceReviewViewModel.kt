@@ -105,6 +105,11 @@ class PerformanceReviewViewModel @Inject constructor(
                         )
                     }
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-19: refresh() / pull-to-refresh cancels the
+                // prior loadReviews launch; without re-throw the broad catch
+                // below paints "Failed to load reviews" mid-pull.
+                throw e
             } catch (e: Exception) {
                 _state.update {
                     it.copy(
