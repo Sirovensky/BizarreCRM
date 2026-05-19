@@ -371,6 +371,7 @@ struct CouponEditorSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { save() }
+                        .disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         .accessibilityIdentifier("marketing.coupon.save")
                 }
             }

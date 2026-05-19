@@ -376,6 +376,8 @@ public struct CampaignDetailView: View {
                     .textFieldStyle(.roundedBorder)
                     #if canImport(UIKit)
                     .keyboardType(.numberPad)
+                    .textContentType(.password)
+                    .submitLabel(.go)
                     #endif
                     .accessibilityLabel("Manager PIN")
 

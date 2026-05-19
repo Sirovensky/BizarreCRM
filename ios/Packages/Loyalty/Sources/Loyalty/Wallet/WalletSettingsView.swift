@@ -112,6 +112,7 @@ public struct WalletSettingsView: View {
 #if canImport(UIKit)
         base
             .keyboardType(.URL)
+            .textContentType(.URL)
             .textInputAutocapitalization(.never)
 #else
         base
@@ -125,7 +126,9 @@ public struct WalletSettingsView: View {
             .font(.brandBodyMedium())
             .accessibilityLabel("Pass back support phone number")
 #if canImport(UIKit)
-        base.keyboardType(.phonePad)
+        base
+            .keyboardType(.phonePad)
+            .textContentType(.telephoneNumber)
 #else
         base
 #endif
