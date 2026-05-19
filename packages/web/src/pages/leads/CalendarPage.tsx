@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { leadApi, settingsApi, customerApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useSettings } from '@/hooks/useSettings';
 import { toLocalDateString } from '@/utils/format';
 import { formatApiError } from '@/utils/apiError';
@@ -1436,6 +1437,7 @@ function DayView({
 
 // ─── Main Component ─────────────────────────────────────────────
 export function CalendarPage() {
+  useDocumentTitle('Calendar');
   // Honor `?view=day|week|month` so deep-links from the POS gate land on
   // the right view (gate "+N more · view all" routes to ?view=day for a
   // vertical timeline). Falls back to month on unknown / missing values.
