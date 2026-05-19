@@ -634,7 +634,9 @@ private fun ExpenseCard(
         append(", on ${expense.date.take(10)}")
         if (vendorOrNote.isNotBlank()) append(", $vendorOrNote")
         if (!expense.userName.isNullOrBlank()) append(", ${expense.userName}")
-        append(".")
+        // Card supports tap (open) + long-press (context menu) via the
+        // outer combinedClickable; announce both so the action is discoverable.
+        append(". Tap to open. Long-press for more options.")
     }
     BrandCard(
         modifier = modifier
