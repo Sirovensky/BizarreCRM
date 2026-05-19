@@ -162,11 +162,19 @@ public struct RecognitionBookButton: View {
             Label("Export Recognition Book", systemImage: "doc.richtext")
         }
         .accessibilityLabel("Export end-of-year recognition book as PDF")
-        .alert("Export Failed", isPresented: .constant(errorMessage != nil), actions: {
-            Button("OK") { errorMessage = nil }
-        }, message: {
-            Text(errorMessage ?? "")
-        })
+        .alert(
+            "Export Failed",
+            isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            ),
+            actions: {
+                Button("OK") { errorMessage = nil }
+            },
+            message: {
+                Text(errorMessage ?? "")
+            }
+        )
         .sheet(isPresented: $showShareSheet) {
             if let url = pdfURL {
                 ShareSheet(activityItems: [url])

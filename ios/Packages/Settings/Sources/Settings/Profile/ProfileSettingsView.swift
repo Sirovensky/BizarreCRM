@@ -49,12 +49,24 @@ public struct ProfileView: View {
                 // Upload is a stub — sheet shows "coming soon" toast internally.
             }
         }
-        .alert("Error", isPresented: .constant(vm.errorMessage != nil)) {
+        .alert(
+            "Error",
+            isPresented: Binding(
+                get: { vm.errorMessage != nil },
+                set: { if !$0 { vm.dismissError() } }
+            )
+        ) {
             Button("OK") { vm.dismissError() }
         } message: {
             Text(vm.errorMessage ?? "")
         }
-        .alert("Saved", isPresented: .constant(vm.successMessage != nil)) {
+        .alert(
+            "Saved",
+            isPresented: Binding(
+                get: { vm.successMessage != nil },
+                set: { if !$0 { vm.dismissSuccess() } }
+            )
+        ) {
             Button("OK") { vm.dismissSuccess() }
         } message: {
             Text(vm.successMessage ?? "")
@@ -105,12 +117,24 @@ public struct ProfileView: View {
         .sheet(isPresented: $showAvatarPicker) {
             AvatarPickerSheet(currentAvatarUrl: vm.settings.avatarUrl) { _ in }
         }
-        .alert("Error", isPresented: .constant(vm.errorMessage != nil)) {
+        .alert(
+            "Error",
+            isPresented: Binding(
+                get: { vm.errorMessage != nil },
+                set: { if !$0 { vm.dismissError() } }
+            )
+        ) {
             Button("OK") { vm.dismissError() }
         } message: {
             Text(vm.errorMessage ?? "")
         }
-        .alert("Saved", isPresented: .constant(vm.successMessage != nil)) {
+        .alert(
+            "Saved",
+            isPresented: Binding(
+                get: { vm.successMessage != nil },
+                set: { if !$0 { vm.dismissSuccess() } }
+            )
+        ) {
             Button("OK") { vm.dismissSuccess() }
         } message: {
             Text(vm.successMessage ?? "")
