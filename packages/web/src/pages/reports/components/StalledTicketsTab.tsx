@@ -79,14 +79,14 @@ export function StalledTicketsTab({ from, to }: { from: string; to: string }) {
           <EmptyState message="No stalled tickets found -- all tickets are progressing" />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm" aria-label="Stalled tickets by technician">
               <thead>
                 <tr className="border-b border-surface-100 dark:border-surface-800">
-                  <th className="text-left px-4 py-3 font-medium text-surface-500">Technician</th>
-                  <th className="text-right px-4 py-3 font-medium text-surface-500">Stalled Count</th>
-                  <th className="text-right px-4 py-3 font-medium text-surface-500">Max Days Stalled</th>
-                  <th className="text-left px-4 py-3 font-medium text-surface-500">Oldest Update</th>
-                  <th className="text-left px-4 py-3 font-medium text-surface-500">Ticket IDs</th>
+                  <th scope="col" className="text-left px-4 py-3 font-medium text-surface-500">Technician</th>
+                  <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">Stalled Count</th>
+                  <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">Max Days Stalled</th>
+                  <th scope="col" className="text-left px-4 py-3 font-medium text-surface-500">Oldest Update</th>
+                  <th scope="col" className="text-left px-4 py-3 font-medium text-surface-500">Ticket IDs</th>
                 </tr>
               </thead>
               <tbody>

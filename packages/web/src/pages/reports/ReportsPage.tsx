@@ -408,12 +408,12 @@ function SalesTab({
           <EmptyState message="No payment data for this period" />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm" aria-label="Payment method breakdown">
               <thead>
                 <tr className="border-b border-surface-100 dark:border-surface-800">
-                  <th className="text-left px-4 py-3 font-medium text-surface-500">Method</th>
-                  <th className="text-right px-4 py-3 font-medium text-surface-500">Transactions</th>
-                  <th className="text-right px-4 py-3 font-medium text-surface-500">Revenue</th>
+                  <th scope="col" className="text-left px-4 py-3 font-medium text-surface-500">Method</th>
+                  <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">Transactions</th>
+                  <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">Revenue</th>
                 </tr>
               </thead>
               <tbody>
@@ -557,13 +557,13 @@ function SalesTab({
               );
             })()}
             <div className="overflow-x-auto max-h-96 overflow-y-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" aria-label="Revenue trend by period">
                 <thead className="sticky top-0 bg-white dark:bg-surface-900">
                   <tr className="border-b border-surface-100 dark:border-surface-800">
-                    <th className="text-left px-4 py-3 font-medium text-surface-500">Period</th>
-                    <th className="text-right px-4 py-3 font-medium text-surface-500">Invoices</th>
-                    <th className="text-right px-4 py-3 font-medium text-surface-500">Customers</th>
-                    <th className="text-right px-4 py-3 font-medium text-surface-500">Revenue</th>
+                    <th scope="col" className="text-left px-4 py-3 font-medium text-surface-500">Period</th>
+                    <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">Invoices</th>
+                    <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">Customers</th>
+                    <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">Revenue</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -666,13 +666,13 @@ function TicketsTab({ from, to }: { from: string; to: string }) {
           <EmptyState message="No assigned tickets in this period" />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm" aria-label="Technician performance">
               <thead>
                 <tr className="border-b border-surface-100 dark:border-surface-800">
-                  <th className="text-left px-4 py-3 font-medium text-surface-500">Technician</th>
-                  <th className="text-right px-4 py-3 font-medium text-surface-500">Assigned</th>
-                  <th className="text-right px-4 py-3 font-medium text-surface-500">Closed</th>
-                  <th className="text-right px-4 py-3 font-medium text-surface-500">Revenue</th>
+                  <th scope="col" className="text-left px-4 py-3 font-medium text-surface-500">Technician</th>
+                  <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">Assigned</th>
+                  <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">Closed</th>
+                  <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500">Revenue</th>
                 </tr>
               </thead>
               <tbody>
