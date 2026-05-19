@@ -442,8 +442,9 @@ function AppointmentDetailModal({
   const edit = (
     <form className="space-y-4 px-6 py-4" onSubmit={handleSave}>
       <div>
-        <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Title *</label>
+        <label htmlFor="appt-edit-title" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Title *</label>
         <input
+          id="appt-edit-title"
           required
           value={form.title}
           onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
@@ -451,8 +452,9 @@ function AppointmentDetailModal({
         />
       </div>
       <div>
-        <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Date</label>
+        <label htmlFor="appt-edit-date" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Date</label>
         <input
+          id="appt-edit-date"
           type="date"
           value={form.start_date}
           onChange={(e) => setForm((f) => ({ ...f, start_date: e.target.value }))}
@@ -519,8 +521,9 @@ function AppointmentDetailModal({
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Assigned To</label>
+          <label htmlFor="appt-edit-assigned-to" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Assigned To</label>
           <select
+            id="appt-edit-assigned-to"
             value={form.assigned_to}
             onChange={(e) => setForm((f) => ({ ...f, assigned_to: e.target.value }))}
             className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
@@ -532,8 +535,9 @@ function AppointmentDetailModal({
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Status</label>
+          <label htmlFor="appt-edit-status" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Status</label>
           <select
+            id="appt-edit-status"
             value={form.status}
             onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
             className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
@@ -545,8 +549,9 @@ function AppointmentDetailModal({
         </div>
       </div>
       <div>
-        <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Notes</label>
+        <label htmlFor="appt-edit-notes" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Notes</label>
         <textarea
+          id="appt-edit-notes"
           value={form.notes}
           onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
           rows={3}
@@ -862,8 +867,9 @@ function CreateAppointmentModal({
           }}
         >
           <div>
-            <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Title *</label>
+            <label htmlFor="appt-add-title" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Title *</label>
             <input
+              id="appt-add-title"
               required
               value={form.title}
               onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
@@ -926,8 +932,9 @@ function CreateAppointmentModal({
             )}
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Date</label>
+            <label htmlFor="appt-add-date" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Date</label>
             <input
+              id="appt-add-date"
               type="date"
               value={form.start_date}
               onChange={(e) => setForm((f) => ({ ...f, start_date: e.target.value }))}
@@ -985,8 +992,9 @@ function CreateAppointmentModal({
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Assigned To</label>
+              <label htmlFor="appt-add-assigned-to" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Assigned To</label>
               <select
+                id="appt-add-assigned-to"
                 value={form.assigned_to}
                 onChange={(e) => setForm((f) => ({ ...f, assigned_to: e.target.value }))}
                 className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
@@ -998,8 +1006,9 @@ function CreateAppointmentModal({
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Status</label>
+              <label htmlFor="appt-add-status" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Status</label>
               <select
+                id="appt-add-status"
                 value={form.status}
                 onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
                 className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
@@ -1029,8 +1038,9 @@ function CreateAppointmentModal({
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Notes</label>
+            <label htmlFor="appt-add-notes" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Notes</label>
             <textarea
+              id="appt-add-notes"
               value={form.notes}
               onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
               rows={2}
@@ -1040,8 +1050,9 @@ function CreateAppointmentModal({
           {/* WEB-UIUX-1320: recurrence picker. Server auto-creates 4 occurrences
               for weekly/biweekly/monthly; leave as "none" for a single appt. */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Recurrence</label>
+            <label htmlFor="appt-add-recurrence" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Recurrence</label>
             <select
+              id="appt-add-recurrence"
               value={form.recurrence}
               onChange={(e) => setForm((f) => ({ ...f, recurrence: e.target.value as 'none' | 'weekly' | 'biweekly' | 'monthly' }))}
               className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
