@@ -151,8 +151,13 @@ export function RolesMatrixPage() {
         <section className="bg-white dark:bg-surface-900 rounded-lg shadow border border-surface-200 dark:border-surface-700 p-4">
           {!selectedRoleId && <p className="text-surface-500 dark:text-surface-400">Pick a role to edit.</p>}
           {matrixLoading && (
-            <div className="flex items-center justify-center py-12 text-surface-500 dark:text-surface-400">
-              <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading...
+            <div
+              role="status"
+              aria-live="polite"
+              aria-busy="true"
+              className="flex items-center justify-center py-12 text-surface-500 dark:text-surface-400"
+            >
+              <Loader2 className="w-5 h-5 animate-spin mr-2" aria-hidden="true" /> Loading...
             </div>
           )}
           {!matrixLoading && matrix.length > 0 && (

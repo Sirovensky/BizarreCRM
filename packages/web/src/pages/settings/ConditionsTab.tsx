@@ -129,8 +129,13 @@ function CategoryTemplates({ category }: { category: string }) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-primary-500" />
+      <div
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+        className="flex items-center justify-center py-12"
+      >
+        <Loader2 className="h-6 w-6 animate-spin text-primary-500" aria-hidden="true" />
         <span className="ml-2 text-surface-500">Loading...</span>
       </div>
     );

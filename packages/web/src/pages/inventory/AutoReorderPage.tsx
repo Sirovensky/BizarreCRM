@@ -251,8 +251,8 @@ export function AutoReorderPage() {
           </thead>
           <tbody>
             {isLoading && (
-              <tr>
-                <td colSpan={8} className="text-center py-8 text-surface-400">
+              <tr aria-busy="true">
+                <td colSpan={8} className="text-center py-8 text-surface-400" role="status" aria-live="polite">
                   Loading...
                 </td>
               </tr>

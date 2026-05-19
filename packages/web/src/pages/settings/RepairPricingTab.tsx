@@ -73,8 +73,13 @@ function formatCategoryLabel(category: string): string {
 
 function LoadingState() {
   return (
-    <div className="flex items-center justify-center py-20">
-      <Loader2 className="h-8 w-8 animate-spin text-primary-500" />
+    <div
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      className="flex items-center justify-center py-20"
+    >
+      <Loader2 className="h-8 w-8 animate-spin text-primary-500" aria-hidden="true" />
       <span className="ml-3 text-surface-500">Loading...</span>
     </div>
   );
