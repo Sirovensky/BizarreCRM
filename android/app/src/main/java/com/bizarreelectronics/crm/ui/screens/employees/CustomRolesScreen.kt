@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ManageAccounts
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -340,8 +341,8 @@ private fun CreateRoleDialog(
     onDismiss: () -> Unit,
     onConfirm: (name: String, description: String) -> Unit,
 ) {
-    var name by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
+    var name by rememberSaveable { mutableStateOf("") }
+    var description by rememberSaveable { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,

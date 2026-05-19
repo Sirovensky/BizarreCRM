@@ -41,6 +41,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -80,7 +81,7 @@ fun DeviceCatalogScreen(
     viewModel: DeviceCatalogViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
-    var showAddDialog by remember { mutableStateOf(false) }
+    var showAddDialog by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -314,10 +315,12 @@ fun AddDeviceDialog(
     onSave: (manufacturerId: Long, name: String, category: String, releaseYear: Int?) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var name by remember { mutableStateOf("") }
-    var releaseYearText by remember { mutableStateOf("") }
+    var name by rememberSaveable { mutableStateOf("") }
+    var releaseYearText by rememberSaveable { mutableStateOf("") }
+    // ManufacturerItem is a class — Bundle saver complains, keep on plain
+    // remember. Reselecting from a small list on resume is acceptable.
     var selectedManufacturer by remember { mutableStateOf(manufacturers.firstOrNull()) }
-    var selectedCategory by remember { mutableStateOf("phone") }
+    var selectedCategory by rememberSaveable { mutableStateOf("phone") }
     var manufacturerExpanded by remember { mutableStateOf(false) }
     var categoryExpanded by remember { mutableStateOf(false) }
 

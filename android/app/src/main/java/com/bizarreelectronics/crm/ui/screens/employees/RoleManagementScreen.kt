@@ -39,6 +39,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -415,8 +416,8 @@ private fun CreateRoleDialog(
     onDismiss: () -> Unit,
     onConfirm: (name: String, description: String) -> Unit,
 ) {
-    var name by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
+    var name by rememberSaveable { mutableStateOf("") }
+    var description by rememberSaveable { mutableStateOf("") }
     val nameFocus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
 
