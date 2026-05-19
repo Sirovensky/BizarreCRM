@@ -276,8 +276,19 @@ public struct AppointmentEditView: View {
     // MARK: - Helpers
 
     private func shortTime(_ iso: String) -> String {
-        let f = ISO8601DateFormatter()
-        if let d = f.date(from: iso) {
+        // BUGHUNT-2026-05-19: a default-options ISO8601DateFormatter rejects
+        // the fractional-second precision Node emits via Date.toISOString()
+        // (e.g. "2026-05-19T15:00:00.123Z"). When parse failed we fell back
+        // to `iso.suffix(8).prefix(5)` — garbage like "00:00.1" instead of
+        // a real time, which the user saw next to scheduled appointments.
+        // Try fractional first, fall back to non-fractional, then the raw
+        // string only as the last resort. See memory: ios_iso_fractional_parser.
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        let parsed = fractional.date(from: iso) ?? plain.date(from: iso)
+        if let d = parsed {
             let tf = DateFormatter()
             tf.dateFormat = "h:mm a"
             tf.locale = Locale(identifier: "en_US_POSIX")
